@@ -1,0 +1,89 @@
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 200px);
+  padding: 20px;
+}
+
+.auth-form {
+  background: white;
+  padding: 40px;
+  border-radius: 10px;
+  box-shadow: var(--box-shadow);
+  width: 100%;
+  max-width: 400px;
+}
+
+.auth-form h2 {
+  text-align: center;
+  color: var(--dark-color);
+  margin-bottom: 30px;
+}
+
+.auth-instruction {
+  text-align: center;
+  color: #666;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.auth-links {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.auth-links p {
+  margin-top: 10px;
+  color: #666;
+}
+
+.auth-links a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.auth-links a:hover {
+  text-decoration: underline;
+}
+
+/* Material UI Alert Styles */
+.mui-alert {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 16px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  font-family: 'Roboto', sans-serif;
+  box-shadow: 0 3px 5px rgba(0,0,0,0.2);
+  z-index: 1000;
+  max-width: 350px;
+  animation: fadeIn 0.3s;
+}
+
+.mui-alert-success {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.mui-alert-error {
+  background-color: #ffebee;
+  color: #c62828;
+}
+
+.mui-alert-icon {
+  margin-right: 12px;
+  font-size: 24px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-20px); }
+}
