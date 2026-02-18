@@ -11,6 +11,9 @@ import Dashboard from './components/Dashboard';
 import Payment from './components/Payment';
 import Profile from './components/Profile';
 import OrganizationProfile from './components/OrganizationProfile';
+import Notifications from './components/Notifications';
+import Documents from './components/Documents';
+import Settings from './components/Settings';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
@@ -41,6 +44,21 @@ function App() {
           <Route path="/organization" element={
             <ProtectedRoute>
               <OrganizationProfile />
+            </ProtectedRoute>
+          } />
+          <Route path="/notifications" element={
+            <ProtectedRoute>
+              <Notifications />
+            </ProtectedRoute>
+          } />
+          <Route path="/documents" element={
+            <ProtectedRoute>
+              <Documents />
+            </ProtectedRoute>
+          } />
+          <Route path="/settings" element={
+            <ProtectedRoute>
+              <Settings />
             </ProtectedRoute>
           } />
           <Route path="/payment" element={
