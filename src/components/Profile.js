@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { Box, CircularProgress } from '@mui/material';
+import Layout from './Layout';
 import './Profile.css';
 
 const Profile = () => {
@@ -54,7 +56,6 @@ const Profile = () => {
 
       setOrganization(orgData);
 
-      // Load company logo if exists
       if (orgData.company_logo_path) {
         const { data } = supabase.storage
           .from('logos')
@@ -77,7 +78,11 @@ const Profile = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading profile...</div>;
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress style={{ color: '#15e420' }} />
+      </Box>
+    );
   }
 
   return (
@@ -91,23 +96,11 @@ const Profile = () => {
         </div>
       )}
 
-      <main className="dashboard-container">
-        {/* Sidebar */}
-        <aside className="sidebar">
-          <ul>
-            <li><a href="/dashboard">Dashboard</a></li>
-            <li className="active"><a href="/profile">Profile</a></li>
-            <li><a href="/organization">Organization Profile</a></li>
-            <li><a href="/notifications">Notifications</a></li>
-          </ul>
-        </aside>
-
-        {/* Profile Content */}
+      <Layout>
         <section className="dashboard-content">
           <div className="profile-info">
             <h3>Profile Information</h3>
             
-            {/* User Photo */}
             <div className="photo-container">
               {logoUrl ? (
                 <img 
@@ -181,7 +174,7 @@ const Profile = () => {
             </div>
           </div>
         </section>
-      </main>
+      </Layout>
     </>
   );
 };

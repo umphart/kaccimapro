@@ -4,7 +4,6 @@ import { supabase } from '../supabaseClient';
 import {
   Alert,
   Snackbar,
-  CircularProgress,
   Button,
   IconButton,
   Dialog,
@@ -13,7 +12,8 @@ import {
   Box,
   Paper,
   Typography,
-  Grid
+  Grid,
+  CircularProgress
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -23,12 +23,12 @@ import {
   Visibility as VisibilityIcon,
   Download as DownloadIcon,
   Close as CloseIcon,
-  Business as BusinessIcon,
   CheckCircle as CheckCircleIcon,
   Pending as PendingIcon,
   Error as ErrorIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
+import Layout from './Layout';
 import './OrganizationProfile.css';
 
 // Styled components
@@ -243,142 +243,106 @@ const OrganizationProfile = () => {
         </Alert>
       </Snackbar>
 
-      <Box className="dashboard-container" sx={{ display: 'flex', gap: 3, p: 3 }}>
-        {/* Sidebar */}
-        <Paper sx={{ width: 250, p: 2, borderRadius: 2 }}>
-          <Box component="ul" sx={{ listStyle: 'none', p: 0 }}>
-            {[
-              { path: '/dashboard', label: 'Dashboard' },
-              { path: '/profile', label: 'Profile' },
-              { path: '/organization', label: 'Organization Profile', active: true },
-              { path: '/notifications', label: 'Notifications' }
-            ].map((item) => (
-              <Box
-                key={item.path}
-                component="li"
-                sx={{
-                  p: 2,
-                  mb: 1,
-                  borderRadius: 1,
-                  cursor: 'pointer',
-                  bgcolor: item.active ? '#e8f5e9' : 'transparent',
-                  borderLeft: item.active ? '3px solid #15e420' : '3px solid transparent',
-                  '&:hover': {
-                    bgcolor: '#f5f5f5'
-                  }
-                }}
-                onClick={() => navigate(item.path)}
-              >
-                <Typography sx={{ color: item.active ? '#15e420' : '#333' }}>
-                  {item.label}
-                </Typography>
-              </Box>
-            ))}
+      <Layout>
+        <StyledPaper>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h5" sx={{ color: '#15e420', fontWeight: 'bold' }}>
+              Organization Profile
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<EditIcon />}
+              onClick={() => navigate('/organization/edit')}
+              sx={{
+                bgcolor: '#15e420',
+                '&:hover': { bgcolor: '#12c21e' }
+              }}
+            >
+              Edit Profile
+            </Button>
           </Box>
-        </Paper>
 
-        {/* Main Content */}
-        <Box sx={{ flex: 1 }}>
-          <StyledPaper>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h5" sx={{ color: '#15e420', fontWeight: 'bold' }}>
-                Organization Profile
-              </Typography>
-              <Button
-                variant="contained"
-                startIcon={<EditIcon />}
-                onClick={() => navigate('/organization/edit')}
-                sx={{
-                  bgcolor: '#15e420',
-                  '&:hover': { bgcolor: '#12c21e' }
-                }}
-              >
-                Edit Profile
-              </Button>
-            </Box>
+          {/* Basic Information Section */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" sx={{ color: '#15e420', mb: 2, pb: 1, borderBottom: '1px solid #eee' }}>
+              Basic Information
+            </Typography>
+            <Grid container spacing={3}>
+              {[
+                { label: 'Company Name', value: organization?.company_name },
+                { label: 'Office Address', value: organization?.office_address },
+                { label: 'Nature of Business', value: organization?.business_nature },
+                { label: 'CAC Number', value: organization?.cac_number },
+                { label: 'Contact Person', value: organization?.contact_person },
+                { label: 'Representative', value: organization?.representative },
+                { label: 'Phone Number', value: organization?.phone_number },
+                { label: 'Email', value: organization?.email }
+              ].map((field, index) => (
+                <Grid item xs={12} sm={6} md={3} key={index}>
+                  <Typography variant="caption" color="textSecondary" display="block">
+                    {field.label}
+                  </Typography>
+                  <Typography variant="body1" fontWeight="500">
+                    {field.value || 'N/A'}
+                  </Typography>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
 
-            {/* Basic Information Section */}
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="h6" sx={{ color: '#15e420', mb: 2, pb: 1, borderBottom: '1px solid #eee' }}>
-                Basic Information
-              </Typography>
-              <Grid container spacing={3}>
-                {[
-                  { label: 'Company Name', value: organization?.company_name },
-                  { label: 'Office Address', value: organization?.office_address },
-                  { label: 'Nature of Business', value: organization?.business_nature },
-                  { label: 'CAC Number', value: organization?.cac_number },
-                  { label: 'Contact Person', value: organization?.contact_person },
-                  { label: 'Representative', value: organization?.representative },
-                  { label: 'Phone Number', value: organization?.phone_number },
-                  { label: 'Email', value: organization?.email }
-                ].map((field, index) => (
-                  <Grid item xs={12} sm={6} md={3} key={index}>
-                    <Typography variant="caption" color="textSecondary" display="block">
-                      {field.label}
-                    </Typography>
-                    <Typography variant="body1" fontWeight="500">
-                      {field.value || 'N/A'}
-                    </Typography>
-                  </Grid>
-                ))}
-              </Grid>
-            </Box>
-
-            {/* Documents Section */}
+          {/* Documents Section */}
+          <Box>
+            <Typography variant="h6" sx={{ color: '#15e420', mb: 2, pb: 1, borderBottom: '1px solid #eee' }}>
+              Submitted Documents
+            </Typography>
             <Box>
-              <Typography variant="h6" sx={{ color: '#15e420', mb: 2, pb: 1, borderBottom: '1px solid #eee' }}>
-                Submitted Documents
-              </Typography>
-              <Box>
-                {documents.map((doc) => {
-                  const docPath = organization?.[doc.key];
-                  const status = getDocumentStatus(docPath);
-                  
-                  return (
-                    <DocumentItem key={doc.key} elevation={1}>
-                      <Box sx={{ mr: 2 }}>
-                        {getDocumentIcon(doc.icon)}
-                      </Box>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="subtitle2">{doc.name}</Typography>
-                        {docPath ? (
-                          <StatusChip status={status}>
-                            {getStatusIcon(status)}
-                            {status}
-                          </StatusChip>
-                        ) : (
-                          <StatusChip status="Not Uploaded">
-                            <ErrorIcon style={{ fontSize: 16, marginRight: 4 }} />
-                            Not Uploaded
-                          </StatusChip>
-                        )}
-                      </Box>
-                      {docPath && (
-                        <Box>
-                          <IconButton 
-                            onClick={() => handleViewDocument(doc.name, docPath)}
-                            size="small"
-                            sx={{ mr: 1 }}
-                          >
-                            <VisibilityIcon />
-                          </IconButton>
-                          <IconButton 
-                            onClick={() => handleDownloadDocument(docPath, `${doc.name}.pdf`)}
-                            size="small"
-                          >
-                            <DownloadIcon />
-                          </IconButton>
-                        </Box>
+              {documents.map((doc) => {
+                const docPath = organization?.[doc.key];
+                const status = getDocumentStatus(docPath);
+                
+                return (
+                  <DocumentItem key={doc.key} elevation={1}>
+                    <Box sx={{ mr: 2 }}>
+                      {getDocumentIcon(doc.icon)}
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="subtitle2">{doc.name}</Typography>
+                      {docPath ? (
+                        <StatusChip status={status}>
+                          {getStatusIcon(status)}
+                          {status}
+                        </StatusChip>
+                      ) : (
+                        <StatusChip status="Not Uploaded">
+                          <ErrorIcon style={{ fontSize: 16, marginRight: 4 }} />
+                          Not Uploaded
+                        </StatusChip>
                       )}
-                    </DocumentItem>
-                  );
-                })}
-              </Box>
+                    </Box>
+                    {docPath && (
+                      <Box>
+                        <IconButton 
+                          onClick={() => handleViewDocument(doc.name, docPath)}
+                          size="small"
+                          sx={{ mr: 1 }}
+                        >
+                          <VisibilityIcon />
+                        </IconButton>
+                        <IconButton 
+                          onClick={() => handleDownloadDocument(docPath, `${doc.name}.pdf`)}
+                          size="small"
+                        >
+                          <DownloadIcon />
+                        </IconButton>
+                      </Box>
+                    )}
+                  </DocumentItem>
+                );
+              })}
             </Box>
-          </StyledPaper>
-        </Box>
-      </Box>
+          </Box>
+        </StyledPaper>
+      </Layout>
 
       {/* Document Modal */}
       <Dialog

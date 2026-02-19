@@ -27,9 +27,7 @@ import {
   Palette as PaletteIcon,
   Language as LanguageIcon,
   Save as SaveIcon,
-  Lock as LockIcon,
-  Email as EmailIcon,
-  Phone as PhoneIcon
+  Email as EmailIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -179,10 +177,11 @@ const Settings = () => {
     }
   };
 
+  // Consistent loading state
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress sx={{ color: '#15e420' }} />
+        <CircularProgress style={{ color: '#15e420' }} />
       </Box>
     );
   }

@@ -13,13 +13,11 @@ import {
   CardActions,
   Button,
   IconButton,
-  Chip,
   LinearProgress,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Alert,
   Snackbar,
   CircularProgress
@@ -28,14 +26,11 @@ import {
   Description as DescriptionIcon,
   PictureAsPdf as PdfIcon,
   Image as ImageIcon,
-  Upload as UploadIcon,
+  CloudUpload as CloudUploadIcon,
   Download as DownloadIcon,
   Delete as DeleteIcon,
   Visibility as VisibilityIcon,
-  Close as CloseIcon,
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  CloudUpload as CloudUploadIcon
+  Close as CloseIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -298,10 +293,11 @@ const Documents = () => {
     setModalOpen(true);
   };
 
+  // Consistent loading state
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress sx={{ color: '#15e420' }} />
+        <CircularProgress style={{ color: '#15e420' }} />
       </Box>
     );
   }

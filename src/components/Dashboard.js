@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { Box, CircularProgress } from '@mui/material';
+import Layout from './Layout';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -14,7 +16,7 @@ const Dashboard = () => {
   const [editFormData, setEditFormData] = useState({});
   const [alert, setAlert] = useState(null);
   const [countdown, setCountdown] = useState('');
-  const [registrationStatus, setRegistrationStatus] = useState('none'); // none, pending, approved, rejected
+  const [registrationStatus, setRegistrationStatus] = useState('none');
 
   useEffect(() => {
     checkUser();
@@ -69,7 +71,6 @@ const Dashboard = () => {
     try {
       if (!user) return;
 
-      // Fetch organization data
       const { data: orgData, error: orgError } = await supabase
         .from('organizations')
         .select('*')
@@ -85,34 +86,30 @@ const Dashboard = () => {
         setEditFormData(orgData);
         setRegistrationStatus(orgData.status?.toLowerCase() || 'pending');
         
-        // Fetch payment data (you'll need to create a payments table)
         const { data: paymentData, error: paymentError } = await supabase
           .from('payments')
           .select('*')
           .eq('organization_id', orgData.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .order('created_at', { ascending: false });
 
-        if (paymentData) {
+        if (paymentError) {
+          console.error('Error fetching payment:', paymentError);
+        }
+
+        if (paymentData && paymentData.length > 0) {
+          const latestPayment = paymentData[0];
           setPayment({
-            status: paymentData.status,
-            day: new Date(paymentData.created_at).getDate(),
-            month: new Date(paymentData.created_at).getMonth() + 1,
-            year: new Date(paymentData.created_at).getFullYear(),
-            amount: paymentData.amount,
-            method: paymentData.payment_method
+            id: latestPayment.id,
+            status: latestPayment.status,
+            day: new Date(latestPayment.created_at).getDate(),
+            month: new Date(latestPayment.created_at).getMonth() + 1,
+            year: new Date(latestPayment.created_at).getFullYear(),
+            amount: latestPayment.amount,
+            method: latestPayment.payment_method,
+            receipt_path: latestPayment.receipt_path
           });
         } else {
-          // No payment yet
-          setPayment({
-            status: 'pending',
-            day: new Date().getDate(),
-            month: new Date().getMonth() + 1,
-            year: new Date().getFullYear(),
-            amount: '25000.00',
-            method: 'Not Paid'
-          });
+          setPayment(null);
         }
       } else {
         setRegistrationStatus('none');
@@ -121,15 +118,6 @@ const Dashboard = () => {
       console.error('Error:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      navigate('/login');
-    } catch (error) {
-      console.error('Error logging out:', error);
     }
   };
 
@@ -490,12 +478,14 @@ const Dashboard = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading...</div>;
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress style={{ color: '#15e420' }} />
+      </Box>
+    );
   }
 
-  // Different UI based on registration status
   const renderContent = () => {
-    // Case 1: No registration found
     if (registrationStatus === 'none') {
       return (
         <section className="dashboard-content">
@@ -514,7 +504,6 @@ const Dashboard = () => {
       );
     }
 
-    // Case 2: Registration pending approval
     if (registrationStatus === 'pending') {
       return (
         <section className="dashboard-content">
@@ -547,45 +536,6 @@ const Dashboard = () => {
       );
     }
 
-    // Case 3: Registration approved, ready for payment
-    if (registrationStatus === 'approved' || registrationStatus === 'accepted') {
-      // Check if payment exists
-      const hasPayment = payment && payment.status !== 'pending';
-      
-      if (!hasPayment) {
-        return (
-          <section className="dashboard-content">
-            <div className="notification success">
-              <h3>Registration Approved!</h3>
-              <p>Your organization has been approved. Please proceed to make payment to complete your membership.</p>
-            </div>
-
-            <div className="payment-card">
-              <h3>Membership Payment</h3>
-              <div className="payment-details">
-                <div className="payment-item">
-                  <span>Membership Fee:</span>
-                  <span>₦25,000.00</span>
-                </div>
-                <div className="payment-item total">
-                  <span>Total:</span>
-                  <span>₦25,000.00</span>
-                </div>
-              </div>
-              <button 
-                onClick={handleProceedToPayment} 
-                className="btn next-step"
-                style={{ width: '100%', marginTop: '20px' }}
-              >
-                Proceed to Payment
-              </button>
-            </div>
-          </section>
-        );
-      }
-    }
-
-    // Case 4: Payment made but pending verification
     if (payment?.status === 'pending') {
       return (
         <section className="dashboard-content">
@@ -621,7 +571,6 @@ const Dashboard = () => {
       );
     }
 
-    // Case 5: Payment rejected
     if (payment?.status === 'rejected') {
       return (
         <section className="dashboard-content">
@@ -637,7 +586,6 @@ const Dashboard = () => {
       );
     }
 
-    // Case 6: Full member - payment approved
     if (payment?.status === 'accepted' || payment?.status === 'approved') {
       return (
         <section className="dashboard-content">
@@ -685,7 +633,6 @@ const Dashboard = () => {
             <h2 className="section-title">Profile Information</h2>
             <div className="profile-grid">
               {!editing ? (
-                // View Mode
                 <>
                   <div className="profile-field">
                     <div className="field-label">Company Name</div>
@@ -729,7 +676,6 @@ const Dashboard = () => {
                   </div>
                 </>
               ) : (
-                // Edit Mode
                 <>
                   <div className="profile-field">
                     <div className="field-label">Company Name</div>
@@ -820,7 +766,6 @@ const Dashboard = () => {
       );
     }
 
-    // Default case
     return (
       <section className="dashboard-content">
         <p>Loading your information...</p>
@@ -838,19 +783,10 @@ const Dashboard = () => {
           <span>{alert.message}</span>
         </div>
       )}
-      <main className="dashboard-container">
-        <aside className="sidebar">
-          <ul>
-            <li className="active"><a href="/dashboard">Dashboard</a></li>
-            <li><a href="/profile">Profile</a></li>
-            <li><a href="/organization">Organization Profile</a></li>
-            <li><a href="/notifications">Notifications</a></li>
-          </ul>
-        </aside>
-
+      
+      <Layout>
         {renderContent()}
 
-        {/* Footer info sections - only show for active members */}
         {(payment?.status === 'accepted' || payment?.status === 'approved') && (
           <>
             <div className="profile-info">
@@ -864,8 +800,7 @@ const Dashboard = () => {
             </div>
           </>
         )}
-      </main>
-
+      </Layout>
     </>
   );
 };

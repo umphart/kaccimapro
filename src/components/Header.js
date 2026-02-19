@@ -1,22 +1,28 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import './Header.css';
 
 const Header = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(null);
 
-  useEffect(() => {
-    checkUser();
-    
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-    });
+  // Check if this is an auth page - this is a normal variable, not a hook
+  const isAuthPage = ['/login', '/register', '/forgot-password', '/reset-password'].includes(location.pathname);
 
-    return () => subscription.unsubscribe();
-  }, []);
+  useEffect(() => {
+    // Only set up auth if not on auth pages
+    if (!isAuthPage) {
+      checkUser();
+      
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user || null);
+      });
+
+      return () => subscription.unsubscribe();
+    }
+  }, [isAuthPage]); // Add isAuthPage as dependency
 
   const checkUser = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -27,6 +33,11 @@ const Header = () => {
     await supabase.auth.signOut();
     navigate('/login');
   };
+
+  // Don't render header on auth pages
+  if (isAuthPage) {
+    return null;
+  }
 
   return (
     <header>
