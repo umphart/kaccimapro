@@ -15,6 +15,14 @@ import Notifications from './components/Notifications';
 import Documents from './components/Documents';
 import Settings from './components/Settings';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminAuth from './components/admin/AdminAuth';
+import AdminDashboard from './components/admin/AdminDashboard';
+import AdminOrganizations from './components/admin/AdminOrganizations';
+import AdminPayments from './components/admin/AdminPayments';
+import AdminDocuments from './components/admin/AdminDocuments';
+import AdminFinalApprovals from './components/admin/AdminFinalApprovals';
+import AdminRoute from './components/admin/AdminRoute';
+import AdminOrganizationDetail from './components/admin/AdminOrganizationDetail';
 import { Box } from '@mui/material';
 import './App.css';
 
@@ -22,14 +30,15 @@ import './App.css';
 const AppLayout = ({ children }) => {
   const location = useLocation();
   const isAuthPage = ['/login', '/register', '/forgot-password', '/reset-password'].includes(location.pathname);
+  const isAdminPage = location.pathname.startsWith('/admin');
 
   return (
     <div className="App">
-      {!isAuthPage && <Header />}
+      {!isAuthPage && !isAdminPage && <Header />}
       <Box sx={{ minHeight: 'calc(100vh - 64px)' }}>
         {children}
       </Box>
-      {!isAuthPage && <Footer />}
+      {!isAuthPage && !isAdminPage && <Footer />}
     </div>
   );
 };
@@ -46,7 +55,50 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           
-          {/* Protected Routes */}
+          {/* Admin Routes */}
+          <Route path="/admin/login" element={<AdminAuth />} />
+          <Route path="/admin/dashboard" element={
+            <AdminRoute>
+              <AdminDashboard />
+            </AdminRoute>
+          } />
+          <Route path="/admin/organizations" element={
+            <AdminRoute>
+              <AdminOrganizations />
+            </AdminRoute>
+          } />
+          <Route path="/admin/organizations/pending" element={
+            <AdminRoute>
+              <AdminOrganizations filter="pending" />
+            </AdminRoute>
+          } />
+          <Route path="/admin/organizations/approved" element={
+            <AdminRoute>
+              <AdminOrganizations filter="approved" />
+            </AdminRoute>
+          } />
+          <Route path="/admin/organizations/:id" element={
+            <AdminRoute>
+              <AdminOrganizationDetail />
+            </AdminRoute>
+          } />
+          <Route path="/admin/payments" element={
+            <AdminRoute>
+              <AdminPayments />
+            </AdminRoute>
+          } />
+          <Route path="/admin/documents" element={
+            <AdminRoute>
+              <AdminDocuments />
+            </AdminRoute>
+          } />
+          <Route path="/admin/final-approvals" element={
+            <AdminRoute requiredType="approver">
+              <AdminFinalApprovals />
+            </AdminRoute>
+          } />
+          
+          {/* Protected User Routes */}
           <Route path="/dashboard" element={
             <ProtectedRoute>
               <Dashboard />

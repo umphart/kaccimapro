@@ -31,12 +31,13 @@ import { styled } from '@mui/material/styles';
 import Layout from './Layout';
 import './OrganizationProfile.css';
 
-// Styled components
+// Styled components with Google Fonts
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(3),
   marginBottom: theme.spacing(3),
   borderRadius: '10px',
-  boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+  boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+  fontFamily: '"Inter", sans-serif'
 }));
 
 const DocumentItem = styled(Paper)(({ theme }) => ({
@@ -46,6 +47,7 @@ const DocumentItem = styled(Paper)(({ theme }) => ({
   marginBottom: theme.spacing(1),
   borderRadius: '8px',
   transition: 'all 0.3s',
+  fontFamily: '"Inter", sans-serif',
   '&:hover': {
     boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
     transform: 'translateY(-2px)'
@@ -59,10 +61,45 @@ const StatusChip = styled('span')(({ status }) => ({
   display: 'inline-flex',
   alignItems: 'center',
   gap: '4px',
+  fontFamily: '"Inter", sans-serif',
+  fontWeight: 500,
   backgroundColor: status === 'Approved' ? '#d4edda' : 
                   status === 'Pending Review' ? '#fff3cd' : '#f8d7fa',
   color: status === 'Approved' ? '#155724' : 
          status === 'Pending Review' ? '#856404' : '#721c24'
+}));
+
+const SectionTitle = styled(Typography)(({ theme }) => ({
+  color: '#15e420',
+  marginBottom: theme.spacing(2),
+  paddingBottom: theme.spacing(1),
+  borderBottom: '1px solid #eee',
+  fontFamily: '"Poppins", sans-serif',
+  fontWeight: 600,
+  fontSize: '1.25rem'
+}));
+
+const FieldLabel = styled(Typography)(({ theme }) => ({
+  color: 'textSecondary',
+  display: 'block',
+  fontFamily: '"Inter", sans-serif',
+  fontSize: '0.75rem',
+  fontWeight: 500,
+  textTransform: 'uppercase',
+  letterSpacing: '0.5px'
+}));
+
+const FieldValue = styled(Typography)(({ theme }) => ({
+  fontWeight: 500,
+  fontFamily: '"Inter", sans-serif',
+  fontSize: '0.9rem',
+  color: '#333'
+}));
+
+const DocumentName = styled(Typography)(({ theme }) => ({
+  fontFamily: '"Inter", sans-serif',
+  fontWeight: 600,
+  fontSize: '0.9rem'
 }));
 
 const OrganizationProfile = () => {
@@ -246,7 +283,14 @@ const OrganizationProfile = () => {
       <Layout>
         <StyledPaper>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <Typography variant="h5" sx={{ color: '#15e420', fontWeight: 'bold' }}>
+            <Typography 
+              variant="h5" 
+              sx={{ 
+                color: '#15e420', 
+                fontWeight: 'bold',
+                fontFamily: '"Poppins", sans-serif'
+              }}
+            >
               Organization Profile
             </Typography>
             <Button
@@ -255,7 +299,10 @@ const OrganizationProfile = () => {
               onClick={() => navigate('/organization/edit')}
               sx={{
                 bgcolor: '#15e420',
-                '&:hover': { bgcolor: '#12c21e' }
+                '&:hover': { bgcolor: '#12c21e' },
+                fontFamily: '"Inter", sans-serif',
+                textTransform: 'none',
+                fontWeight: 500
               }}
             >
               Edit Profile
@@ -264,9 +311,9 @@ const OrganizationProfile = () => {
 
           {/* Basic Information Section */}
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h6" sx={{ color: '#15e420', mb: 2, pb: 1, borderBottom: '1px solid #eee' }}>
+            <SectionTitle variant="h6">
               Basic Information
-            </Typography>
+            </SectionTitle>
             <Grid container spacing={3}>
               {[
                 { label: 'Company Name', value: organization?.company_name },
@@ -279,12 +326,12 @@ const OrganizationProfile = () => {
                 { label: 'Email', value: organization?.email }
               ].map((field, index) => (
                 <Grid item xs={12} sm={6} md={3} key={index}>
-                  <Typography variant="caption" color="textSecondary" display="block">
+                  <FieldLabel variant="caption" color="textSecondary">
                     {field.label}
-                  </Typography>
-                  <Typography variant="body1" fontWeight="500">
+                  </FieldLabel>
+                  <FieldValue variant="body1">
                     {field.value || 'N/A'}
-                  </Typography>
+                  </FieldValue>
                 </Grid>
               ))}
             </Grid>
@@ -292,9 +339,9 @@ const OrganizationProfile = () => {
 
           {/* Documents Section */}
           <Box>
-            <Typography variant="h6" sx={{ color: '#15e420', mb: 2, pb: 1, borderBottom: '1px solid #eee' }}>
+            <SectionTitle variant="h6">
               Submitted Documents
-            </Typography>
+            </SectionTitle>
             <Box>
               {documents.map((doc) => {
                 const docPath = organization?.[doc.key];
@@ -306,7 +353,7 @@ const OrganizationProfile = () => {
                       {getDocumentIcon(doc.icon)}
                     </Box>
                     <Box sx={{ flex: 1 }}>
-                      <Typography variant="subtitle2">{doc.name}</Typography>
+                      <DocumentName variant="subtitle2">{doc.name}</DocumentName>
                       {docPath ? (
                         <StatusChip status={status}>
                           {getStatusIcon(status)}
@@ -324,15 +371,25 @@ const OrganizationProfile = () => {
                         <IconButton 
                           onClick={() => handleViewDocument(doc.name, docPath)}
                           size="small"
-                          sx={{ mr: 1 }}
+                          sx={{ 
+                            mr: 1,
+                            '&:hover': {
+                              backgroundColor: '#e8f5e9'
+                            }
+                          }}
                         >
-                          <VisibilityIcon />
+                          <VisibilityIcon sx={{ color: '#15e420' }} />
                         </IconButton>
                         <IconButton 
                           onClick={() => handleDownloadDocument(docPath, `${doc.name}.pdf`)}
                           size="small"
+                          sx={{
+                            '&:hover': {
+                              backgroundColor: '#e8f5e9'
+                            }
+                          }}
                         >
-                          <DownloadIcon />
+                          <DownloadIcon sx={{ color: '#15e420' }} />
                         </IconButton>
                       </Box>
                     )}
@@ -350,8 +407,21 @@ const OrganizationProfile = () => {
         onClose={() => setModalOpen(false)}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            fontFamily: '"Inter", sans-serif'
+          }
+        }}
       >
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          fontFamily: '"Poppins", sans-serif',
+          fontWeight: 600,
+          borderBottom: '1px solid #eee'
+        }}>
           {selectedDocument?.name}
           <IconButton onClick={() => setModalOpen(false)}>
             <CloseIcon />
@@ -380,7 +450,15 @@ const OrganizationProfile = () => {
                 style={{ border: 'none', position: 'relative', zIndex: 1 }}
               />
             ) : (
-              <Typography>Document preview not available</Typography>
+              <Typography 
+                sx={{ 
+                  fontFamily: '"Inter", sans-serif',
+                  textAlign: 'center',
+                  mt: 4
+                }}
+              >
+                Document preview not available
+              </Typography>
             )}
           </Box>
         </DialogContent>
