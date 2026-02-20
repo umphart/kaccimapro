@@ -32,7 +32,8 @@ import {
   Close as CloseIcon,
   AdminPanelSettings as AdminIcon,
   Assessment as AssessmentIcon,
-  Notifications as NotificationsIcon
+  Notifications as NotificationsIcon,
+  Business as BusinessIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { supabase } from '../../supabaseClient';
@@ -156,80 +157,103 @@ const AdminSidebar = ({ onLogout }) => {
   };
 
   const getMenuItems = () => {
-    const baseItems = [
+    const isApprover = adminData?.admin_type === 'approver';
+    
+    // Base items for all admins
+    const items = [
       { 
         path: '/admin/dashboard', 
         label: 'Dashboard', 
         icon: <DashboardIcon />,
-        badge: null
+        badge: null,
+        show: true
       },
       { 
         path: '/admin/organizations', 
         label: 'Organizations', 
         icon: <PeopleIcon />,
-        badge: pendingCounts.organizations
+        badge: pendingCounts.organizations,
+        show: true
       },
       { 
         path: '/admin/organizations/pending', 
         label: 'Pending Review', 
         icon: <HourglassIcon />,
-        badge: pendingCounts.organizations
+        badge: pendingCounts.organizations,
+        show: true
       },
       { 
         path: '/admin/organizations/approved', 
         label: 'Approved', 
         icon: <CheckCircleIcon />,
-        badge: null
-      },
-      { 
-        path: '/admin/payments', 
-        label: 'Payments', 
-        icon: <PaymentIcon />,
-        badge: pendingCounts.payments
-      },
-      { 
-        path: '/admin/documents', 
-        label: 'Documents', 
-        icon: <DescriptionIcon />,
-        badge: pendingCounts.documents
+        badge: null,
+        show: true
       }
     ];
 
-    // Add approver-specific items
-    if (adminData?.admin_type === 'approver') {
-      baseItems.push(
+    // Payments - only show to approvers
+    if (isApprover) {
+      items.push(
         { 
-          path: '/admin/final-approvals', 
-          label: 'Final Approvals', 
-          icon: <VerifiedIcon />,
-          badge: null
+          path: '/admin/payments', 
+          label: 'Payments', 
+          icon: <PaymentIcon />,
+          badge: pendingCounts.payments,
+          show: true
         }
       );
     }
 
-    // Add common items
-    baseItems.push(
+    // Documents - show to all admins
+    items.push(
+      { 
+        path: '/admin/documents', 
+        label: 'Documents', 
+        icon: <DescriptionIcon />,
+        badge: pendingCounts.documents,
+        show: true
+      }
+    );
+
+    // Add approver-specific items
+    if (isApprover) {
+      items.push(
+        { 
+          path: '/admin/final-approvals', 
+          label: 'Final Approvals', 
+          icon: <VerifiedIcon />,
+          badge: null,
+          show: true
+        }
+      );
+    }
+
+    // Add common items for all admins
+    items.push(
       { 
         path: '/admin/reports', 
         label: 'Reports', 
         icon: <AssessmentIcon />,
-        badge: null
+        badge: null,
+        show: true
       },
       { 
         path: '/admin/notifications', 
         label: 'Notifications', 
         icon: <NotificationsIcon />,
-        badge: null
+        badge: null,
+        show: true
       },
       { 
         path: '/admin/settings', 
         label: 'Settings', 
         icon: <SettingsIcon />,
-        badge: null
+        badge: null,
+        show: true
       }
     );
 
-    return baseItems;
+    return items.filter(item => item.show);
   };
 
   const handleDrawerToggle = () => {

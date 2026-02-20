@@ -403,7 +403,7 @@ const AdminDashboard = () => {
         <Box sx={{ display: 'flex', gap: 3 }}>
           <AdminSidebar />
           
-       <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '16px' }}>
+<Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '15px' }}>
   {/* Header with Refresh Button */}
   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
     <Box>
