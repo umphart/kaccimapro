@@ -418,11 +418,12 @@ nav ul li a:hover {
 }
 
 .dashboard-content {
-    flex: 1;
-    background-color: var(--white);
-    border-radius: var(--border-radius);
-    box-shadow: var(--box-shadow);
-    padding: 2rem;
+  flex: 1;
+  background: var(--white);
+  border-radius: 10px;
+  box-shadow: var(--box-shadow);
+  padding: 30px;
+  margin-top: 20px; /* Adds margin to the top */
 }
 
 .notification {

@@ -37,7 +37,7 @@ const StyledSidebar = styled(Paper)(({ theme }) => ({
   boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)',
   overflow: 'hidden',
   position: 'sticky',
-  top: 20,
+  top: 10,
   height: 'fit-content',
   fontFamily: '"Poppins", sans-serif',
   [theme.breakpoints.down('md')]: {

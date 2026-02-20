@@ -253,7 +253,7 @@ const OrganizationProfile = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px" >
         <CircularProgress style={{ color: '#15e420' }} />
       </Box>
     );

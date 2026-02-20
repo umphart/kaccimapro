@@ -134,11 +134,11 @@ nav ul li.active a {
 .main-content,
 .dashboard-content {
   flex: 1;
-  padding: 20px;
-  background-color: var(--white);
-  margin: 20px;
-  border-radius: var(--border-radius);
+  background: var(--white);
+  border-radius: 10px;
   box-shadow: var(--box-shadow);
+  padding: 30px;
+  margin-top: 20px; /* Adds margin to the top */
 }
 
 /* Profile Card Styles */
