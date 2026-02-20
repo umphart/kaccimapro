@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -12,7 +12,8 @@ import {
   IconButton,
   Drawer,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
+  Badge
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -24,7 +25,6 @@ import {
   Settings as SettingsIcon,
   Logout as LogoutIcon,
   Menu as MenuIcon,
-  ChevronLeft as ChevronLeftIcon,
   Close as CloseIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
@@ -103,7 +103,17 @@ const MenuButton = styled(IconButton)(({ theme }) => ({
   }
 }));
 
-const Sidebar = ({ onLogout }) => {
+const StyledBadge = styled(Badge)(({ theme }) => ({
+  '& .MuiBadge-badge': {
+    backgroundColor: '#f44336',
+    color: 'white',
+    fontSize: '10px',
+    minWidth: '16px',
+    height: '16px'
+  }
+}));
+
+const Sidebar = ({ onLogout, unreadCount = 0 }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
@@ -114,7 +124,15 @@ const Sidebar = ({ onLogout }) => {
     { path: '/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
     { path: '/profile', label: 'Profile', icon: <PersonIcon /> },
     { path: '/organization', label: 'Organization Profile', icon: <BusinessIcon /> },
-    { path: '/notifications', label: 'Notifications', icon: <NotificationsIcon /> },
+    { 
+      path: '/notifications', 
+      label: 'Notifications', 
+      icon: (
+        <StyledBadge badgeContent={unreadCount} color="error" invisible={unreadCount === 0}>
+          <NotificationsIcon />
+        </StyledBadge>
+      ) 
+    },
     { path: '/payment', label: 'Payment', icon: <PaymentIcon /> },
     { path: '/documents', label: 'Documents', icon: <DescriptionIcon /> },
     { path: '/settings', label: 'Settings', icon: <SettingsIcon /> }
@@ -228,7 +246,7 @@ const Sidebar = ({ onLogout }) => {
         open={mobileOpen}
         onClose={handleDrawerToggle}
         ModalProps={{
-          keepMounted: true // Better open performance on mobile
+          keepMounted: true
         }}
         sx={{
           display: { xs: 'block', md: 'none' },

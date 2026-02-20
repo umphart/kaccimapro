@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { Box, CircularProgress } from '@mui/material';
+import { Box, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Button,Typography } from '@mui/material';
 import Layout from './Layout';
 import './Dashboard.css';
 
@@ -17,9 +17,16 @@ const Dashboard = () => {
   const [alert, setAlert] = useState(null);
   const [countdown, setCountdown] = useState('');
   const [registrationStatus, setRegistrationStatus] = useState('none');
+  const [certificateDownloaded, setCertificateDownloaded] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
 
   useEffect(() => {
     checkUser();
+    // Check if certificate has been downloaded before
+    const certStatus = localStorage.getItem('certificateDownloaded');
+    if (certStatus) {
+      setCertificateDownloaded(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -161,6 +168,16 @@ const Dashboard = () => {
   };
 
   const generateCertificate = async () => {
+    // Check if certificate was already downloaded
+    if (certificateDownloaded) {
+      setConfirmDialogOpen(true);
+      return;
+    }
+
+    await performCertificateDownload();
+  };
+
+  const performCertificateDownload = async () => {
     try {
       const btn = document.getElementById('downloadCertificate');
       btn.textContent = 'Generating...';
@@ -330,6 +347,12 @@ const Dashboard = () => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
+      // Mark certificate as downloaded
+      setCertificateDownloaded(true);
+      localStorage.setItem('certificateDownloaded', 'true');
+      
+      showAlert('success', 'Certificate downloaded successfully');
+
     } catch (err) {
       console.error(err);
       showAlert('error', 'Failed to generate certificate');
@@ -342,148 +365,148 @@ const Dashboard = () => {
     }
   };
 
-const generateReceipt = async () => {
-  try {
-    const btn = document.getElementById('downloadReceipt');
-    btn.textContent = 'Generating...';
-    btn.disabled = true;
+  const handleConfirmDownload = () => {
+    setConfirmDialogOpen(false);
+    performCertificateDownload();
+  };
 
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([595, 280]);
-    const PW = page.getWidth(), PH = page.getHeight();
+  const generateReceipt = async () => {
+    try {
+      const btn = document.getElementById('downloadReceipt');
+      btn.textContent = 'Generating...';
+      btn.disabled = true;
 
-    const tryEmbed = async (url) => {
-      try {
-        const response = await fetch(url);
-        if (!response.ok) return null;
-        const bytes = await response.arrayBuffer();
-        try { return await pdfDoc.embedPng(bytes); }
-        catch { try { return await pdfDoc.embedJpg(bytes); } catch { return null; } }
-      } catch { return null; }
-    };
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([595, 280]);
+      const PW = page.getWidth(), PH = page.getHeight();
 
-    const logoImg = await tryEmbed('/static/logo.png');
-    
-    // Use a font that supports Unicode characters
-    const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const helvB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    
-    // For the Naira symbol, we'll use a workaround - write "N" instead of "₦"
-    // Or better, we can use a custom font that supports Unicode
-    // Since we can't embed custom fonts easily, we'll use "N" as a substitute
+      const tryEmbed = async (url) => {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) return null;
+          const bytes = await response.arrayBuffer();
+          try { return await pdfDoc.embedPng(bytes); }
+          catch { try { return await pdfDoc.embedJpg(bytes); } catch { return null; } }
+        } catch { return null; }
+      };
 
-    const drawCenter = (txt, y, size, font = helv, color = rgb(0, 0, 0)) => {
-      const w = font.widthOfTextAtSize(txt, size);
-      page.drawText(txt, { x: (PW - w) / 2, y, size, font, color });
-    };
+      const logoImg = await tryEmbed('/static/logo.png');
+      
+      const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const helvB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const drawLeft = (txt, x, y, size, font = helv, color = rgb(0, 0, 0)) => {
-      page.drawText(txt, { x, y, size, font, color });
-    };
+      const drawCenter = (txt, y, size, font = helv, color = rgb(0, 0, 0)) => {
+        const w = font.widthOfTextAtSize(txt, size);
+        page.drawText(txt, { x: (PW - w) / 2, y, size, font, color });
+      };
 
-    const drawRight = (txt, x, y, size, font = helv, color = rgb(0, 0, 0)) => {
-      const w = font.widthOfTextAtSize(txt, size);
-      page.drawText(txt, { x: x - w, y, size, font, color });
-    };
+      const drawLeft = (txt, x, y, size, font = helv, color = rgb(0, 0, 0)) => {
+        page.drawText(txt, { x, y, size, font, color });
+      };
 
-    // Helper function to format amount without Naira symbol
-    const formatAmount = (amount) => {
-      return `N${parseFloat(amount).toLocaleString()}.00`;
-    };
+      const drawRight = (txt, x, y, size, font = helv, color = rgb(0, 0, 0)) => {
+        const w = font.widthOfTextAtSize(txt, size);
+        page.drawText(txt, { x: x - w, y, size, font, color });
+      };
 
-    // Watermark
-    if (logoImg) {
-      const wmWidth = 300;
-      const wmHeight = (logoImg.height / logoImg.width) * wmWidth;
-      page.drawImage(logoImg, {
-        x: (PW - wmWidth) / 2,
-        y: (PH - wmHeight) / 2,
-        width: wmWidth,
-        height: wmHeight,
-        opacity: 0.2,
+      // Helper function to format amount without Naira symbol
+      const formatAmount = (amount) => {
+        return `N${parseFloat(amount).toLocaleString()}.00`;
+      };
+
+      // Watermark
+      if (logoImg) {
+        const wmWidth = 300;
+        const wmHeight = (logoImg.height / logoImg.width) * wmWidth;
+        page.drawImage(logoImg, {
+          x: (PW - wmWidth) / 2,
+          y: (PH - wmHeight) / 2,
+          width: wmWidth,
+          height: wmHeight,
+          opacity: 0.2,
+        });
+      }
+
+      // Top logo
+      let logoHeight = 0;
+      if (logoImg) {
+        const topWidth = 80;
+        logoHeight = (logoImg.height / logoImg.width) * topWidth;
+        page.drawImage(logoImg, {
+          x: (PW - topWidth) / 2,
+          y: PH - logoHeight - 10,
+          width: topWidth,
+          height: logoHeight,
+        });
+      }
+
+      drawCenter('PAYMENT RECEIPT', PH - logoHeight - 25, 14, helvB);
+
+      const today = new Date();
+      const dateStr = today.toLocaleDateString();
+      const receiptNumber = `REC-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+
+      drawLeft(`Date: ${dateStr}`, 50, PH - logoHeight - 42, 9);
+      drawRight(`Receipt No: ${receiptNumber}`, PW - 50, PH - logoHeight - 42, 9);
+
+      page.drawLine({
+        start: { x: 50, y: PH - logoHeight - 52 },
+        end: { x: PW - 50, y: PH - logoHeight - 52 },
+        thickness: 1
       });
+
+      let y = PH - logoHeight - 65;
+
+      drawLeft('Received from:', 50, y, 9, helvB);
+      drawLeft(organization?.company_name || 'Company Name', 150, y, 9); y -= 16;
+
+      drawLeft('The sum of:', 50, y, 9, helvB);
+      drawLeft(formatAmount(payment?.amount || '25000'), 150, y, 9); y -= 16;
+
+      drawLeft('Payment method:', 50, y, 9, helvB);
+      drawLeft(payment?.method || 'Bank Transfer', 150, y, 9); y -= 16;
+
+      drawLeft('For:', 50, y, 9, helvB);
+      drawLeft('Membership Fee', 150, y, 9); y -= 18;
+
+      page.drawLine({ start: { x: 50, y }, end: { x: PW - 50, y }, thickness: 1 });
+      y -= 12;
+
+      drawLeft('Amount in words:', 50, y, 9, helvB);
+      drawLeft('twenty five thousand naira only', 150, y, 9);
+
+      const sigY = 25;
+      drawLeft('Received by:', 50, sigY, 9);
+      page.drawLine({ start: { x: 50, y: sigY - 5 }, end: { x: 200, y: sigY - 5 }, thickness: 1 });
+      drawLeft('(Signature)', 50, sigY - 15, 8);
+
+      drawRight('Date:', PW - 200, sigY, 9);
+      page.drawLine({ start: { x: PW - 200, y: sigY - 5 }, end: { x: PW - 50, y: sigY - 5 }, thickness: 1 });
+      drawRight('(Date)', PW - 50, sigY - 15, 8);
+
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `KACCIMA_Receipt_${receiptNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+    } catch (err) {
+      console.error('Error generating receipt:', err);
+      showAlert('error', 'Failed to generate receipt: ' + err.message);
+    } finally {
+      const btn = document.getElementById('downloadReceipt');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Download Receipt';
+      }
     }
+  };
 
-    // Top logo
-    let logoHeight = 0;
-    if (logoImg) {
-      const topWidth = 80;
-      logoHeight = (logoImg.height / logoImg.width) * topWidth;
-      page.drawImage(logoImg, {
-        x: (PW - topWidth) / 2,
-        y: PH - logoHeight - 10,
-        width: topWidth,
-        height: logoHeight,
-      });
-    }
-
-    drawCenter('PAYMENT RECEIPT', PH - logoHeight - 25, 14, helvB);
-
-    const today = new Date();
-    const dateStr = today.toLocaleDateString();
-    const receiptNumber = `REC-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-
-    drawLeft(`Date: ${dateStr}`, 50, PH - logoHeight - 42, 9);
-    drawRight(`Receipt No: ${receiptNumber}`, PW - 50, PH - logoHeight - 42, 9);
-
-    page.drawLine({
-      start: { x: 50, y: PH - logoHeight - 52 },
-      end: { x: PW - 50, y: PH - logoHeight - 52 },
-      thickness: 1
-    });
-
-    let y = PH - logoHeight - 65;
-
-    drawLeft('Received from:', 50, y, 9, helvB);
-    drawLeft(organization?.company_name || 'Company Name', 150, y, 9); y -= 16;
-
-    drawLeft('The sum of:', 50, y, 9, helvB);
-    // Use the formatted amount without the ₦ symbol
-    drawLeft(formatAmount(payment?.amount || '25000'), 150, y, 9); y -= 16;
-
-    drawLeft('Payment method:', 50, y, 9, helvB);
-    drawLeft(payment?.method || 'Bank Transfer', 150, y, 9); y -= 16;
-
-    drawLeft('For:', 50, y, 9, helvB);
-    drawLeft('Membership Fee', 150, y, 9); y -= 18;
-
-    page.drawLine({ start: { x: 50, y }, end: { x: PW - 50, y }, thickness: 1 });
-    y -= 12;
-
-    drawLeft('Amount in words:', 50, y, 9, helvB);
-    drawLeft('twenty five thousand naira only', 150, y, 9);
-
-    const sigY = 25;
-    drawLeft('Received by:', 50, sigY, 9);
-    page.drawLine({ start: { x: 50, y: sigY - 5 }, end: { x: 200, y: sigY - 5 }, thickness: 1 });
-    drawLeft('(Signature)', 50, sigY - 15, 8);
-
-    drawRight('Date:', PW - 200, sigY, 9);
-    page.drawLine({ start: { x: PW - 200, y: sigY - 5 }, end: { x: PW - 50, y: sigY - 5 }, thickness: 1 });
-    drawRight('(Date)', PW - 50, sigY - 15, 8);
-
-    const pdfBytes = await pdfDoc.save();
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `KACCIMA_Receipt_${receiptNumber}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-  } catch (err) {
-    console.error('Error generating receipt:', err);
-    showAlert('error', 'Failed to generate receipt: ' + err.message);
-  } finally {
-    const btn = document.getElementById('downloadReceipt');
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'Download Receipt';
-    }
-  }
-};
   const handleProceedToPayment = () => {
     navigate('/payment', { state: { organization } });
   };
@@ -624,10 +647,11 @@ const generateReceipt = async () => {
             <div className="button-group">
               <button 
                 onClick={generateCertificate} 
-                className="btn outline" 
+                className={`btn outline ${certificateDownloaded ? 'downloaded' : ''}`}
                 id="downloadCertificate"
+                style={certificateDownloaded ? { opacity: 0.7, cursor: 'not-allowed' } : {}}
               >
-                Download Certificate
+                {certificateDownloaded ? 'Certificate Downloaded' : 'Download Certificate'}
               </button>
 
               <button 
@@ -812,6 +836,29 @@ const generateReceipt = async () => {
           </>
         )}
       </Layout>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={confirmDialogOpen} onClose={() => setConfirmDialogOpen(false)}>
+        <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif' }}>
+          Download Certificate Again?
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            You have already downloaded your membership certificate. 
+            Are you sure you want to download it again? This action will be recorded.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleConfirmDownload} 
+            variant="contained"
+            sx={{ bgcolor: '#15e420', '&:hover': { bgcolor: '#12c21e' } }}
+          >
+            Download Again
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

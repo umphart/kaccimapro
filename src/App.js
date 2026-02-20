@@ -24,7 +24,9 @@ import AdminRoute from './components/admin/AdminRoute';
 import AdminOrganizationDetail from './components/admin/AdminOrganizationDetail';
 import AdminPaymentDetail from './components/admin/AdminPaymentDetail';
 import AdminOrganizationDocuments from './components/admin/AdminOrganizationDocuments';
-
+import AdminReports from './components/admin/AdminReports';
+import AdminNotifications from './components/admin/AdminNotifications';
+import AdminSettings from './components/admin/AdminSettings';
 import { Box } from '@mui/material';
 import './App.css';
 
@@ -97,6 +99,24 @@ function App() {
 <Route path="/admin/organizations/:id/documents" element={
   <AdminRoute>
     <AdminOrganizationDocuments />
+  </AdminRoute>
+
+} />
+<Route path="/admin/reports" element={
+  <AdminRoute>
+    <AdminReports />
+  </AdminRoute>
+} />
+
+<Route path="/admin/notifications" element={
+  <AdminRoute>
+    <AdminNotifications />
+  </AdminRoute>
+} />
+
+<Route path="/admin/settings" element={
+  <AdminRoute>
+    <AdminSettings />
   </AdminRoute>
 } />
           <Route path="/admin/documents" element={

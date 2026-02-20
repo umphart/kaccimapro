@@ -37,7 +37,8 @@ import {
   Business as BusinessIcon,
   Verified as VerifiedIcon,
   Description as DescriptionIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  Warning as WarningIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -85,6 +86,12 @@ const getNotificationIcon = (type) => {
       return <VerifiedIcon sx={{ color: '#15e420' }} />;
     case 'document':
       return <DescriptionIcon sx={{ color: '#15e420' }} />;
+    case 'document_rejected':
+      return <WarningIcon sx={{ color: '#dc3545' }} />;
+    case 'document_approved':
+      return <CheckCircleIcon sx={{ color: '#28a745' }} />;
+    case 'renewal':
+      return <AccessTimeIcon sx={{ color: '#ffc107' }} />;
     default:
       return <InfoIcon sx={{ color: '#17a2b8' }} />;
   }
@@ -125,6 +132,51 @@ const Notifications = () => {
       fetchOrganizationData();
     }
   }, [user]);
+
+  // Set up real-time subscription for new notifications
+  useEffect(() => {
+    if (organization?.id) {
+      // Subscribe to new notifications
+      const subscription = supabase
+        .channel('organization_notifications_channel')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'organization_notifications',
+            filter: `organization_id=eq.${organization.id}`
+          },
+          (payload) => {
+            // New notification received from admin
+            const newNotif = {
+              id: payload.new.id,
+              type: payload.new.type === 'renewal' ? 'renewal' : 
+                    payload.new.type === 'payment' ? 'payment' : 
+                    payload.new.type === 'general' ? 'info' : payload.new.type,
+              title: payload.new.title,
+              message: payload.new.message,
+              timestamp: payload.new.created_at,
+              read: payload.new.read || false,
+              category: payload.new.category || 'general',
+              actionUrl: payload.new.action_url,
+              isFromAdmin: true
+            };
+            
+            setNotifications(prev => [newNotif, ...prev]);
+            setUnreadCount(prev => prev + 1);
+            
+            // Show a toast notification
+            showAlert('info', `New notification: ${payload.new.title}`);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, [organization?.id]);
 
   const showAlert = (type, message) => {
     setAlert({ open: true, type, message });
@@ -176,7 +228,39 @@ const Notifications = () => {
     try {
       const notificationsList = [];
 
-      // 1. Check organization status notification
+      // 1. Fetch notifications from database (admin notifications)
+      if (orgData?.id) {
+        const { data: dbNotifications, error } = await supabase
+          .from('organization_notifications')
+          .select('*')
+          .eq('organization_id', orgData.id)
+          .order('created_at', { ascending: false });
+
+        if (!error && dbNotifications) {
+          dbNotifications.forEach(notif => {
+            // Don't add if it's scheduled for the future
+            if (notif.scheduled_for && new Date(notif.scheduled_for) > new Date()) {
+              return;
+            }
+            
+            notificationsList.push({
+              id: notif.id,
+              type: notif.type === 'renewal' ? 'renewal' : 
+                     notif.type === 'payment' ? 'payment' : 
+                     notif.type === 'general' ? 'info' : notif.type,
+              title: notif.title,
+              message: notif.message,
+              timestamp: notif.created_at,
+              read: notif.read || false,
+              category: notif.category || 'general',
+              actionUrl: notif.action_url,
+              isFromAdmin: true
+            });
+          });
+        }
+      }
+
+      // 2. Check organization status notification
       if (orgData) {
         if (orgData.status === 'pending') {
           notificationsList.push({
@@ -188,7 +272,7 @@ const Notifications = () => {
             read: false,
             category: 'registration',
             actionUrl: '/organization',
-            icon: <BusinessIcon />
+            isFromAdmin: false
           });
         } else if (orgData.status === 'approved') {
           notificationsList.push({
@@ -200,7 +284,7 @@ const Notifications = () => {
             read: false,
             category: 'registration',
             actionUrl: '/payment',
-            icon: <VerifiedIcon />
+            isFromAdmin: false
           });
         } else if (orgData.status === 'rejected') {
           notificationsList.push({
@@ -212,12 +296,12 @@ const Notifications = () => {
             read: false,
             category: 'registration',
             actionUrl: '/organization',
-            icon: <ErrorIcon />
+            isFromAdmin: false
           });
         }
       }
 
-      // 2. Fetch payment notifications
+      // 3. Fetch payment notifications
       if (orgData?.id) {
         const { data: payments, error: paymentsError } = await supabase
           .from('payments')
@@ -237,7 +321,7 @@ const Notifications = () => {
                 read: false,
                 category: 'payment',
                 actionUrl: '/payment',
-                icon: <PaymentIcon />
+                isFromAdmin: false
               });
             } else if (payment.status === 'approved') {
               notificationsList.push({
@@ -249,7 +333,7 @@ const Notifications = () => {
                 read: false,
                 category: 'payment',
                 actionUrl: '/dashboard',
-                icon: <CheckCircleIcon />
+                isFromAdmin: false
               });
             } else if (payment.status === 'rejected') {
               notificationsList.push({
@@ -261,28 +345,28 @@ const Notifications = () => {
                 read: false,
                 category: 'payment',
                 actionUrl: '/payment',
-                icon: <ErrorIcon />
+                isFromAdmin: false
               });
             }
 
             // Add renewal reminder if payment was approved and it's near renewal date
             if (payment.status === 'approved' && payment.payment_type === 'first') {
               const paymentDate = new Date(payment.created_at);
-              const renewalDate = new Date(paymentDate.getFullYear() + 1, 0, 1); // January 1st next year
+              const renewalDate = new Date(paymentDate.getFullYear() + 1, 0, 1);
               const now = new Date();
               const daysUntilRenewal = Math.floor((renewalDate - now) / (1000 * 60 * 60 * 24));
 
               if (daysUntilRenewal <= 30 && daysUntilRenewal > 0) {
                 notificationsList.push({
                   id: `renewal-reminder-${payment.id}`,
-                  type: 'pending',
+                  type: 'renewal',
                   title: 'Renewal Reminder',
                   message: `Your membership renewal is due in ${daysUntilRenewal} days (January 1, ${renewalDate.getFullYear()}).`,
                   timestamp: new Date().toISOString(),
                   read: false,
                   category: 'renewal',
                   actionUrl: '/payment',
-                  icon: <AccessTimeIcon />
+                  isFromAdmin: false
                 });
               }
             }
@@ -290,7 +374,7 @@ const Notifications = () => {
         }
       }
 
-      // 3. Document upload notifications
+      // 4. Document notifications (simplified for now)
       if (orgData) {
         const documentFields = [
           { key: 'cover_letter_path', name: 'Cover Letter' },
@@ -303,74 +387,60 @@ const Notifications = () => {
           { key: 'id_document_path', name: 'ID Document' }
         ];
 
-        documentFields.forEach((field, index) => {
+        documentFields.forEach((field) => {
           if (orgData[field.key]) {
-            // Check if document was recently uploaded (within last 7 days)
-            const uploadDate = new Date(orgData.updated_at); // You might want to track actual upload dates
-            const now = new Date();
-            const daysSinceUpload = Math.floor((now - uploadDate) / (1000 * 60 * 60 * 24));
-
-            if (daysSinceUpload <= 7) {
-              notificationsList.push({
-                id: `doc-upload-${field.key}`,
-                type: 'info',
-                title: 'Document Uploaded',
-                message: `Your ${field.name} has been uploaded successfully.`,
-                timestamp: orgData.updated_at,
-                read: false,
-                category: 'document',
-                actionUrl: '/documents',
-                icon: <DescriptionIcon />
-              });
-            }
+            notificationsList.push({
+              id: `doc-upload-${field.key}`,
+              type: 'info',
+              title: 'Document Uploaded',
+              message: `Your ${field.name} has been uploaded successfully and is pending review.`,
+              timestamp: orgData.updated_at,
+              read: false,
+              category: 'document',
+              actionUrl: '/documents',
+              isFromAdmin: false
+            });
           }
         });
-      }
 
-      // 4. Check for missing documents
-      if (orgData && orgData.status === 'pending') {
-        const documentFields = [
-          { key: 'cover_letter_path', name: 'Cover Letter', required: true },
-          { key: 'memorandum_path', name: 'Memorandum', required: true },
-          { key: 'registration_cert_path', name: 'Registration Certificate', required: true },
-          { key: 'incorporation_cert_path', name: 'Incorporation Certificate', required: true },
-          { key: 'premises_cert_path', name: 'Premises Certificate', required: true },
-          { key: 'company_logo_path', name: 'Company Logo', required: true },
-          { key: 'form_c07_path', name: 'Form C07', required: true },
-          { key: 'id_document_path', name: 'ID Document', required: true }
-        ];
-
-        const missingDocs = documentFields.filter(field => !orgData[field.key]);
-        
-        if (missingDocs.length > 0) {
-          notificationsList.push({
-            id: 'missing-docs',
-            type: 'error',
-            title: 'Missing Documents',
-            message: `You have ${missingDocs.length} required document(s) missing. Please upload them to complete your registration.`,
-            timestamp: new Date().toISOString(),
-            read: false,
-            category: 'document',
-            actionUrl: '/documents',
-            icon: <ErrorIcon />
-          });
+        // Check for missing documents
+        if (orgData.status === 'pending') {
+          const missingDocs = documentFields.filter(field => !orgData[field.key]);
+          
+          if (missingDocs.length > 0) {
+            notificationsList.push({
+              id: 'missing-docs',
+              type: 'error',
+              title: 'Missing Documents',
+              message: `You have ${missingDocs.length} required document(s) missing. Please upload them to complete your registration.`,
+              timestamp: new Date().toISOString(),
+              read: false,
+              category: 'document',
+              actionUrl: '/documents',
+              isFromAdmin: false
+            });
+          }
         }
       }
 
       // Sort by timestamp (newest first)
       notificationsList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-      // Load read status from localStorage
-      const readStatus = JSON.parse(localStorage.getItem('notificationReadStatus') || '{}');
-      const updatedNotifications = notificationsList.map(notif => ({
-        ...notif,
-        read: readStatus[notif.id] || false
-      }));
+      // Remove duplicates (keep only the most recent for each unique ID)
+      const uniqueNotifications = [];
+      const seenIds = new Set();
+      
+      notificationsList.forEach(notif => {
+        if (!seenIds.has(notif.id)) {
+          seenIds.add(notif.id);
+          uniqueNotifications.push(notif);
+        }
+      });
 
-      setNotifications(updatedNotifications);
+      setNotifications(uniqueNotifications);
       
       // Calculate unread count
-      const unread = updatedNotifications.filter(n => !n.read).length;
+      const unread = uniqueNotifications.filter(n => !n.read).length;
       setUnreadCount(unread);
 
     } catch (error) {
@@ -387,37 +457,74 @@ const Notifications = () => {
     fetchNotifications();
   };
 
-  const markAsRead = (id) => {
+  const markAsRead = async (id) => {
+    // Update local state
     const updatedNotifications = notifications.map(notif =>
       notif.id === id ? { ...notif, read: true } : notif
     );
     setNotifications(updatedNotifications);
     
-    // Save to localStorage
-    const readStatus = JSON.parse(localStorage.getItem('notificationReadStatus') || '{}');
-    readStatus[id] = true;
-    localStorage.setItem('notificationReadStatus', JSON.stringify(readStatus));
+    // If it's a database notification, update in database
+    if (!id.startsWith('org-') && !id.startsWith('payment-') && 
+        !id.startsWith('renewal-') && !id.startsWith('doc-') && 
+        !id.startsWith('missing-')) {
+      try {
+        await supabase
+          .from('organization_notifications')
+          .update({ read: true, read_at: new Date().toISOString() })
+          .eq('id', id);
+      } catch (error) {
+        console.error('Error marking notification as read:', error);
+      }
+    }
     
     // Update unread count
     setUnreadCount(updatedNotifications.filter(n => !n.read).length);
   };
 
-  const markAllAsRead = () => {
+  const markAllAsRead = async () => {
     const updatedNotifications = notifications.map(notif => ({ ...notif, read: true }));
     setNotifications(updatedNotifications);
     
-    // Save to localStorage
-    const readStatus = {};
-    notifications.forEach(notif => {
-      readStatus[notif.id] = true;
-    });
-    localStorage.setItem('notificationReadStatus', JSON.stringify(readStatus));
+    // Update database notifications
+    const dbNotificationIds = notifications
+      .filter(n => !n.id.startsWith('org-') && !n.id.startsWith('payment-') && 
+                  !n.id.startsWith('renewal-') && !n.id.startsWith('doc-') && 
+                  !n.id.startsWith('missing-'))
+      .map(n => n.id);
+    
+    if (dbNotificationIds.length > 0) {
+      try {
+        await supabase
+          .from('organization_notifications')
+          .update({ read: true, read_at: new Date().toISOString() })
+          .in('id', dbNotificationIds);
+      } catch (error) {
+        console.error('Error marking notifications as read:', error);
+      }
+    }
     
     setUnreadCount(0);
     showAlert('success', 'All notifications marked as read');
   };
 
-  const deleteNotification = (id) => {
+  const deleteNotification = async (id) => {
+    // If it's a database notification, delete from database
+    if (!id.startsWith('org-') && !id.startsWith('payment-') && 
+        !id.startsWith('renewal-') && !id.startsWith('doc-') && 
+        !id.startsWith('missing-')) {
+      try {
+        await supabase
+          .from('organization_notifications')
+          .delete()
+          .eq('id', id);
+      } catch (error) {
+        console.error('Error deleting notification:', error);
+        showAlert('error', 'Failed to delete notification');
+        return;
+      }
+    }
+    
     const updatedNotifications = notifications.filter(notif => notif.id !== id);
     setNotifications(updatedNotifications);
     
@@ -426,18 +533,27 @@ const Notifications = () => {
     showAlert('success', 'Notification deleted');
   };
 
-  const deleteAllRead = () => {
+  const deleteAllRead = async () => {
+    // Delete read database notifications
+    const readDbNotifications = notifications
+      .filter(n => n.read && !n.id.startsWith('org-') && !n.id.startsWith('payment-') && 
+                  !n.id.startsWith('renewal-') && !n.id.startsWith('doc-') && 
+                  !n.id.startsWith('missing-'))
+      .map(n => n.id);
+    
+    if (readDbNotifications.length > 0) {
+      try {
+        await supabase
+          .from('organization_notifications')
+          .delete()
+          .in('id', readDbNotifications);
+      } catch (error) {
+        console.error('Error deleting read notifications:', error);
+      }
+    }
+    
     const updatedNotifications = notifications.filter(notif => !notif.read);
     setNotifications(updatedNotifications);
-    
-    // Update localStorage
-    const readStatus = JSON.parse(localStorage.getItem('notificationReadStatus') || '{}');
-    notifications.forEach(notif => {
-      if (notif.read) {
-        delete readStatus[notif.id];
-      }
-    });
-    localStorage.setItem('notificationReadStatus', JSON.stringify(readStatus));
     
     showAlert('success', 'Read notifications cleared');
   };
@@ -458,11 +574,10 @@ const Notifications = () => {
     if (tabValue === 1) return notif.category === 'registration';
     if (tabValue === 2) return notif.category === 'payment';
     if (tabValue === 3) return notif.category === 'document';
-    if (tabValue === 4) return notif.category === 'renewal';
+    if (tabValue === 4) return notif.category === 'renewal' || notif.category === 'general';
     return true;
   });
 
-  // Consistent loading state
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -487,7 +602,7 @@ const Notifications = () => {
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', gap: 3 }}>
           {/* Sidebar */}
-          <Sidebar />
+          <Sidebar unreadCount={unreadCount} />
 
           {/* Main Content */}
           <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '16px' }}>
@@ -559,7 +674,7 @@ const Notifications = () => {
                 <Tab label="Registration" />
                 <Tab label="Payments" />
                 <Tab label="Documents" />
-                <Tab label="Renewals" />
+                <Tab label="Other" />
               </Tabs>
 
               {/* All Notifications Tab */}
@@ -572,6 +687,122 @@ const Notifications = () => {
                     </Typography>
                     <Typography variant="body2" sx={{ color: '#999' }}>
                       You're all caught up!
+                    </Typography>
+                  </Box>
+                ) : (
+                  <List>
+                    {filteredNotifications.map((notification) => (
+                      <NotificationItem
+                        key={notification.id}
+                        read={notification.read}
+                        secondaryAction={
+                          <Box>
+                            <IconButton
+                              edge="end"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markAsRead(notification.id);
+                              }}
+                              disabled={notification.read}
+                              sx={{ mr: 1, color: '#15e420' }}
+                            >
+                              <DoneAllIcon />
+                            </IconButton>
+                            <IconButton
+                              edge="end"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteNotification(notification.id);
+                              }}
+                              sx={{ color: '#dc3545' }}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Box>
+                        }
+                        onClick={() => handleNotificationClick(notification)}
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        <ListItemAvatar>
+                          <Avatar sx={{ bgcolor: 'transparent' }}>
+                            {getNotificationIcon(notification.type)}
+                          </Avatar>
+                        </ListItemAvatar>
+                        <ListItemText
+                          primary={
+                            <Typography
+                              variant="subtitle1"
+                              sx={{
+                                fontWeight: notification.read ? 400 : 600,
+                                color: notification.read ? '#666' : '#333'
+                              }}
+                            >
+                              {notification.title}
+                              {notification.isFromAdmin && (
+                                <Chip
+                                  label="Admin"
+                                  size="small"
+                                  sx={{
+                                    ml: 1,
+                                    height: 20,
+                                    fontSize: '10px',
+                                    backgroundColor: '#15e420',
+                                    color: 'white'
+                                  }}
+                                />
+                              )}
+                            </Typography>
+                          }
+                          secondary={
+                            <Box>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  color: '#666',
+                                  mb: 0.5
+                                }}
+                              >
+                                {notification.message}
+                              </Typography>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                <AccessTimeIcon sx={{ fontSize: 14, color: '#999' }} />
+                                <Typography variant="caption" sx={{ color: '#999' }}>
+                                  {getTimeAgo(notification.timestamp)}
+                                </Typography>
+                                <Chip
+                                  label={notification.category}
+                                  size="small"
+                                  sx={{
+                                    height: 20,
+                                    fontSize: '10px',
+                                    backgroundColor: 
+                                      notification.category === 'payment' ? '#e3f2fd' :
+                                      notification.category === 'registration' ? '#e8f5e9' :
+                                      notification.category === 'document' ? '#fff3e0' : '#f3e5f5',
+                                    color: 
+                                      notification.category === 'payment' ? '#1976d2' :
+                                      notification.category === 'registration' ? '#2e7d32' :
+                                      notification.category === 'document' ? '#ed6c02' : '#9c27b0'
+                                  }}
+                                />
+                              </Box>
+                            </Box>
+                          }
+                        />
+                      </NotificationItem>
+                    ))}
+                  </List>
+                )}
+              </TabPanel>
+
+              {/* Other tabs remain similar but with filteredNotifications */}
+              <TabPanel value={tabValue} index={1}>
+                {/* Registration tab content */}
+                {filteredNotifications.length === 0 ? (
+                  <Box sx={{ textAlign: 'center', py: 8 }}>
+                    <BusinessIcon sx={{ fontSize: 64, color: '#ccc', mb: 2 }} />
+                    <Typography variant="h6" sx={{ color: '#666' }}>
+                      No registration notifications
                     </Typography>
                   </Box>
                 ) : (
@@ -621,13 +852,7 @@ const Notifications = () => {
                           }
                           secondary={
                             <Box>
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  color: '#666',
-                                  mb: 0.5
-                                }}
-                              >
+                              <Typography variant="body2" sx={{ color: '#666', mb: 0.5 }}>
                                 {notification.message}
                               </Typography>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -635,22 +860,6 @@ const Notifications = () => {
                                 <Typography variant="caption" sx={{ color: '#999' }}>
                                   {getTimeAgo(notification.timestamp)}
                                 </Typography>
-                                <Chip
-                                  label={notification.category}
-                                  size="small"
-                                  sx={{
-                                    height: 20,
-                                    fontSize: '10px',
-                                    backgroundColor: 
-                                      notification.category === 'payment' ? '#e3f2fd' :
-                                      notification.category === 'registration' ? '#e8f5e9' :
-                                      notification.category === 'document' ? '#fff3e0' : '#f3e5f5',
-                                    color: 
-                                      notification.category === 'payment' ? '#1976d2' :
-                                      notification.category === 'registration' ? '#2e7d32' :
-                                      notification.category === 'document' ? '#ed6c02' : '#9c27b0'
-                                  }}
-                                />
                               </Box>
                             </Box>
                           }
@@ -868,11 +1077,35 @@ const Notifications = () => {
                               <Typography variant="body2" sx={{ color: '#666', mb: 0.5 }}>
                                 {notification.message}
                               </Typography>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                                 <AccessTimeIcon sx={{ fontSize: 14, color: '#999' }} />
                                 <Typography variant="caption" sx={{ color: '#999' }}>
                                   {getTimeAgo(notification.timestamp)}
                                 </Typography>
+                                {notification.type === 'document_rejected' && (
+                                  <Chip
+                                    label="Rejected"
+                                    size="small"
+                                    sx={{
+                                      height: 20,
+                                      fontSize: '10px',
+                                      backgroundColor: '#ffebee',
+                                      color: '#c62828'
+                                    }}
+                                  />
+                                )}
+                                {notification.type === 'document_approved' && (
+                                  <Chip
+                                    label="Approved"
+                                    size="small"
+                                    sx={{
+                                      height: 20,
+                                      fontSize: '10px',
+                                      backgroundColor: '#e8f5e9',
+                                      color: '#2e7d32'
+                                    }}
+                                  />
+                                )}
                               </Box>
                             </Box>
                           }

@@ -32,8 +32,7 @@ import {
   Visibility as VisibilityIcon,
   Warning as WarningIcon,
   Business as BusinessIcon,
-  Receipt as ReceiptIcon,
-  Refresh as RefreshIcon
+  Receipt as ReceiptIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminSidebar from './AdminSidebar';
@@ -63,38 +62,30 @@ ChartJS.register(
 
 const StyledCard = styled(Card)(({ theme }) => ({
   height: '100%',
-  borderRadius: '16px',
-  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)',
+  borderRadius: '12px',
+  boxShadow: '0 5px 15px rgba(0, 0, 0, 0.08)',
   transition: 'all 0.3s',
   '&:hover': {
-    transform: 'translateY(-4px)',
-    boxShadow: '0 15px 35px rgba(21, 228, 32, 0.15)'
+    transform: 'translateY(-2px)',
+    boxShadow: '0 10px 25px rgba(21, 228, 32, 0.12)'
   }
 }));
 
-// New StatCard component matching AdminOrganizations style
-const StatCard = ({ title, value, icon, color, bgColor, trend }) => (
+// Reduced size StatCard component
+const StatCard = ({ title, value, icon, color }) => (
   <StyledCard>
-    <CardContent>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Avatar sx={{ bgcolor: color, width: 48, height: 48 }}>
+    <CardContent sx={{ p: 2.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Avatar sx={{ bgcolor: color, width: 40, height: 40 }}>
           {icon}
         </Avatar>
         <Box sx={{ flex: 1 }}>
-          <Typography variant="body2" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
+          <Typography variant="caption" sx={{ color: '#666', fontFamily: '"Inter", sans-serif', fontSize: '0.7rem', fontWeight: 500 }}>
             {title}
           </Typography>
-          <Typography variant="h4" sx={{ fontWeight: 700, fontFamily: '"Poppins", sans-serif' }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: '"Poppins", sans-serif', fontSize: '1.1rem', lineHeight: 1.3 }}>
             {value}
           </Typography>
-          {trend && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-              <TrendingUpIcon sx={{ color: '#15e420', fontSize: 16 }} />
-              <Typography variant="caption" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
-                {trend}
-              </Typography>
-            </Box>
-          )}
         </Box>
       </Box>
     </CardContent>
@@ -104,7 +95,6 @@ const StatCard = ({ title, value, icon, color, bgColor, trend }) => (
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [adminData, setAdminData] = useState(null);
   const [stats, setStats] = useState({
     totalOrganizations: 0,
@@ -170,13 +160,6 @@ const AdminDashboard = () => {
     setLoading(true);
     await Promise.all([fetchStats(), fetchRecentActivities()]);
     setLoading(false);
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([fetchStats(), fetchRecentActivities()]);
-    setRefreshing(false);
-    showAlert('success', 'Dashboard refreshed successfully');
   };
 
   const fetchStats = async () => {
@@ -311,7 +294,7 @@ const AdminDashboard = () => {
         label={statusConfig.label}
         size="small"
         color={statusConfig.color}
-        sx={{ fontFamily: '"Inter", sans-serif' }}
+        sx={{ fontFamily: '"Inter", sans-serif', height: '24px' }}
       />
     );
   };
@@ -355,8 +338,10 @@ const AdminDashboard = () => {
         labels: {
           font: {
             family: '"Inter", sans-serif',
-            size: 12
-          }
+            size: 10
+          },
+          boxWidth: 10,
+          padding: 8
         }
       },
       tooltip: {
@@ -368,11 +353,21 @@ const AdminDashboard = () => {
         beginAtZero: true,
         grid: {
           color: 'rgba(0, 0, 0, 0.05)'
+        },
+        ticks: {
+          font: {
+            size: 9
+          }
         }
       },
       x: {
         grid: {
           display: false
+        },
+        ticks: {
+          font: {
+            size: 9
+          }
         }
       }
     }
@@ -399,271 +394,260 @@ const AdminDashboard = () => {
         </Alert>
       </Snackbar>
 
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Box sx={{ display: 'flex', gap: 3 }}>
+      <Container maxWidth="xl" sx={{ py: 3 }}>
+        <Box sx={{ display: 'flex', gap: 2 }}>
           <AdminSidebar />
           
-<Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '15px' }}>
-  {/* Header with Refresh Button */}
-  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-    <Box>
-      <Typography 
-        variant="h4" 
-        sx={{ 
-          fontFamily: '"Poppins", sans-serif',
-          fontWeight: 700,
-          color: '#333',
-          mb: 1
-        }}
-      >
-        Welcome back, {adminData?.full_name}!
-      </Typography>
-      <Typography 
-        variant="body1" 
-        sx={{ 
-          fontFamily: '"Inter", sans-serif',
-          color: '#666'
-        }}
-      >
-        Here's what's happening with your platform today.
-      </Typography>
-    </Box>
-    <Button
-      variant="outlined"
-      startIcon={<RefreshIcon />}
-      onClick={handleRefresh}
-      disabled={refreshing}
-      sx={{
-        borderColor: '#15e420',
-        color: '#15e420',
-        bgcolor: 'white',
-        '&:hover': {
-          borderColor: '#12c21e',
-          backgroundColor: '#e8f5e9'
-        }
-      }}
-    >
-      {refreshing ? 'Refreshing...' : 'Refresh Dashboard'}
-    </Button>
-  </Box>
-
-  {/* Stats Cards - Matching AdminOrganizations style */}
-  <Grid container spacing={3} sx={{ mb: 4 }}>
-    <Grid item xs={12} sm={6} md={3}>
-      <StatCard
-        title="Total Organizations"
-        value={stats.totalOrganizations}
-        icon={<BusinessIcon />}
-        color="#15e420"
-      />
-    </Grid>
-    <Grid item xs={12} sm={6} md={3}>
-      <StatCard
-        title="Pending Reviews"
-        value={stats.pendingOrganizations}
-        icon={<PendingIcon />}
-        color="#ffc107"
-      />
-    </Grid>
-    <Grid item xs={12} sm={6} md={3}>
-      <StatCard
-        title="Approved"
-        value={stats.approvedOrganizations}
-        icon={<CheckCircleIcon />}
-        color="#28a745"
-      />
-    </Grid>
-    <Grid item xs={12} sm={6} md={3}>
-      <StatCard
-        title="Rejected"
-        value={stats.rejectedOrganizations}
-        icon={<WarningIcon />}
-        color="#dc3545"
-      />
-    </Grid>
-  </Grid>
-
-  {/* Second Row of Stats - Payments */}
-  <Grid container spacing={3} sx={{ mb: 4 }}>
-    <Grid item xs={12} sm={6} md={3}>
-      <StatCard
-        title="Total Payments"
-        value={stats.totalPayments}
-        icon={<PaymentIcon />}
-        color="#17a2b8"
-      />
-    </Grid>
-    <Grid item xs={12} sm={6} md={3}>
-      <StatCard
-        title="Pending Payments"
-        value={stats.pendingPayments}
-        icon={<PendingIcon />}
-        color="#ffc107"
-      />
-    </Grid>
-    <Grid item xs={12} sm={6} md={3}>
-      <StatCard
-        title="Approved Payments"
-        value={stats.approvedPayments}
-        icon={<CheckCircleIcon />}
-        color="#28a745"
-      />
-    </Grid>
-    <Grid item xs={12} sm={6} md={3}>
-      <StatCard
-        title="Total Revenue"
-        value={`₦${stats.totalRevenue.toLocaleString()}`}
-        icon={<ReceiptIcon />}
-        color="#dc3545"
-      />
-    </Grid>
-  </Grid>
-
-  {/* Charts */}
-  <Grid container spacing={3} sx={{ mb: 4 }}>
-    <Grid item xs={12} md={8}>
-      <Paper sx={{ p: 3, borderRadius: '16px', bgcolor: 'white' }}>
-        <Typography 
-          variant="h6" 
-          sx={{ 
-            fontFamily: '"Poppins", sans-serif',
-            fontWeight: 600,
-            mb: 3
-          }}
-        >
-          Registration Trends (Last 6 Months)
-        </Typography>
-        <Box sx={{ height: 300 }}>
-          {stats.monthlyRegistrations.length > 0 ? (
-            <Line data={chartData} options={chartOptions} />
-          ) : (
-            <Box display="flex" justifyContent="center" alignItems="center" height="100%">
-              <Typography color="textSecondary">No registration data available</Typography>
+          <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 2.5, borderRadius: '12px' }}>
+            {/* Header */}
+            <Box sx={{ mb: 3 }}>
+              <Typography 
+                variant="h5" 
+                sx={{ 
+                  fontFamily: '"Poppins", sans-serif',
+                  fontWeight: 600,
+                  color: '#333',
+                  mb: 0.5
+                }}
+              >
+                Welcome back, {adminData?.full_name}!
+              </Typography>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  fontFamily: '"Inter", sans-serif',
+                  color: '#666'
+                }}
+              >
+                Here's what's happening with your platform today.
+              </Typography>
             </Box>
-          )}
-        </Box>
-      </Paper>
-    </Grid>
-    <Grid item xs={12} md={4}>
-      <Paper sx={{ p: 3, borderRadius: '16px', height: '100%', bgcolor: 'white' }}>
-        <Typography 
-          variant="h6" 
-          sx={{ 
-            fontFamily: '"Poppins", sans-serif',
-            fontWeight: 600,
-            mb: 3
-          }}
-        >
-          Organization Status
-        </Typography>
-        <Box sx={{ height: 250 }}>
-          {stats.totalOrganizations > 0 ? (
-            <Doughnut data={doughnutData} options={chartOptions} />
-          ) : (
-            <Box display="flex" justifyContent="center" alignItems="center" height="100%">
-              <Typography color="textSecondary">No data available</Typography>
-            </Box>
-          )}
-        </Box>
-      </Paper>
-    </Grid>
-  </Grid>
 
-  {/* Recent Activities */}
-  <Paper sx={{ p: 3, borderRadius: '16px', bgcolor: 'white' }}>
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-      <Typography 
-        variant="h6" 
-        sx={{ 
-          fontFamily: '"Poppins", sans-serif',
-          fontWeight: 600
-        }}
-      >
-        Recent Registrations
-      </Typography>
-      <Button
-        variant="outlined"
-        onClick={() => navigate('/admin/organizations')}
-        sx={{
-          borderColor: '#15e420',
-          color: '#15e420',
-          bgcolor: 'white',
-          '&:hover': {
-            borderColor: '#12c21e',
-            backgroundColor: '#e8f5e9'
-          }
-        }}
-      >
-        View All
-      </Button>
-    </Box>
+            {/* Stats Cards - Reduced size */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <StatCard
+                  title="Total Organizations"
+                  value={stats.totalOrganizations}
+                  icon={<BusinessIcon />}
+                  color="#15e420"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <StatCard
+                  title="Pending Reviews"
+                  value={stats.pendingOrganizations}
+                  icon={<PendingIcon />}
+                  color="#ffc107"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <StatCard
+                  title="Approved"
+                  value={stats.approvedOrganizations}
+                  icon={<CheckCircleIcon />}
+                  color="#28a745"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <StatCard
+                  title="Rejected"
+                  value={stats.rejectedOrganizations}
+                  icon={<WarningIcon />}
+                  color="#dc3545"
+                />
+              </Grid>
+            </Grid>
 
-    <TableContainer>
-      <Table>
-        <TableHead>
-          <TableRow>
-            <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Company</TableCell>
-            <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Date</TableCell>
-            <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Status</TableCell>
-            <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Payment</TableCell>
-            <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Actions</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {recentActivities.length > 0 ? (
-            recentActivities.map((activity) => (
-              <TableRow key={activity.id} hover>
-                <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
-                  {activity.company}
-                </TableCell>
-                <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
-                  {new Date(activity.date).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  {getStatusChip(activity.status)}
-                </TableCell>
-                <TableCell>
-                  {activity.hasPayment ? (
-                    <Chip
-                      icon={<CheckCircleIcon />}
-                      label={activity.paymentStatus === 'approved' ? 'Paid' : 'Pending'}
-                      size="small"
-                      color={activity.paymentStatus === 'approved' ? 'success' : 'warning'}
-                    />
-                  ) : (
-                    <Chip
-                      icon={<PendingIcon />}
-                      label="No Payment"
-                      size="small"
-                      color="default"
-                    />
-                  )}
-                </TableCell>
-                <TableCell>
-                  <IconButton
-                    size="small"
-                    onClick={() => navigate(`/admin/organizations/${activity.id}`)}
-                    sx={{ color: '#15e420' }}
+            {/* Second Row of Stats - Payments */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <StatCard
+                  title="Total Payments"
+                  value={stats.totalPayments}
+                  icon={<PaymentIcon />}
+                  color="#17a2b8"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <StatCard
+                  title="Pending Payments"
+                  value={stats.pendingPayments}
+                  icon={<PendingIcon />}
+                  color="#ffc107"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <StatCard
+                  title="Approved Payments"
+                  value={stats.approvedPayments}
+                  icon={<CheckCircleIcon />}
+                  color="#28a745"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <StatCard
+                  title="Total Revenue"
+                  value={`₦${stats.totalRevenue.toLocaleString()}`}
+                  icon={<ReceiptIcon />}
+                  color="#dc3545"
+                />
+              </Grid>
+            </Grid>
+
+            {/* Charts */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={8}>
+                <Paper sx={{ p: 2, borderRadius: '12px', bgcolor: 'white' }}>
+                  <Typography 
+                    variant="subtitle1" 
+                    sx={{ 
+                      fontFamily: '"Poppins", sans-serif',
+                      fontWeight: 600,
+                      mb: 2,
+                      fontSize: '1rem'
+                    }}
                   >
-                    <VisibilityIcon />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
-                <Typography sx={{ color: '#666' }}>
-                  No recent activities found
+                    Registration Trends (Last 6 Months)
+                  </Typography>
+                  <Box sx={{ height: 220 }}>
+                    {stats.monthlyRegistrations.length > 0 ? (
+                      <Line data={chartData} options={chartOptions} />
+                    ) : (
+                      <Box display="flex" justifyContent="center" alignItems="center" height="100%">
+                        <Typography variant="body2" color="textSecondary">No registration data available</Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 2, borderRadius: '12px', height: '100%', bgcolor: 'white' }}>
+                  <Typography 
+                    variant="subtitle1" 
+                    sx={{ 
+                      fontFamily: '"Poppins", sans-serif',
+                      fontWeight: 600,
+                      mb: 2,
+                      fontSize: '1rem'
+                    }}
+                  >
+                    Organization Status
+                  </Typography>
+                  <Box sx={{ height: 180 }}>
+                    {stats.totalOrganizations > 0 ? (
+                      <Doughnut data={doughnutData} options={chartOptions} />
+                    ) : (
+                      <Box display="flex" justifyContent="center" alignItems="center" height="100%">
+                        <Typography variant="body2" color="textSecondary">No data available</Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            {/* Recent Activities */}
+            <Paper sx={{ p: 2, borderRadius: '12px', bgcolor: 'white' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography 
+                  variant="subtitle1" 
+                  sx={{ 
+                    fontFamily: '"Poppins", sans-serif',
+                    fontWeight: 600,
+                    fontSize: '1rem'
+                  }}
+                >
+                  Recent Registrations
                 </Typography>
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </TableContainer>
-  </Paper>
-</Box>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => navigate('/admin/organizations')}
+                  sx={{
+                    borderColor: '#15e420',
+                    color: '#15e420',
+                    fontSize: '0.75rem',
+                    py: 0.5,
+                    px: 1.5,
+                    '&:hover': {
+                      borderColor: '#12c21e',
+                      backgroundColor: '#e8f5e9'
+                    }
+                  }}
+                >
+                  View All
+                </Button>
+              </Box>
+
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>Company</TableCell>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>Date</TableCell>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>Status</TableCell>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>Payment</TableCell>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {recentActivities.length > 0 ? (
+                      recentActivities.map((activity) => (
+                        <TableRow key={activity.id} hover>
+                          <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontSize: '0.8rem', py: 1 }}>
+                            {activity.company}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontSize: '0.8rem', py: 1 }}>
+                            {new Date(activity.date).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell sx={{ py: 1 }}>
+                            {getStatusChip(activity.status)}
+                          </TableCell>
+                          <TableCell sx={{ py: 1 }}>
+                            {activity.hasPayment ? (
+                              <Chip
+                                icon={<CheckCircleIcon />}
+                                label={activity.paymentStatus === 'approved' ? 'Paid' : 'Pending'}
+                                size="small"
+                                color={activity.paymentStatus === 'approved' ? 'success' : 'warning'}
+                                sx={{ height: '24px', fontSize: '0.7rem' }}
+                              />
+                            ) : (
+                              <Chip
+                                icon={<PendingIcon />}
+                                label="No Payment"
+                                size="small"
+                                color="default"
+                                sx={{ height: '24px', fontSize: '0.7rem' }}
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell sx={{ py: 1 }}>
+                            <IconButton
+                              size="small"
+                              onClick={() => navigate(`/admin/organizations/${activity.id}`)}
+                              sx={{ color: '#15e420', p: 0.5 }}
+                            >
+                              <VisibilityIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                          <Typography variant="body2" sx={{ color: '#666' }}>
+                            No recent activities found
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          </Box>
         </Box>
       </Container>
     </>
