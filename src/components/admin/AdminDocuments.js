@@ -244,7 +244,7 @@ const AdminDocuments = () => {
         <Box sx={{ display: 'flex', gap: 3 }}>
           <AdminSidebar />
           
-          <Box sx={{ flex: 1 }}>
+           <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '16px' }}>
             {/* Header */}
             <Box sx={{ mb: 4 }}>
               <Typography 

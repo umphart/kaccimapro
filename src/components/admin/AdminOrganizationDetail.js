@@ -178,7 +178,7 @@ const AdminOrganizationDetail = () => {
         <Box sx={{ display: 'flex', gap: 3 }}>
           <AdminSidebar />
           
-          <Box sx={{ flex: 1 }}>
+           <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '16px' }}>
             {/* Header */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
               <IconButton onClick={() => navigate('/admin/organizations')} sx={{ color: '#15e420' }}>
