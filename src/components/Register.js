@@ -95,20 +95,34 @@ const Register = () => {
     setLoading(true);
 
     try {
+      // Get the current site URL (works in both development and production)
+      const siteUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://kaccimapro.vercel.app' 
+        : window.location.origin;
+
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
-          emailRedirectTo: window.location.origin + '/login'
+          emailRedirectTo: `${siteUrl}/login?verified=true`
         }
       });
 
       if (error) throw error;
 
       showAlertMessage('success', 'Registration successful! Please check your email to confirm your account.');
-      setTimeout(() => {
-        navigate('/login');
-      }, 3000);
+      
+      // Clear form
+      setFormData({
+        email: '',
+        password: '',
+        confirmPassword: ''
+      });
+      
+      // Don't auto navigate, let user click the link in email
+      // setTimeout(() => {
+      //   navigate('/login');
+      // }, 3000);
     } catch (error) {
       showAlertMessage('error', error.message);
     } finally {

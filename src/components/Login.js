@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import {
@@ -60,7 +60,15 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [showPassword, setShowPassword] = useState(false);
-
+useEffect(() => {
+  // Check if user just verified their email
+  const query = new URLSearchParams(window.location.search);
+  if (query.get('verified') === 'true') {
+    showAlertMessage('success', 'Email verified successfully! You can now log in.');
+    // Remove the query parameter from URL
+    window.history.replaceState({}, document.title, '/login');
+  }
+}, []);
   const handleChange = (e) => {
     setFormData({
       ...formData,

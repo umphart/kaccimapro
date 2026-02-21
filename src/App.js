@@ -27,6 +27,7 @@ import AdminOrganizationDocuments from './components/admin/AdminOrganizationDocu
 import AdminReports from './components/admin/AdminReports';
 import AdminNotifications from './components/admin/AdminNotifications';
 import AdminSettings from './components/admin/AdminSettings';
+import EmailConfirmed from './components/EmailConfirmed';
 import { Box } from '@mui/material';
 import './App.css';
 
@@ -57,6 +58,7 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/email-confirmed" element={<EmailConfirmed />} />
           
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminAuth />} />
