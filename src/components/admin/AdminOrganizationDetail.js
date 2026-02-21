@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
+import { 
+  sendDocumentApproved, 
+  sendDocumentRejected,
+  sendOrganizationApproved,
+  sendOrganizationRejected 
+} from '../../utils/emailService';
 import {
   Box,
   Container,
@@ -244,148 +250,196 @@ const AdminOrganizationDetail = () => {
     }
   };
 
-  const handleApproveDocument = async (doc) => {
-    try {
-      // Create approval notification
-      const { error: notifError } = await supabase
-        .from('organization_notifications')
-        .insert([{
-          organization_id: id,
-          type: 'document_approved',
-          title: `${doc.name} Approved`,
-          message: `Your ${doc.name} has been approved.`,
-          category: 'document',
-          action_url: '/documents',
-          read: false
-        }]);
+const handleApproveDocument = async (doc) => {
+  try {
+    // Create approval notification in Supabase
+    const { error: notifError } = await supabase
+      .from('organization_notifications')
+      .insert([{
+        organization_id: id,
+        type: 'document_approved',
+        title: `${doc.name} Approved`,
+        message: `Your ${doc.name} has been approved.`,
+        category: 'document',
+        action_url: '/documents',
+        read: false
+      }]);
 
-      if (notifError) throw notifError;
+    if (notifError) throw notifError;
 
-      // Update local state
-      setDocumentStatus(prev => ({ ...prev, [doc.key]: 'approved' }));
-      
-      showAlert('success', `${doc.name} approved successfully`);
-    } catch (error) {
-      console.error('Error approving document:', error);
-      showAlert('error', 'Failed to approve document');
+    // Send email notification via EmailJS
+    const emailResult = await sendDocumentApproved(
+      organization.email,
+      organization.company_name,
+      doc.name
+    );
+
+    if (!emailResult.success) {
+      console.warn('Email notification failed but document was approved:', emailResult.error);
+      // Continue anyway - don't block the approval if email fails
     }
-  };
 
-  const handleRejectDocument = async () => {
-    if (!rejectDialog.doc || !rejectReason.trim()) return;
+    // Update local state
+    setDocumentStatus(prev => ({ ...prev, [doc.key]: 'approved' }));
+    
+    showAlert('success', `${doc.name} approved successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
+  } catch (error) {
+    console.error('Error approving document:', error);
+    showAlert('error', 'Failed to approve document');
+  }
+};
 
-    try {
-      const doc = rejectDialog.doc;
+const handleRejectDocument = async () => {
+  if (!rejectDialog.doc || !rejectReason.trim()) return;
 
-      // Create rejection notification
-      const { error: notifError } = await supabase
-        .from('organization_notifications')
-        .insert([{
-          organization_id: id,
-          type: 'document_rejected',
-          title: `${doc.name} Rejected`,
-          message: `Your ${doc.name} has been rejected. Reason: ${rejectReason}`,
-          category: 'document',
-          action_url: '/documents',
-          read: false
-        }]);
+  try {
+    const doc = rejectDialog.doc;
 
-      if (notifError) throw notifError;
+    // Create rejection notification in Supabase
+    const { error: notifError } = await supabase
+      .from('organization_notifications')
+      .insert([{
+        organization_id: id,
+        type: 'document_rejected',
+        title: `${doc.name} Rejected`,
+        message: `Your ${doc.name} has been rejected. Reason: ${rejectReason}`,
+        category: 'document',
+        action_url: '/documents',
+        read: false
+      }]);
 
-      // Update local state
-      setDocumentStatus(prev => ({ ...prev, [doc.key]: 'rejected' }));
-      setRejectionReasons(prev => ({ ...prev, [doc.key]: rejectReason }));
-      
-      showAlert('success', `${doc.name} rejected`);
-      setRejectDialog({ open: false, doc: null });
-      setRejectReason('');
-    } catch (error) {
-      console.error('Error rejecting document:', error);
-      showAlert('error', 'Failed to reject document');
+    if (notifError) throw notifError;
+
+    // Send email notification via EmailJS
+    const emailResult = await sendDocumentRejected(
+      organization.email,
+      organization.company_name,
+      doc.name,
+      rejectReason
+    );
+
+    if (!emailResult.success) {
+      console.warn('Email notification failed but document was rejected:', emailResult.error);
+      // Continue anyway
     }
-  };
 
-  const handleApproveOrganization = async () => {
-    try {
-      // Check if all documents are approved
-      const allApproved = documents.every(doc => documentStatus[doc.key] === 'approved');
-      
-      if (!allApproved) {
-        showAlert('error', 'All documents must be approved before approving the organization');
-        setApproveOrgDialog(false);
-        return;
-      }
+    // Update local state
+    setDocumentStatus(prev => ({ ...prev, [doc.key]: 'rejected' }));
+    setRejectionReasons(prev => ({ ...prev, [doc.key]: rejectReason }));
+    
+    showAlert('success', `${doc.name} rejected successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
+    setRejectDialog({ open: false, doc: null });
+    setRejectReason('');
+  } catch (error) {
+    console.error('Error rejecting document:', error);
+    showAlert('error', 'Failed to reject document');
+  }
+};
 
-      // Update organization status
-      const { error: orgError } = await supabase
-        .from('organizations')
-        .update({ 
-          status: 'approved',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
-
-      if (orgError) throw orgError;
-
-      // Create notification for organization
-      await supabase
-        .from('organization_notifications')
-        .insert([{
-          organization_id: id,
-          type: 'success',
-          title: 'Organization Approved',
-          message: 'Your organization has been fully approved! You can now access all features.',
-          category: 'registration',
-          action_url: '/dashboard',
-          read: false
-        }]);
-
-      showAlert('success', 'Organization approved successfully');
+const handleApproveOrganization = async () => {
+  try {
+    // Check if all documents are approved
+    const allApproved = documents.every(doc => documentStatus[doc.key] === 'approved');
+    
+    if (!allApproved) {
+      showAlert('error', 'All documents must be approved before approving the organization');
       setApproveOrgDialog(false);
-      fetchOrganizationDetails(); // Refresh data
-    } catch (error) {
-      console.error('Error approving organization:', error);
-      showAlert('error', 'Failed to approve organization');
+      return;
     }
-  };
 
-  const handleRejectOrganization = async () => {
-    if (!orgRejectReason.trim()) return;
+    // Update organization status in Supabase
+    const { error: orgError } = await supabase
+      .from('organizations')
+      .update({ 
+        status: 'approved',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
 
-    try {
-      // Update organization status
-      const { error: orgError } = await supabase
-        .from('organizations')
-        .update({ 
-          status: 'rejected',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
+    if (orgError) throw orgError;
 
-      if (orgError) throw orgError;
+    // Create notification in Supabase
+    await supabase
+      .from('organization_notifications')
+      .insert([{
+        organization_id: id,
+        type: 'success',
+        title: 'Organization Approved',
+        message: 'Your organization has been fully approved! You can now access all features.',
+        category: 'registration',
+        action_url: '/dashboard',
+        read: false
+      }]);
 
-      // Create notification for organization
-      await supabase
-        .from('organization_notifications')
-        .insert([{
-          organization_id: id,
-          type: 'error',
-          title: 'Organization Rejected',
-          message: `Your organization registration has been rejected. Reason: ${orgRejectReason}`,
-          category: 'registration',
-          action_url: '/contact',
-          read: false
-        }]);
+    // Send email notification via EmailJS
+    const emailResult = await sendOrganizationApproved(
+      organization.email,
+      organization.company_name
+    );
 
-      showAlert('success', 'Organization rejected');
-      setRejectOrgDialog(false);
-      setOrgRejectReason('');
-      fetchOrganizationDetails(); // Refresh data
-    } catch (error) {
-      console.error('Error rejecting organization:', error);
-      showAlert('error', 'Failed to reject organization');
+    if (!emailResult.success) {
+      console.warn('Email notification failed but organization was approved:', emailResult.error);
     }
-  };
+
+    showAlert('success', `Organization approved successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
+    setApproveOrgDialog(false);
+    fetchOrganizationDetails(); // Refresh data
+  } catch (error) {
+    console.error('Error approving organization:', error);
+    showAlert('error', 'Failed to approve organization');
+  }
+};
+
+const handleRejectOrganization = async () => {
+  if (!orgRejectReason.trim()) return;
+
+  try {
+    // Update organization status in Supabase
+    const { error: orgError } = await supabase
+      .from('organizations')
+      .update({ 
+        status: 'rejected',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (orgError) throw orgError;
+
+    // Create notification in Supabase
+    await supabase
+      .from('organization_notifications')
+      .insert([{
+        organization_id: id,
+        type: 'error',
+        title: 'Organization Rejected',
+        message: `Your organization registration has been rejected. Reason: ${orgRejectReason}`,
+        category: 'registration',
+        action_url: '/contact',
+        read: false
+      }]);
+
+    // Send email notification via EmailJS
+    const emailResult = await sendOrganizationRejected(
+      organization.email,
+      organization.company_name,
+      orgRejectReason
+    );
+
+    if (!emailResult.success) {
+      console.warn('Email notification failed but organization was rejected:', emailResult.error);
+    }
+
+    showAlert('success', `Organization rejected successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
+    setRejectOrgDialog(false);
+    setOrgRejectReason('');
+    fetchOrganizationDetails(); // Refresh data
+  } catch (error) {
+    console.error('Error rejecting organization:', error);
+    showAlert('error', 'Failed to reject organization');
+  }
+};
+
+// Optional: Add payment-related functions for completeness
 
   const checkAllDocumentsApproved = () => {
     return documents.every(doc => documentStatus[doc.key] === 'approved');

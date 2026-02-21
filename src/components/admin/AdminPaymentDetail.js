@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
+import { 
+  sendPaymentApproved,
+  sendPaymentRejected 
+} from '../../utils/emailService';
+
 import {
   Box,
   Container,
@@ -115,61 +120,72 @@ const AdminPaymentDetail = () => {
     }
   };
 
-  const handleApprove = async () => {
-    try {
-      const { error } = await supabase
-        .from('payments')
-        .update({ 
-          status: 'approved',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
+const handleApprove = async (payment) => {
+  try {
+    // Update payment status in Supabase
+    const { error: paymentError } = await supabase
+      .from('payments')
+      .update({ 
+        status: 'approved',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', payment.id);
 
-      if (error) throw error;
+    if (paymentError) throw paymentError;
 
-      showAlert('success', 'Payment approved successfully');
-      
-      // Update organization status if this is the first approved payment
-      if (organization && organization.status === 'pending') {
-        await supabase
-          .from('organizations')
-          .update({ status: 'approved' })
-          .eq('id', organization.id);
-      }
+    // Send email notification via EmailJS
+    const emailResult = await sendPaymentApproved(
+      organization.email,
+      organization.company_name,
+      payment.amount
+    );
 
-      setTimeout(() => {
-        navigate('/admin/payments');
-      }, 2000);
-    } catch (error) {
-      console.error('Error approving payment:', error);
-      showAlert('error', 'Failed to approve payment');
+    if (!emailResult.success) {
+      console.warn('Email notification failed but payment was approved:', emailResult.error);
     }
-  };
 
-  const handleReject = async () => {
-    try {
-      const { error } = await supabase
-        .from('payments')
-        .update({ 
-          status: 'rejected',
-          rejection_reason: rejectReason,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
+    showAlert('success', `Payment approved successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
+  } catch (error) {
+    console.error('Error approving payment:', error);
+    showAlert('error', 'Failed to approve payment');
+  }
+};
 
-      if (error) throw error;
+const handleReject = async (payment, reason) => {
+  if (!reason.trim()) return;
 
-      showAlert('success', 'Payment rejected');
-      setRejectDialogOpen(false);
-      
-      setTimeout(() => {
-        navigate('/admin/payments');
-      }, 2000);
-    } catch (error) {
-      console.error('Error rejecting payment:', error);
-      showAlert('error', 'Failed to reject payment');
+  try {
+    // Update payment status in Supabase
+    const { error: paymentError } = await supabase
+      .from('payments')
+      .update({ 
+        status: 'rejected',
+        rejection_reason: reason,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', payment.id);
+
+    if (paymentError) throw paymentError;
+
+    // Send email notification via EmailJS
+    const emailResult = await sendPaymentRejected(
+      organization.email,
+      organization.company_name,
+      payment.amount,
+      reason
+    );
+
+    if (!emailResult.success) {
+      console.warn('Email notification failed but payment was rejected:', emailResult.error);
     }
-  };
+
+    showAlert('success', `Payment rejected successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
+  } catch (error) {
+    console.error('Error rejecting payment:', error);
+    showAlert('error', 'Failed to reject payment');
+  }
+};
+
 
   const getStatusChip = (status) => {
     const config = {
