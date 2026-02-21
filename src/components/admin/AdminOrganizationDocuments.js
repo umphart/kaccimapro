@@ -83,51 +83,81 @@ const AdminOrganizationDocuments = () => {
     setAlert({ ...alert, open: false });
   };
 
-  const fetchOrganizationData = async () => {
-    setLoading(true);
-    try {
-      // Fetch organization details
-      const { data: orgData, error: orgError } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('id', id)
-        .single();
+ const fetchOrganizationData = async () => {
+  setLoading(true);
+  try {
+    // Fetch organization details
+    const { data: orgData, error: orgError } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', id)
+      .single();
 
-      if (orgError) throw orgError;
-      setOrganization(orgData);
+    if (orgError) throw orgError;
+    setOrganization(orgData);
 
-      // Build documents list from organization fields
-      const docFields = [
-        { name: 'Cover Letter', path: orgData.cover_letter_path, type: 'document', status: 'pending' },
-        { name: 'Memorandum', path: orgData.memorandum_path, type: 'document', status: 'pending' },
-        { name: 'Registration Certificate', path: orgData.registration_cert_path, type: 'document', status: 'pending' },
-        { name: 'Incorporation Certificate', path: orgData.incorporation_cert_path, type: 'document', status: 'pending' },
-        { name: 'Premises Certificate', path: orgData.premises_cert_path, type: 'document', status: 'pending' },
-        { name: 'Company Logo', path: orgData.company_logo_path, type: 'image', status: 'pending' },
-        { name: 'Form C07', path: orgData.form_c07_path, type: 'document', status: 'pending' },
-        { name: 'ID Document', path: orgData.id_document_path, type: 'document', status: 'pending' }
-      ];
+    // Fetch rejection notifications for this organization
+    const { data: notifications, error: notifError } = await supabase
+      .from('organization_notifications')
+      .select('*')
+      .eq('organization_id', id)
+      .in('type', ['document_rejected', 'document_approved'])
+      .order('created_at', { ascending: false });
 
-      // Filter only documents that have been uploaded
-      const uploadedDocs = docFields
-        .filter(doc => doc.path)
-        .map((doc, index) => ({
-          id: `${id}_${index}`,
+    if (notifError) throw notifError;
+
+    // Build documents list from organization fields
+    const docFields = [
+      { name: 'Cover Letter', path: orgData.cover_letter_path, field: 'cover_letter_path' },
+      { name: 'Memorandum', path: orgData.memorandum_path, field: 'memorandum_path' },
+      { name: 'Registration Certificate', path: orgData.registration_cert_path, field: 'registration_cert_path' },
+      { name: 'Incorporation Certificate', path: orgData.incorporation_cert_path, field: 'incorporation_cert_path' },
+      { name: 'Premises Certificate', path: orgData.premises_cert_path, field: 'premises_cert_path' },
+      { name: 'Company Logo', path: orgData.company_logo_path, field: 'company_logo_path' },
+      { name: 'Form C07', path: orgData.form_c07_path, field: 'form_c07_path' },
+      { name: 'ID Document', path: orgData.id_document_path, field: 'id_document_path' }
+    ];
+
+    // Filter only documents that have been uploaded
+    const uploadedDocs = docFields
+      .filter(doc => doc.path)
+      .map((doc) => {
+        // Check if this document was rejected
+        const rejectedNotif = notifications?.find(n => 
+          n.type === 'document_rejected' && n.title.includes(doc.name)
+        );
+        
+        const approvedNotif = notifications?.find(n => 
+          n.type === 'document_approved' && n.title.includes(doc.name)
+        );
+
+        let status = 'pending';
+        if (rejectedNotif && (!approvedNotif || new Date(rejectedNotif.created_at) > new Date(approvedNotif.created_at))) {
+          status = 'rejected';
+        } else if (approvedNotif) {
+          status = 'approved';
+        }
+
+        return {
+          id: `${id}_${doc.field}`,
           name: doc.name,
           path: doc.path,
-          type: doc.type,
-          status: doc.status,
-          uploadedAt: new Date().toISOString() // You'll need to get actual upload date from metadata
-        }));
+          field: doc.field,
+          type: doc.name === 'Company Logo' ? 'image' : 'document',
+          status: status,
+          rejectionReason: rejectedNotif ? rejectedNotif.message.replace(`Your ${doc.name} has been rejected. Reason: `, '') : null,
+          uploadedAt: new Date().toISOString()
+        };
+      });
 
-      setDocuments(uploadedDocs);
-    } catch (error) {
-      console.error('Error fetching organization:', error);
-      showAlert('error', 'Failed to load organization data');
-    } finally {
-      setLoading(false);
-    }
-  };
+    setDocuments(uploadedDocs);
+  } catch (error) {
+    console.error('Error fetching organization:', error);
+    showAlert('error', 'Failed to load organization data');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleViewDocument = async (doc) => {
     try {
@@ -167,37 +197,106 @@ const AdminOrganizationDocuments = () => {
     }
   };
 
-  const handleApproveDocument = async (doc) => {
-    try {
-      // Here you would update the document status in your database
-      // For now, we'll just update local state
-      setDocuments(prev => prev.map(d => 
-        d.id === doc.id ? { ...d, status: 'approved' } : d
-      ));
-      showAlert('success', `${doc.name} approved successfully`);
-    } catch (error) {
-      console.error('Error approving document:', error);
-      showAlert('error', 'Failed to approve document');
-    }
-  };
+ const handleApproveDocument = async (doc) => {
+  try {
+    // Update local state
+    setDocuments(prev => prev.map(d => 
+      d.id === doc.id ? { ...d, status: 'approved' } : d
+    ));
 
-  const handleRejectDocument = async () => {
-    if (!currentDoc || !rejectReason) return;
+    // Create a notification for the organization
+    const { error: notificationError } = await supabase
+      .from('organization_notifications')
+      .insert([{
+        organization_id: id,
+        type: 'document_approved',
+        title: `${doc.name} Approved`,
+        message: `Your ${doc.name} has been approved.`,
+        category: 'document',
+        action_url: '/documents',
+        read: false
+      }]);
 
-    try {
-      // Here you would update the document status in your database with rejection reason
-      setDocuments(prev => prev.map(d => 
-        d.id === currentDoc.id ? { ...d, status: 'rejected', rejectionReason: rejectReason } : d
-      ));
-      showAlert('success', `${currentDoc.name} rejected`);
-      setRejectDialogOpen(false);
-      setRejectReason('');
-      setCurrentDoc(null);
-    } catch (error) {
-      console.error('Error rejecting document:', error);
-      showAlert('error', 'Failed to reject document');
+    if (notificationError) {
+      console.error('Error creating notification:', notificationError);
     }
-  };
+
+    showAlert('success', `${doc.name} approved successfully`);
+  } catch (error) {
+    console.error('Error approving document:', error);
+    showAlert('error', 'Failed to approve document');
+  }
+};
+const handleRejectDocument = async () => {
+  if (!currentDoc || !rejectReason) return;
+
+  try {
+    const docFieldMap = {
+      'Cover Letter': 'cover_letter_path',
+      'Memorandum': 'memorandum_path',
+      'Registration Certificate': 'registration_cert_path',
+      'Incorporation Certificate': 'incorporation_cert_path',
+      'Premises Certificate': 'premises_cert_path',
+      'Company Logo': 'company_logo_path',
+      'Form C07': 'form_c07_path',
+      'ID Document': 'id_document_path'
+    };
+
+    const rejectionFieldMap = {
+      'Cover Letter': 'cover_letter_rejection_reason',
+      'Memorandum': 'memorandum_rejection_reason',
+      'Registration Certificate': 'registration_cert_rejection_reason',
+      'Incorporation Certificate': 'incorporation_cert_rejection_reason',
+      'Premises Certificate': 'premises_cert_rejection_reason',
+      'Company Logo': 'company_logo_rejection_reason',
+      'Form C07': 'form_c07_rejection_reason',
+      'ID Document': 'id_document_rejection_reason'
+    };
+
+    const documentField = docFieldMap[currentDoc.name];
+    const rejectionField = rejectionFieldMap[currentDoc.name];
+
+    // Update the organization with rejection reason
+    const updateData = {
+      [rejectionField]: rejectReason
+    };
+
+    const { error: updateError } = await supabase
+      .from('organizations')
+      .update(updateData)
+      .eq('id', id);
+
+    if (updateError) throw updateError;
+
+    // Create notification for the organization
+    const { error: notificationError } = await supabase
+      .from('organization_notifications')
+      .insert([{
+        organization_id: id,
+        type: 'document_rejected',
+        title: `${currentDoc.name} Rejected`,
+        message: `Your ${currentDoc.name} has been rejected. Reason: ${rejectReason}`,
+        category: 'document',
+        action_url: '/documents',
+        read: false
+      }]);
+
+    if (notificationError) throw notificationError;
+
+    // Update local state
+    setDocuments(prev => prev.map(d => 
+      d.id === currentDoc.id ? { ...d, status: 'rejected', rejectionReason: rejectReason } : d
+    ));
+    
+    showAlert('success', `${currentDoc.name} rejected successfully`);
+    setRejectDialogOpen(false);
+    setRejectReason('');
+    setCurrentDoc(null);
+  } catch (error) {
+    console.error('Error rejecting document:', error);
+    showAlert('error', 'Failed to reject document: ' + error.message);
+  }
+};
 
   const openRejectDialog = (doc) => {
     setCurrentDoc(doc);
@@ -284,7 +383,7 @@ const AdminOrganizationDocuments = () => {
                     color: '#666'
                   }}
                 >
-                  Review and verify all uploaded documents for this organization
+                  
                 </Typography>
               </Box>
             </Box>

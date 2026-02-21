@@ -2,21 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import Sidebar from './Sidebar';
-import Layout from './Layout';
+import NotificationItem from './NotificationItem';
+import ReuploadDialog from './ReuploadDialog';
 import {
   Box,
   Container,
   Typography,
   Paper,
   List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
   ListItemAvatar,
   Avatar,
   Chip,
   IconButton,
-  Divider,
   Button,
   CircularProgress,
   Alert,
@@ -41,22 +38,12 @@ import {
   Warning as WarningIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
+import { documentFields } from '../utils/notificationUtils';
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(3),
   borderRadius: '16px',
   boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)'
-}));
-
-const NotificationItem = styled(ListItem)(({ read }) => ({
-  backgroundColor: read ? 'transparent' : '#e8f5e9',
-  borderRadius: '8px',
-  marginBottom: '8px',
-  transition: 'all 0.3s',
-  '&:hover': {
-    backgroundColor: read ? '#f5f5f5' : '#d4edda',
-    transform: 'translateX(4px)'
-  }
 }));
 
 const TabPanel = ({ children, value, index, ...other }) => (
@@ -70,48 +57,6 @@ const TabPanel = ({ children, value, index, ...other }) => (
   </div>
 );
 
-const getNotificationIcon = (type) => {
-  switch(type) {
-    case 'success':
-      return <CheckCircleIcon sx={{ color: '#28a745' }} />;
-    case 'pending':
-      return <PendingIcon sx={{ color: '#ffc107' }} />;
-    case 'error':
-      return <ErrorIcon sx={{ color: '#dc3545' }} />;
-    case 'payment':
-      return <PaymentIcon sx={{ color: '#15e420' }} />;
-    case 'registration':
-      return <BusinessIcon sx={{ color: '#17a2b8' }} />;
-    case 'approval':
-      return <VerifiedIcon sx={{ color: '#15e420' }} />;
-    case 'document':
-      return <DescriptionIcon sx={{ color: '#15e420' }} />;
-    case 'document_rejected':
-      return <WarningIcon sx={{ color: '#dc3545' }} />;
-    case 'document_approved':
-      return <CheckCircleIcon sx={{ color: '#28a745' }} />;
-    case 'renewal':
-      return <AccessTimeIcon sx={{ color: '#ffc107' }} />;
-    default:
-      return <InfoIcon sx={{ color: '#17a2b8' }} />;
-  }
-};
-
-const getTimeAgo = (timestamp) => {
-  if (!timestamp) return 'Unknown';
-  
-  const now = new Date();
-  const then = new Date(timestamp);
-  const diff = Math.floor((now - then) / 1000); // seconds
-
-  if (diff < 60) return 'Just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
-  if (diff < 2592000) return `${Math.floor(diff / 86400)} days ago`;
-  if (diff < 31536000) return `${Math.floor(diff / 2592000)} months ago`;
-  return `${Math.floor(diff / 31536000)} years ago`;
-};
-
 const Notifications = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -122,6 +67,10 @@ const Notifications = () => {
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [tabValue, setTabValue] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [reuploadDialog, setReuploadDialog] = useState({
+    open: false,
+    notification: null
+  });
 
   useEffect(() => {
     checkUser();
@@ -136,7 +85,6 @@ const Notifications = () => {
   // Set up real-time subscription for new notifications
   useEffect(() => {
     if (organization?.id) {
-      // Subscribe to new notifications
       const subscription = supabase
         .channel('organization_notifications_channel')
         .on(
@@ -148,7 +96,6 @@ const Notifications = () => {
             filter: `organization_id=eq.${organization.id}`
           },
           (payload) => {
-            // New notification received from admin
             const newNotif = {
               id: payload.new.id,
               type: payload.new.type === 'renewal' ? 'renewal' : 
@@ -166,7 +113,6 @@ const Notifications = () => {
             setNotifications(prev => [newNotif, ...prev]);
             setUnreadCount(prev => prev + 1);
             
-            // Show a toast notification
             showAlert('info', `New notification: ${payload.new.title}`);
           }
         )
@@ -216,7 +162,6 @@ const Notifications = () => {
         setOrganization(data);
       }
       
-      // Fetch notifications after we have org data
       await fetchNotifications(data);
     } catch (error) {
       console.error('Error:', error);
@@ -238,7 +183,6 @@ const Notifications = () => {
 
         if (!error && dbNotifications) {
           dbNotifications.forEach(notif => {
-            // Don't add if it's scheduled for the future
             if (notif.scheduled_for && new Date(notif.scheduled_for) > new Date()) {
               return;
             }
@@ -310,7 +254,7 @@ const Notifications = () => {
           .order('created_at', { ascending: false });
 
         if (!paymentsError && payments) {
-          payments.forEach((payment, index) => {
+          payments.forEach((payment) => {
             if (payment.status === 'pending') {
               notificationsList.push({
                 id: `payment-pending-${payment.id}`,
@@ -349,7 +293,7 @@ const Notifications = () => {
               });
             }
 
-            // Add renewal reminder if payment was approved and it's near renewal date
+            // Add renewal reminder
             if (payment.status === 'approved' && payment.payment_type === 'first') {
               const paymentDate = new Date(payment.created_at);
               const renewalDate = new Date(paymentDate.getFullYear() + 1, 0, 1);
@@ -374,31 +318,35 @@ const Notifications = () => {
         }
       }
 
-      // 4. Document notifications (simplified for now)
+      // 4. Document notifications with rejection handling
       if (orgData) {
-        const documentFields = [
-          { key: 'cover_letter_path', name: 'Cover Letter' },
-          { key: 'memorandum_path', name: 'Memorandum' },
-          { key: 'registration_cert_path', name: 'Registration Certificate' },
-          { key: 'incorporation_cert_path', name: 'Incorporation Certificate' },
-          { key: 'premises_cert_path', name: 'Premises Certificate' },
-          { key: 'company_logo_path', name: 'Company Logo' },
-          { key: 'form_c07_path', name: 'Form C07' },
-          { key: 'id_document_path', name: 'ID Document' }
-        ];
+        // Check for rejected documents from admin notifications
+        const rejectedDocs = notificationsList.filter(
+          n => n.type === 'document_rejected' && n.category === 'document'
+        );
 
+        // Add document uploaded notifications
         documentFields.forEach((field) => {
           if (orgData[field.key]) {
+            // Check if this document was previously rejected
+            const wasRejected = rejectedDocs.some(doc => 
+              doc.message?.includes(field.name)
+            );
+
             notificationsList.push({
-              id: `doc-upload-${field.key}`,
-              type: 'info',
-              title: 'Document Uploaded',
-              message: `Your ${field.name} has been uploaded successfully and is pending review.`,
+              id: `doc-upload-${field.key}-${Date.now()}`,
+              type: wasRejected ? 'document_rejected' : 'info',
+              title: wasRejected ? `Document Rejected: ${field.name}` : `Document Uploaded: ${field.name}`,
+              message: wasRejected 
+                ? `Your ${field.name} was rejected. Please upload a corrected version.`
+                : `Your ${field.name} has been uploaded and is pending review.`,
               timestamp: orgData.updated_at,
               read: false,
               category: 'document',
               actionUrl: '/documents',
-              isFromAdmin: false
+              isFromAdmin: false,
+              documentField: field.key,
+              documentName: field.name
             });
           }
         });
@@ -426,7 +374,7 @@ const Notifications = () => {
       // Sort by timestamp (newest first)
       notificationsList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-      // Remove duplicates (keep only the most recent for each unique ID)
+      // Remove duplicates
       const uniqueNotifications = [];
       const seenIds = new Set();
       
@@ -439,7 +387,6 @@ const Notifications = () => {
 
       setNotifications(uniqueNotifications);
       
-      // Calculate unread count
       const unread = uniqueNotifications.filter(n => !n.read).length;
       setUnreadCount(unread);
 
@@ -458,13 +405,11 @@ const Notifications = () => {
   };
 
   const markAsRead = async (id) => {
-    // Update local state
     const updatedNotifications = notifications.map(notif =>
       notif.id === id ? { ...notif, read: true } : notif
     );
     setNotifications(updatedNotifications);
     
-    // If it's a database notification, update in database
     if (!id.startsWith('org-') && !id.startsWith('payment-') && 
         !id.startsWith('renewal-') && !id.startsWith('doc-') && 
         !id.startsWith('missing-')) {
@@ -478,7 +423,6 @@ const Notifications = () => {
       }
     }
     
-    // Update unread count
     setUnreadCount(updatedNotifications.filter(n => !n.read).length);
   };
 
@@ -486,7 +430,6 @@ const Notifications = () => {
     const updatedNotifications = notifications.map(notif => ({ ...notif, read: true }));
     setNotifications(updatedNotifications);
     
-    // Update database notifications
     const dbNotificationIds = notifications
       .filter(n => !n.id.startsWith('org-') && !n.id.startsWith('payment-') && 
                   !n.id.startsWith('renewal-') && !n.id.startsWith('doc-') && 
@@ -509,7 +452,6 @@ const Notifications = () => {
   };
 
   const deleteNotification = async (id) => {
-    // If it's a database notification, delete from database
     if (!id.startsWith('org-') && !id.startsWith('payment-') && 
         !id.startsWith('renewal-') && !id.startsWith('doc-') && 
         !id.startsWith('missing-')) {
@@ -527,14 +469,11 @@ const Notifications = () => {
     
     const updatedNotifications = notifications.filter(notif => notif.id !== id);
     setNotifications(updatedNotifications);
-    
-    // Update unread count
     setUnreadCount(updatedNotifications.filter(n => !n.read).length);
     showAlert('success', 'Notification deleted');
   };
 
   const deleteAllRead = async () => {
-    // Delete read database notifications
     const readDbNotifications = notifications
       .filter(n => n.read && !n.id.startsWith('org-') && !n.id.startsWith('payment-') && 
                   !n.id.startsWith('renewal-') && !n.id.startsWith('doc-') && 
@@ -554,7 +493,6 @@ const Notifications = () => {
     
     const updatedNotifications = notifications.filter(notif => !notif.read);
     setNotifications(updatedNotifications);
-    
     showAlert('success', 'Read notifications cleared');
   };
 
@@ -569,8 +507,20 @@ const Notifications = () => {
     }
   };
 
+  const handleReupload = (notification) => {
+    setReuploadDialog({
+      open: true,
+      notification
+    });
+  };
+
+  const handleReuploadSuccess = () => {
+    showAlert('success', 'Document re-uploaded successfully');
+    fetchNotifications(); // Refresh notifications
+  };
+
   const filteredNotifications = notifications.filter(notif => {
-    if (tabValue === 0) return true; // All
+    if (tabValue === 0) return true;
     if (tabValue === 1) return notif.category === 'registration';
     if (tabValue === 2) return notif.category === 'payment';
     if (tabValue === 3) return notif.category === 'document';
@@ -599,15 +549,20 @@ const Notifications = () => {
         </Alert>
       </Snackbar>
 
+      <ReuploadDialog
+        open={reuploadDialog.open}
+        onClose={() => setReuploadDialog({ open: false, notification: null })}
+        notification={reuploadDialog.notification}
+        organization={organization}
+        onSuccess={handleReuploadSuccess}
+      />
+
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', gap: 3 }}>
-          {/* Sidebar */}
           <Sidebar unreadCount={unreadCount} />
 
-          {/* Main Content */}
           <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '16px' }}>
             <StyledPaper>
-              {/* Header with Refresh Button */}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <NotificationsActiveIcon sx={{ color: '#15e420', fontSize: 32 }} />
@@ -655,7 +610,6 @@ const Notifications = () => {
                 </Box>
               </Box>
 
-              {/* Tabs */}
               <Tabs 
                 value={tabValue} 
                 onChange={handleTabChange}
@@ -677,7 +631,6 @@ const Notifications = () => {
                 <Tab label="Other" />
               </Tabs>
 
-              {/* All Notifications Tab */}
               <TabPanel value={tabValue} index={0}>
                 {filteredNotifications.length === 0 ? (
                   <Box sx={{ textAlign: 'center', py: 8 }}>
@@ -694,183 +647,18 @@ const Notifications = () => {
                     {filteredNotifications.map((notification) => (
                       <NotificationItem
                         key={notification.id}
-                        read={notification.read}
-                        secondaryAction={
-                          <Box>
-                            <IconButton
-                              edge="end"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                markAsRead(notification.id);
-                              }}
-                              disabled={notification.read}
-                              sx={{ mr: 1, color: '#15e420' }}
-                            >
-                              <DoneAllIcon />
-                            </IconButton>
-                            <IconButton
-                              edge="end"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteNotification(notification.id);
-                              }}
-                              sx={{ color: '#dc3545' }}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Box>
-                        }
-                        onClick={() => handleNotificationClick(notification)}
-                        sx={{ cursor: 'pointer' }}
-                      >
-                        <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: 'transparent' }}>
-                            {getNotificationIcon(notification.type)}
-                          </Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="subtitle1"
-                              sx={{
-                                fontWeight: notification.read ? 400 : 600,
-                                color: notification.read ? '#666' : '#333'
-                              }}
-                            >
-                              {notification.title}
-                              {notification.isFromAdmin && (
-                                <Chip
-                                  label="Admin"
-                                  size="small"
-                                  sx={{
-                                    ml: 1,
-                                    height: 20,
-                                    fontSize: '10px',
-                                    backgroundColor: '#15e420',
-                                    color: 'white'
-                                  }}
-                                />
-                              )}
-                            </Typography>
-                          }
-                          secondary={
-                            <Box>
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  color: '#666',
-                                  mb: 0.5
-                                }}
-                              >
-                                {notification.message}
-                              </Typography>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                                <AccessTimeIcon sx={{ fontSize: 14, color: '#999' }} />
-                                <Typography variant="caption" sx={{ color: '#999' }}>
-                                  {getTimeAgo(notification.timestamp)}
-                                </Typography>
-                                <Chip
-                                  label={notification.category}
-                                  size="small"
-                                  sx={{
-                                    height: 20,
-                                    fontSize: '10px',
-                                    backgroundColor: 
-                                      notification.category === 'payment' ? '#e3f2fd' :
-                                      notification.category === 'registration' ? '#e8f5e9' :
-                                      notification.category === 'document' ? '#fff3e0' : '#f3e5f5',
-                                    color: 
-                                      notification.category === 'payment' ? '#1976d2' :
-                                      notification.category === 'registration' ? '#2e7d32' :
-                                      notification.category === 'document' ? '#ed6c02' : '#9c27b0'
-                                  }}
-                                />
-                              </Box>
-                            </Box>
-                          }
-                        />
-                      </NotificationItem>
+                        notification={notification}
+                        onMarkRead={markAsRead}
+                        onDelete={deleteNotification}
+                        onClick={handleNotificationClick}
+                        showReuploadButton={true}
+                        onReupload={handleReupload}
+                      />
                     ))}
                   </List>
                 )}
               </TabPanel>
 
-              {/* Other tabs remain similar but with filteredNotifications */}
-              <TabPanel value={tabValue} index={1}>
-                {/* Registration tab content */}
-                {filteredNotifications.length === 0 ? (
-                  <Box sx={{ textAlign: 'center', py: 8 }}>
-                    <BusinessIcon sx={{ fontSize: 64, color: '#ccc', mb: 2 }} />
-                    <Typography variant="h6" sx={{ color: '#666' }}>
-                      No registration notifications
-                    </Typography>
-                  </Box>
-                ) : (
-                  <List>
-                    {filteredNotifications.map((notification) => (
-                      <NotificationItem
-                        key={notification.id}
-                        read={notification.read}
-                        secondaryAction={
-                          <Box>
-                            <IconButton
-                              edge="end"
-                              onClick={() => markAsRead(notification.id)}
-                              disabled={notification.read}
-                              sx={{ mr: 1, color: '#15e420' }}
-                            >
-                              <DoneAllIcon />
-                            </IconButton>
-                            <IconButton
-                              edge="end"
-                              onClick={() => deleteNotification(notification.id)}
-                              sx={{ color: '#dc3545' }}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Box>
-                        }
-                        onClick={() => handleNotificationClick(notification)}
-                        sx={{ cursor: 'pointer' }}
-                      >
-                        <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: 'transparent' }}>
-                            {getNotificationIcon(notification.type)}
-                          </Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="subtitle1"
-                              sx={{
-                                fontWeight: notification.read ? 400 : 600,
-                                color: notification.read ? '#666' : '#333'
-                              }}
-                            >
-                              {notification.title}
-                            </Typography>
-                          }
-                          secondary={
-                            <Box>
-                              <Typography variant="body2" sx={{ color: '#666', mb: 0.5 }}>
-                                {notification.message}
-                              </Typography>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <AccessTimeIcon sx={{ fontSize: 14, color: '#999' }} />
-                                <Typography variant="caption" sx={{ color: '#999' }}>
-                                  {getTimeAgo(notification.timestamp)}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          }
-                        />
-                      </NotificationItem>
-                    ))}
-                  </List>
-                )}
-              </TabPanel>
-
-              {/* Registration Tab */}
               <TabPanel value={tabValue} index={1}>
                 {filteredNotifications.length === 0 ? (
                   <Box sx={{ textAlign: 'center', py: 8 }}>
@@ -884,67 +672,18 @@ const Notifications = () => {
                     {filteredNotifications.map((notification) => (
                       <NotificationItem
                         key={notification.id}
-                        read={notification.read}
-                        secondaryAction={
-                          <Box>
-                            <IconButton
-                              edge="end"
-                              onClick={() => markAsRead(notification.id)}
-                              disabled={notification.read}
-                              sx={{ mr: 1, color: '#15e420' }}
-                            >
-                              <DoneAllIcon />
-                            </IconButton>
-                            <IconButton
-                              edge="end"
-                              onClick={() => deleteNotification(notification.id)}
-                              sx={{ color: '#dc3545' }}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Box>
-                        }
-                        onClick={() => handleNotificationClick(notification)}
-                        sx={{ cursor: 'pointer' }}
-                      >
-                        <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: 'transparent' }}>
-                            {getNotificationIcon(notification.type)}
-                          </Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="subtitle1"
-                              sx={{
-                                fontWeight: notification.read ? 400 : 600,
-                                color: notification.read ? '#666' : '#333'
-                              }}
-                            >
-                              {notification.title}
-                            </Typography>
-                          }
-                          secondary={
-                            <Box>
-                              <Typography variant="body2" sx={{ color: '#666', mb: 0.5 }}>
-                                {notification.message}
-                              </Typography>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <AccessTimeIcon sx={{ fontSize: 14, color: '#999' }} />
-                                <Typography variant="caption" sx={{ color: '#999' }}>
-                                  {getTimeAgo(notification.timestamp)}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          }
-                        />
-                      </NotificationItem>
+                        notification={notification}
+                        onMarkRead={markAsRead}
+                        onDelete={deleteNotification}
+                        onClick={handleNotificationClick}
+                        showReuploadButton={true}
+                        onReupload={handleReupload}
+                      />
                     ))}
                   </List>
                 )}
               </TabPanel>
 
-              {/* Payments Tab */}
               <TabPanel value={tabValue} index={2}>
                 {filteredNotifications.length === 0 ? (
                   <Box sx={{ textAlign: 'center', py: 8 }}>
@@ -958,67 +697,17 @@ const Notifications = () => {
                     {filteredNotifications.map((notification) => (
                       <NotificationItem
                         key={notification.id}
-                        read={notification.read}
-                        secondaryAction={
-                          <Box>
-                            <IconButton
-                              edge="end"
-                              onClick={() => markAsRead(notification.id)}
-                              disabled={notification.read}
-                              sx={{ mr: 1, color: '#15e420' }}
-                            >
-                              <DoneAllIcon />
-                            </IconButton>
-                            <IconButton
-                              edge="end"
-                              onClick={() => deleteNotification(notification.id)}
-                              sx={{ color: '#dc3545' }}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Box>
-                        }
-                        onClick={() => handleNotificationClick(notification)}
-                        sx={{ cursor: 'pointer' }}
-                      >
-                        <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: 'transparent' }}>
-                            {getNotificationIcon(notification.type)}
-                          </Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="subtitle1"
-                              sx={{
-                                fontWeight: notification.read ? 400 : 600,
-                                color: notification.read ? '#666' : '#333'
-                              }}
-                            >
-                              {notification.title}
-                            </Typography>
-                          }
-                          secondary={
-                            <Box>
-                              <Typography variant="body2" sx={{ color: '#666', mb: 0.5 }}>
-                                {notification.message}
-                              </Typography>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <AccessTimeIcon sx={{ fontSize: 14, color: '#999' }} />
-                                <Typography variant="caption" sx={{ color: '#999' }}>
-                                  {getTimeAgo(notification.timestamp)}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          }
-                        />
-                      </NotificationItem>
+                        notification={notification}
+                        onMarkRead={markAsRead}
+                        onDelete={deleteNotification}
+                        onClick={handleNotificationClick}
+                        showReuploadButton={false}
+                      />
                     ))}
                   </List>
                 )}
               </TabPanel>
 
-              {/* Documents Tab */}
               <TabPanel value={tabValue} index={3}>
                 {filteredNotifications.length === 0 ? (
                   <Box sx={{ textAlign: 'center', py: 8 }}>
@@ -1032,97 +721,24 @@ const Notifications = () => {
                     {filteredNotifications.map((notification) => (
                       <NotificationItem
                         key={notification.id}
-                        read={notification.read}
-                        secondaryAction={
-                          <Box>
-                            <IconButton
-                              edge="end"
-                              onClick={() => markAsRead(notification.id)}
-                              disabled={notification.read}
-                              sx={{ mr: 1, color: '#15e420' }}
-                            >
-                              <DoneAllIcon />
-                            </IconButton>
-                            <IconButton
-                              edge="end"
-                              onClick={() => deleteNotification(notification.id)}
-                              sx={{ color: '#dc3545' }}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Box>
-                        }
-                        onClick={() => handleNotificationClick(notification)}
-                        sx={{ cursor: 'pointer' }}
-                      >
-                        <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: 'transparent' }}>
-                            {getNotificationIcon(notification.type)}
-                          </Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="subtitle1"
-                              sx={{
-                                fontWeight: notification.read ? 400 : 600,
-                                color: notification.read ? '#666' : '#333'
-                              }}
-                            >
-                              {notification.title}
-                            </Typography>
-                          }
-                          secondary={
-                            <Box>
-                              <Typography variant="body2" sx={{ color: '#666', mb: 0.5 }}>
-                                {notification.message}
-                              </Typography>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                                <AccessTimeIcon sx={{ fontSize: 14, color: '#999' }} />
-                                <Typography variant="caption" sx={{ color: '#999' }}>
-                                  {getTimeAgo(notification.timestamp)}
-                                </Typography>
-                                {notification.type === 'document_rejected' && (
-                                  <Chip
-                                    label="Rejected"
-                                    size="small"
-                                    sx={{
-                                      height: 20,
-                                      fontSize: '10px',
-                                      backgroundColor: '#ffebee',
-                                      color: '#c62828'
-                                    }}
-                                  />
-                                )}
-                                {notification.type === 'document_approved' && (
-                                  <Chip
-                                    label="Approved"
-                                    size="small"
-                                    sx={{
-                                      height: 20,
-                                      fontSize: '10px',
-                                      backgroundColor: '#e8f5e9',
-                                      color: '#2e7d32'
-                                    }}
-                                  />
-                                )}
-                              </Box>
-                            </Box>
-                          }
-                        />
-                      </NotificationItem>
+                        notification={notification}
+                        onMarkRead={markAsRead}
+                        onDelete={deleteNotification}
+                        onClick={handleNotificationClick}
+                        showReuploadButton={true}
+                        onReupload={handleReupload}
+                      />
                     ))}
                   </List>
                 )}
               </TabPanel>
 
-              {/* Renewals Tab */}
               <TabPanel value={tabValue} index={4}>
                 {filteredNotifications.length === 0 ? (
                   <Box sx={{ textAlign: 'center', py: 8 }}>
                     <AccessTimeIcon sx={{ fontSize: 64, color: '#ccc', mb: 2 }} />
                     <Typography variant="h6" sx={{ color: '#666' }}>
-                      No renewal notifications
+                      No other notifications
                     </Typography>
                   </Box>
                 ) : (
@@ -1130,61 +746,12 @@ const Notifications = () => {
                     {filteredNotifications.map((notification) => (
                       <NotificationItem
                         key={notification.id}
-                        read={notification.read}
-                        secondaryAction={
-                          <Box>
-                            <IconButton
-                              edge="end"
-                              onClick={() => markAsRead(notification.id)}
-                              disabled={notification.read}
-                              sx={{ mr: 1, color: '#15e420' }}
-                            >
-                              <DoneAllIcon />
-                            </IconButton>
-                            <IconButton
-                              edge="end"
-                              onClick={() => deleteNotification(notification.id)}
-                              sx={{ color: '#dc3545' }}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Box>
-                        }
-                        onClick={() => handleNotificationClick(notification)}
-                        sx={{ cursor: 'pointer' }}
-                      >
-                        <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: 'transparent' }}>
-                            {getNotificationIcon(notification.type)}
-                          </Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="subtitle1"
-                              sx={{
-                                fontWeight: notification.read ? 400 : 600,
-                                color: notification.read ? '#666' : '#333'
-                              }}
-                            >
-                              {notification.title}
-                            </Typography>
-                          }
-                          secondary={
-                            <Box>
-                              <Typography variant="body2" sx={{ color: '#666', mb: 0.5 }}>
-                                {notification.message}
-                              </Typography>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <AccessTimeIcon sx={{ fontSize: 14, color: '#999' }} />
-                                <Typography variant="caption" sx={{ color: '#999' }}>
-                                  {getTimeAgo(notification.timestamp)}
-                                </Typography>
-                              </Box>
-                            </Box>
-                          }
-                        />
-                      </NotificationItem>
+                        notification={notification}
+                        onMarkRead={markAsRead}
+                        onDelete={deleteNotification}
+                        onClick={handleNotificationClick}
+                        showReuploadButton={false}
+                      />
                     ))}
                   </List>
                 )}

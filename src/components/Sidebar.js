@@ -113,12 +113,120 @@ const StyledBadge = styled(Badge)(({ theme }) => ({
   }
 }));
 
-const Sidebar = ({ onLogout, unreadCount = 0 }) => {
+const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
+  const [user, setUser] = useState(null);
+  const [organization, setOrganization] = useState(null);
+
+  useEffect(() => {
+    checkUser();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchOrganizationData();
+    }
+  }, [user]);
+
+  // Set up real-time subscription for new notifications
+  useEffect(() => {
+    if (organization?.id) {
+      // Subscribe to new notifications
+      const subscription = supabase
+        .channel('sidebar_notifications_channel')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'organization_notifications',
+            filter: `organization_id=eq.${organization.id}`
+          },
+          (payload) => {
+            // Increment unread count when new notification arrives
+            setUnreadCount(prev => prev + 1);
+          }
+        )
+        .subscribe();
+
+      // Also subscribe to updates (when notifications are marked as read)
+      const updateSubscription = supabase
+        .channel('sidebar_notifications_update_channel')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'organization_notifications',
+            filter: `organization_id=eq.${organization.id}`
+          },
+          () => {
+            // Refresh unread count when notifications are updated
+            fetchUnreadCount();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        subscription.unsubscribe();
+        updateSubscription.unsubscribe();
+      };
+    }
+  }, [organization?.id]);
+
+  const checkUser = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUser(user);
+      }
+    } catch (error) {
+      console.error('Error checking user:', error);
+    }
+  };
+
+  const fetchOrganizationData = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching organization:', error);
+      }
+
+      if (data) {
+        setOrganization(data);
+        await fetchUnreadCount(data.id);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
+  const fetchUnreadCount = async (orgId = organization?.id) => {
+    if (!orgId) return;
+    
+    try {
+      const { count, error } = await supabase
+        .from('organization_notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', orgId)
+        .eq('read', false);
+
+      if (error) throw error;
+      setUnreadCount(count || 0);
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+    }
+  };
 
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },

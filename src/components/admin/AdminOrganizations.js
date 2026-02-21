@@ -28,7 +28,12 @@ import {
   Card,
   CardContent,
   Grid,
-  Avatar
+  Avatar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Tooltip
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -36,9 +41,11 @@ import {
   CheckCircle as CheckCircleIcon,
   Pending as PendingIcon,
   Cancel as CancelIcon,
-  FilterList as FilterIcon,
   Refresh as RefreshIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
+  Verified as VerifiedIcon,
+  Warning as WarningIcon,
+  Description as DescriptionIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminSidebar from './AdminSidebar';
@@ -54,6 +61,17 @@ const StyledCard = styled(Card)(({ theme }) => ({
   }
 }));
 
+const documentFields = [
+  { key: 'cover_letter_path', name: 'Cover Letter', required: true },
+  { key: 'memorandum_path', name: 'Memorandum', required: true },
+  { key: 'registration_cert_path', name: 'Registration Certificate', required: true },
+  { key: 'incorporation_cert_path', name: 'Incorporation Certificate', required: true },
+  { key: 'premises_cert_path', name: 'Premises Certificate', required: true },
+  { key: 'company_logo_path', name: 'Company Logo', required: true },
+  { key: 'form_c07_path', name: 'Form C07', required: true },
+  { key: 'id_document_path', name: 'ID Document', required: true }
+];
+
 const AdminOrganizations = ({ filter = 'all' }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -64,6 +82,7 @@ const AdminOrganizations = ({ filter = 'all' }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState(filter);
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
+  const [approveDialog, setApproveDialog] = useState({ open: false, org: null, documentStatus: {} });
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -111,13 +130,73 @@ const AdminOrganizations = ({ filter = 'all' }) => {
 
       if (error) throw error;
 
-      setOrganizations(data || []);
+      // Fetch document rejection notifications for each organization
+      const orgsWithDocStatus = await Promise.all(
+        (data || []).map(async (org) => {
+          const docStatus = await checkDocumentStatus(org.id);
+          return { ...org, documentStatus: docStatus };
+        })
+      );
+
+      setOrganizations(orgsWithDocStatus || []);
       setTotalCount(count || 0);
     } catch (error) {
       console.error('Error fetching organizations:', error);
       showAlert('error', 'Failed to load organizations');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkDocumentStatus = async (organizationId) => {
+    try {
+      // Fetch the organization's documents
+      const { data: org, error } = await supabase
+        .from('organizations')
+        .select(documentFields.map(f => f.key).join(','))
+        .eq('id', organizationId)
+        .single();
+
+      if (error) throw error;
+
+      // Fetch rejection notifications for this organization
+      const { data: notifications } = await supabase
+        .from('organization_notifications')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .in('type', ['document_rejected', 'document_approved'])
+        .order('created_at', { ascending: false });
+
+      const documentStatus = {};
+
+      documentFields.forEach(field => {
+        const hasDocument = !!org[field.key];
+        
+        // Check if document was recently rejected
+        const rejectedNotification = notifications?.find(n => 
+          n.type === 'document_rejected' && n.title?.includes(field.name)
+        );
+
+        // Check if document was recently approved
+        const approvedNotification = notifications?.find(n => 
+          n.type === 'document_approved' && n.title?.includes(field.name)
+        );
+
+        if (!hasDocument) {
+          documentStatus[field.key] = 'missing';
+        } else if (rejectedNotification && (!approvedNotification || new Date(rejectedNotification.created_at) > new Date(approvedNotification.created_at))) {
+          documentStatus[field.key] = 'rejected';
+        } else if (approvedNotification) {
+          documentStatus[field.key] = 'approved';
+        } else {
+          documentStatus[field.key] = 'pending';
+        }
+      });
+
+      return documentStatus;
+    } catch (error) {
+      console.error('Error checking document status:', error);
+      return {};
     }
   };
 
@@ -176,6 +255,104 @@ const AdminOrganizations = ({ filter = 'all' }) => {
     navigate(`/admin/organizations/${id}`);
   };
 
+  const checkAllDocumentsApproved = (documentStatus) => {
+    if (!documentStatus) return false;
+    
+    // Check if all required documents are approved
+    const allApproved = documentFields.every(field => 
+      documentStatus[field.key] === 'approved'
+    );
+    
+    return allApproved;
+  };
+
+  const handleApproveClick = (org) => {
+    const allApproved = checkAllDocumentsApproved(org.documentStatus);
+    
+    if (!allApproved) {
+      // Show warning dialog with document status
+      setApproveDialog({ open: true, org, documentStatus: org.documentStatus });
+    } else {
+      // Proceed with approval
+      confirmApproveOrganization(org);
+    }
+  };
+
+  const confirmApproveOrganization = async (org) => {
+    try {
+      const { error } = await supabase
+        .from('organizations')
+        .update({ status: 'approved', updated_at: new Date().toISOString() })
+        .eq('id', org.id);
+
+      if (error) throw error;
+
+      // Create notification for the organization
+      await supabase
+        .from('organization_notifications')
+        .insert([{
+          organization_id: org.id,
+          type: 'success',
+          title: 'Organization Approved',
+          message: 'Your organization has been fully approved! You can now access all features.',
+          category: 'registration',
+          action_url: '/dashboard',
+          read: false
+        }]);
+
+      showAlert('success', `${org.company_name} has been approved successfully`);
+      fetchOrganizations(); // Refresh the list
+      fetchStats(); // Refresh stats
+    } catch (error) {
+      console.error('Error approving organization:', error);
+      showAlert('error', 'Failed to approve organization');
+    }
+  };
+
+  const handleRejectOrganization = async (org) => {
+    try {
+      const { error } = await supabase
+        .from('organizations')
+        .update({ status: 'rejected', updated_at: new Date().toISOString() })
+        .eq('id', org.id);
+
+      if (error) throw error;
+
+      // Create notification for the organization
+      await supabase
+        .from('organization_notifications')
+        .insert([{
+          organization_id: org.id,
+          type: 'error',
+          title: 'Organization Rejected',
+          message: 'Your organization registration has been rejected. Please contact support for more information.',
+          category: 'registration',
+          action_url: '/contact',
+          read: false
+        }]);
+
+      showAlert('success', `${org.company_name} has been rejected`);
+      fetchOrganizations(); // Refresh the list
+      fetchStats(); // Refresh stats
+      setApproveDialog({ open: false, org: null, documentStatus: {} });
+    } catch (error) {
+      console.error('Error rejecting organization:', error);
+      showAlert('error', 'Failed to reject organization');
+    }
+  };
+
+  const getDocumentStatusSummary = (documentStatus) => {
+    if (!documentStatus) return { approved: 0, pending: 0, rejected: 0, missing: 0 };
+    
+    const counts = { approved: 0, pending: 0, rejected: 0, missing: 0 };
+    
+    Object.values(documentStatus).forEach(status => {
+      counts[status]++;
+    });
+    
+    return counts;
+  };
+
   const getStatusChip = (status) => {
     const config = {
       pending: { color: 'warning', icon: <PendingIcon />, label: 'Pending' },
@@ -216,11 +393,93 @@ const AdminOrganizations = ({ filter = 'all' }) => {
         </Alert>
       </Snackbar>
 
+      {/* Approval Warning Dialog */}
+      <Dialog 
+        open={approveDialog.open} 
+        onClose={() => setApproveDialog({ open: false, org: null, documentStatus: {} })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
+          Cannot Approve Organization
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            All documents must be approved before approving the organization.
+          </Alert>
+          
+          <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+            Document Status for {approveDialog.org?.company_name}:
+          </Typography>
+          
+          <Box sx={{ mt: 2 }}>
+            {documentFields.map(field => {
+              const status = approveDialog.documentStatus?.[field.key] || 'missing';
+              return (
+                <Box 
+                  key={field.key}
+                  sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    mb: 1,
+                    p: 1,
+                    bgcolor: status === 'approved' ? '#e8f5e9' : 
+                            status === 'rejected' ? '#ffebee' : 
+                            status === 'missing' ? '#f5f5f5' : '#fff3e0',
+                    borderRadius: 1
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <DescriptionIcon fontSize="small" />
+                    <Typography variant="body2">{field.name}</Typography>
+                  </Box>
+                  <Chip
+                    size="small"
+                    label={status}
+                    icon={
+                      status === 'approved' ? <CheckCircleIcon /> :
+                      status === 'rejected' ? <CancelIcon /> :
+                      status === 'missing' ? <WarningIcon /> :
+                      <PendingIcon />
+                    }
+                    color={
+                      status === 'approved' ? 'success' :
+                      status === 'rejected' ? 'error' :
+                      status === 'missing' ? 'default' :
+                      'warning'
+                    }
+                    sx={{ textTransform: 'capitalize' }}
+                  />
+                </Box>
+              );
+            })}
+          </Box>
+
+          {approveDialog.org?.status === 'pending' && (
+            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+              <Button 
+                variant="outlined" 
+                color="error"
+                onClick={() => handleRejectOrganization(approveDialog.org)}
+              >
+                Reject Organization
+              </Button>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setApproveDialog({ open: false, org: null, documentStatus: {} })}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Container maxWidth="xl" sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', gap: 3 }}>
           <AdminSidebar />
           
-           <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '16px' }}>
+          <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '16px' }}>
             {/* Header */}
             <Box sx={{ mb: 4 }}>
               <Typography 
@@ -382,42 +641,125 @@ const AdminOrganizations = ({ filter = 'all' }) => {
                       <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Email</TableCell>
                       <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>CAC Number</TableCell>
                       <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Registration Date</TableCell>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Documents</TableCell>
                       <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Status</TableCell>
                       <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {organizations.map((org) => (
-                      <TableRow key={org.id} hover>
-                        <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
-                          {org.company_name}
-                        </TableCell>
-                        <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
-                          {org.email}
-                        </TableCell>
-                        <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
-                          {org.cac_number || 'N/A'}
-                        </TableCell>
-                        <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
-                          {new Date(org.created_at).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          {getStatusChip(org.status)}
-                        </TableCell>
-                        <TableCell>
-                          <IconButton
-                            size="small"
-                            onClick={() => handleViewOrganization(org.id)}
-                            sx={{ color: '#15e420' }}
-                          >
-                            <VisibilityIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {organizations.map((org) => {
+                      const docSummary = getDocumentStatusSummary(org.documentStatus);
+                      const allApproved = checkAllDocumentsApproved(org.documentStatus);
+                      
+                      return (
+                        <TableRow key={org.id} hover>
+                          <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
+                            {org.company_name}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
+                            {org.email}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
+                            {org.cac_number || 'N/A'}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
+                            {new Date(org.created_at).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            <Tooltip title={
+                              <Box>
+                                <Typography variant="caption" display="block">
+                                  ✅ Approved: {docSummary.approved}
+                                </Typography>
+                                <Typography variant="caption" display="block">
+                                  ⏳ Pending: {docSummary.pending}
+                                </Typography>
+                                <Typography variant="caption" display="block">
+                                  ❌ Rejected: {docSummary.rejected}
+                                </Typography>
+                                <Typography variant="caption" display="block">
+                                  📄 Missing: {docSummary.missing}
+                                </Typography>
+                              </Box>
+                            }>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                {docSummary.rejected > 0 && (
+                                  <Chip
+                                    size="small"
+                                    icon={<CancelIcon />}
+                                    label={`${docSummary.rejected} rejected`}
+                                    color="error"
+                                    sx={{ height: 24, fontSize: '11px' }}
+                                  />
+                                )}
+                                {docSummary.missing > 0 && (
+                                  <Chip
+                                    size="small"
+                                    icon={<WarningIcon />}
+                                    label={`${docSummary.missing} missing`}
+                                    color="default"
+                                    sx={{ height: 24, fontSize: '11px' }}
+                                  />
+                                )}
+                                {docSummary.pending > 0 && (
+                                  <Chip
+                                    size="small"
+                                    icon={<PendingIcon />}
+                                    label={`${docSummary.pending} pending`}
+                                    color="warning"
+                                    sx={{ height: 24, fontSize: '11px' }}
+                                  />
+                                )}
+                                {allApproved && (
+                                  <Chip
+                                    size="small"
+                                    icon={<VerifiedIcon />}
+                                    label="All approved"
+                                    color="success"
+                                    sx={{ height: 24, fontSize: '11px' }}
+                                  />
+                                )}
+                              </Box>
+                            </Tooltip>
+                          </TableCell>
+                          <TableCell>
+                            {getStatusChip(org.status)}
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleViewOrganization(org.id)}
+                                sx={{ color: '#15e420' }}
+                              >
+                                <VisibilityIcon />
+                              </IconButton>
+                              {org.status === 'pending' && (
+                                <>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => handleApproveClick(org)}
+                                    sx={{ color: allApproved ? '#28a745' : '#ffc107' }}
+                                  >
+                                    <CheckCircleIcon />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => handleRejectOrganization(org)}
+                                    sx={{ color: '#dc3545' }}
+                                  >
+                                    <CancelIcon />
+                                  </IconButton>
+                                </>
+                              )}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     {organizations.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                        <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
                           <Typography sx={{ color: '#666' }}>
                             No organizations found
                           </Typography>
