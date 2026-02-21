@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+
 import './Auth.css';
 
 const ResetPassword = () => {
@@ -9,12 +10,23 @@ const ResetPassword = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState(null);
+  const [session, setSession] = useState(null);
 
   useEffect(() => {
-    // Check if we have the access token
+    // Get the hash from URL
     const hash = window.location.hash;
-    if (!hash || !hash.includes('access_token')) {
-      showAlert('error', 'Invalid or expired reset link');
+    
+    if (hash && hash.includes('access_token')) {
+      // Supabase automatically handles the session from the hash
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          setSession(session);
+        } else {
+          showAlert('error', 'Invalid or expired reset link. Please request a new one.');
+        }
+      });
+    } else {
+      showAlert('error', 'Invalid or expired reset link. Please request a new one.');
     }
   }, []);
 
@@ -31,6 +43,11 @@ const ResetPassword = () => {
       return;
     }
 
+    if (password.length < 6) {
+      showAlert('error', 'Password must be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -41,7 +58,10 @@ const ResetPassword = () => {
       if (error) throw error;
 
       showAlert('success', 'Password updated successfully!');
-      setTimeout(() => {
+      
+      // Sign out after password reset (optional)
+      setTimeout(async () => {
+        await supabase.auth.signOut();
         navigate('/login');
       }, 2000);
     } catch (error) {
@@ -65,37 +85,49 @@ const ResetPassword = () => {
       <main className="auth-container">
         <div className="auth-form">
           <h2>Reset Password</h2>
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="password">New Password</label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                placeholder="New Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength="6"
-              />
+          {!session ? (
+            <div className="alert alert-error">
+              <p>Invalid or expired reset link. Please request a new one.</p>
+              <Link to="/forgot-password" className="btn" style={{ marginTop: '1rem', display: 'inline-block' }}>
+                Request New Link
+              </Link>
             </div>
-            <div className="form-group">
-              <label htmlFor="confirmPassword">Confirm New Password</label>
-              <input
-                type="password"
-                id="confirmPassword"
-                name="confirmPassword"
-                placeholder="Confirm New Password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                minLength="6"
-              />
-            </div>
-            <button type="submit" className="btn" disabled={loading}>
-              {loading ? 'Updating...' : 'Update Password'}
-            </button>
-          </form>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label htmlFor="password">New Password</label>
+                <input
+                  type="password"
+                  id="password"
+                  name="password"
+                  placeholder="New Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength="6"
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="confirmPassword">Confirm New Password</label>
+                <input
+                  type="password"
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  placeholder="Confirm New Password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength="6"
+                />
+              </div>
+              <button type="submit" className="btn" disabled={loading}>
+                {loading ? 'Updating...' : 'Update Password'}
+              </button>
+            </form>
+          )}
+          <div className="auth-links">
+            <p><Link to="/login">Back to Login</Link></p>
+          </div>
         </div>
       </main>
     </>

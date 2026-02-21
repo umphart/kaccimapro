@@ -18,13 +18,17 @@ const ForgotPassword = () => {
     setLoading(true);
 
     try {
+      // Get the current site URL (works in both development and production)
+      const siteUrl = window.location.origin;
+      
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + '/reset-password',
+        redirectTo: `${siteUrl}/reset-password`,
       });
 
       if (error) throw error;
 
       showAlert('success', 'Password reset instructions sent to your email!');
+      setEmail(''); // Clear the email field
     } catch (error) {
       showAlert('error', error.message);
     } finally {
