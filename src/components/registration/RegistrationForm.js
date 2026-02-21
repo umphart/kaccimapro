@@ -49,7 +49,7 @@ const handleSubmitRegistration = async () => {
   }
 };
 
-  return (
+return (
     <div className="registration-container">
       {alert && (
         <div className={`mui-alert mui-alert-${alert.type}`}>
