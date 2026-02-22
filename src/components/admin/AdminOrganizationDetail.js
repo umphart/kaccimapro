@@ -4,7 +4,7 @@ import { supabase } from '../../supabaseClient';
 import { 
   sendOrganizationApproved,
   sendOrganizationRejected 
-} from '../../utils/emailService';
+} from '../../utils/emailService'; // Updated import - single service
 import {
   Box,
   Container,

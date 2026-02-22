@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { 
-  sendPaymentApproved, 
-  sendPaymentRejected 
+  sendOrganizationApproved // When payment is approved, organization is approved
 } from '../../utils/emailService';
 
 import {
@@ -65,10 +64,9 @@ const AdminPaymentDetail = () => {
   const [rejectReason, setRejectReason] = useState('');
   const [receiptUrl, setReceiptUrl] = useState(null);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
-  const [processing, setProcessing] = useState(false); // Add processing state
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
-    // Only fetch if id exists and is valid
     if (id && id !== 'undefined') {
       fetchPaymentDetails();
     } else {
@@ -89,12 +87,10 @@ const AdminPaymentDetail = () => {
   const fetchPaymentDetails = async () => {
     setLoading(true);
     try {
-      // Validate id before making request
       if (!id || id === 'undefined') {
         throw new Error('Invalid payment ID');
       }
 
-      // Fetch payment with organization details
       const { data: paymentData, error: paymentError } = await supabase
         .from('payments')
         .select(`
@@ -112,15 +108,11 @@ const AdminPaymentDetail = () => {
         .single();
 
       if (paymentError) throw paymentError;
-
-      if (!paymentData) {
-        throw new Error('Payment not found');
-      }
+      if (!paymentData) throw new Error('Payment not found');
 
       setPayment(paymentData);
       setOrganization(paymentData.organizations);
 
-      // Get receipt URL if exists
       if (paymentData.receipt_path) {
         const bucket = paymentData.receipt_path.includes('receipts') ? 'documents' : 'receipts';
         const { data } = supabase.storage
@@ -138,19 +130,17 @@ const AdminPaymentDetail = () => {
   };
 
   const handleApprove = async () => {
-    // Prevent double submission
     if (processing) return;
     
     try {
       setProcessing(true);
       
-      // Validate id
       if (!id || id === 'undefined') {
         throw new Error('Invalid payment ID');
       }
 
-      // Update payment status in Supabase
-      const { error } = await supabase
+      // Update payment status
+      const { error: paymentError } = await supabase
         .from('payments')
         .update({ 
           status: 'approved',
@@ -158,24 +148,9 @@ const AdminPaymentDetail = () => {
         })
         .eq('id', id);
 
-      if (error) throw error;
+      if (paymentError) throw paymentError;
 
-      // Send email notification via EmailJS
-      let emailResult = { success: true };
-      if (organization && organization.email) {
-        try {
-          emailResult = await sendPaymentApproved(
-            organization.email,
-            organization.company_name,
-            payment.amount
-          );
-        } catch (emailError) {
-          console.warn('Email notification failed:', emailError);
-          emailResult = { success: false, error: emailError.message };
-        }
-      }
-
-      // Create notification in Supabase
+      // Create notification for payment approval
       if (organization) {
         await supabase
           .from('organization_notifications')
@@ -189,17 +164,46 @@ const AdminPaymentDetail = () => {
           }]);
       }
 
-      showAlert('success', `Payment approved successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
-      
-      // Update organization status if this is the first approved payment
+      // IMPORTANT: When payment is approved, automatically approve the organization
       if (organization && organization.status === 'pending') {
-        await supabase
+        // Update organization status
+        const { error: orgError } = await supabase
           .from('organizations')
-          .update({ status: 'approved' })
+          .update({ 
+            status: 'approved',
+            updated_at: new Date().toISOString()
+          })
           .eq('id', organization.id);
+
+        if (orgError) throw orgError;
+
+        // Create notification for organization approval
+        await supabase
+          .from('organization_notifications')
+          .insert([{
+            organization_id: organization.id,
+            type: 'success',
+            title: 'Organization Approved',
+            message: 'Your organization has been fully approved! You can now access all features.',
+            category: 'registration',
+            action_url: '/dashboard',
+            read: false
+          }]);
+
+        // Send organization approval email
+        let emailResult = { success: true };
+        try {
+          emailResult = await sendOrganizationApproved(
+            organization.email,
+            organization.company_name
+          );
+        } catch (emailError) {
+          console.warn('Email notification failed but organization was approved:', emailError);
+        }
       }
 
-      // Navigate after delay
+      showAlert('success', 'Payment approved and organization activated successfully');
+      
       setTimeout(() => {
         navigate('/admin/payments');
       }, 2000);
@@ -211,74 +215,8 @@ const AdminPaymentDetail = () => {
     }
   };
 
-  const handleReject = async () => {
-    if (!rejectReason.trim()) return;
-    if (processing) return;
-
-    try {
-      setProcessing(true);
-      
-      // Validate id
-      if (!id || id === 'undefined') {
-        throw new Error('Invalid payment ID');
-      }
-
-      // Update payment status in Supabase
-      const { error } = await supabase
-        .from('payments')
-        .update({ 
-          status: 'rejected',
-          rejection_reason: rejectReason,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      // Send email notification via EmailJS
-      let emailResult = { success: true };
-      if (organization && organization.email) {
-        try {
-          emailResult = await sendPaymentRejected(
-            organization.email,
-            organization.company_name,
-            payment.amount,
-            rejectReason
-          );
-        } catch (emailError) {
-          console.warn('Email notification failed:', emailError);
-          emailResult = { success: false, error: emailError.message };
-        }
-      }
-
-      // Create notification in Supabase
-      if (organization) {
-        await supabase
-          .from('organization_notifications')
-          .insert([{
-            organization_id: organization.id,
-            type: 'payment_rejected',
-            title: 'Payment Rejected',
-            message: `Your payment of ₦${payment.amount?.toLocaleString()} was rejected. Reason: ${rejectReason}`,
-            category: 'payment',
-            read: false
-          }]);
-      }
-
-      showAlert('success', `Payment rejected successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
-      setRejectDialogOpen(false);
-      setRejectReason('');
-      
-      setTimeout(() => {
-        navigate('/admin/payments');
-      }, 2000);
-    } catch (error) {
-      console.error('Error rejecting payment:', error);
-      showAlert('error', error.message || 'Failed to reject payment');
-    } finally {
-      setProcessing(false);
-    }
-  };
+  // Note: Payment rejection emails have been removed as requested
+  // Only organization approval emails are sent when payment is approved
 
   const getStatusChip = (status) => {
     const config = {
@@ -537,7 +475,7 @@ const AdminPaymentDetail = () => {
                           '&.Mui-disabled': { bgcolor: '#ccc' }
                         }}
                       >
-                        {processing ? 'Processing...' : 'Approve Payment'}
+                        {processing ? 'Processing...' : 'Approve Payment & Activate Organization'}
                       </Button>
                     </Box>
                   </Paper>
@@ -548,14 +486,14 @@ const AdminPaymentDetail = () => {
         </Box>
       </Container>
 
-      {/* Reject Dialog */}
+      {/* Reject Dialog - Note: No email is sent for rejection */}
       <Dialog open={rejectDialogOpen} onClose={() => !processing && setRejectDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif' }}>
           Reject Payment
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2, color: '#666' }}>
-            This will send an email notification to {organization?.email}
+            Please provide a reason for rejecting this payment (no email will be sent):
           </Typography>
           <TextField
             autoFocus
@@ -567,7 +505,7 @@ const AdminPaymentDetail = () => {
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
             variant="outlined"
-            placeholder="Please explain why this payment is being rejected..."
+            placeholder="Explain why this payment is being rejected..."
             disabled={processing}
           />
         </DialogContent>
@@ -581,7 +519,7 @@ const AdminPaymentDetail = () => {
             variant="contained"
             disabled={!rejectReason.trim() || processing}
           >
-            {processing ? 'Processing...' : 'Reject Payment & Send Email'}
+            {processing ? 'Processing...' : 'Reject Payment'}
           </Button>
         </DialogActions>
       </Dialog>
