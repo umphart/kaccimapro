@@ -60,6 +60,7 @@ Registration Details:
 // ============================================
 
 // Send email when payment is approved (organization gets approved)
+// Send email when payment is approved (organization gets approved)
 export const sendPaymentApprovedEmail = async (email, companyName, amount) => {
   try {
     if (!email) {
@@ -68,22 +69,18 @@ export const sendPaymentApprovedEmail = async (email, companyName, amount) => {
 
     const templateParams = {
       to_email: email,
-      status: 'approved',
-      title: 'Payment Approved! 🎉',
       company_name: companyName,
       main_message: `Congratulations! Your payment of ₦${amount?.toLocaleString()} has been approved and your organization is now fully activated.`,
-      bg_color: '#e8f5e9',
       details: 'You can now access all features of your dashboard.',
       action_url: `${window.location.origin}/dashboard`,
-      action_text: 'Go to Dashboard',
-      reason: '' // Empty reason for approval
+      action_text: 'Go to Dashboard'
     };
 
     console.log('📧 Sending payment approval email to:', email);
 
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,
-      EMAILJS_CONFIG.templates.org,
+      EMAILJS_CONFIG.templates.org, // Make sure this points to the correct template ID
       templateParams
     );
 
