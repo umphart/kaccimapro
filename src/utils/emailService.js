@@ -60,12 +60,21 @@ export const sendEmail = async (to_email, company_name, type, additionalData = {
       throw new Error(`Unknown email type: ${type}`);
     }
 
-    // Prepare template parameters
+    // Process message to replace placeholders
+    let message = template.message;
+    if (additionalData.document_name) {
+      message = message.replace('{{document_name}}', additionalData.document_name);
+    }
+    if (additionalData.amount) {
+      message = message.replace('{{amount}}', additionalData.amount.toLocaleString());
+    }
+
+    // Prepare template parameters - MUST match template variables exactly
     const templateParams = {
       to_email: to_email,
       company_name: company_name,
       subject: template.subject,
-      message: template.message,
+      message: message,
       bg_color: template.bg_color,
       reason: additionalData.reason || '',
       document_name: additionalData.document_name || '',
@@ -75,32 +84,18 @@ export const sendEmail = async (to_email, company_name, type, additionalData = {
       reply_to: 'pharouq900@gmail.com'
     };
 
-    // Replace placeholders in message
-    if (additionalData.document_name) {
-      templateParams.message = templateParams.message.replace('{{document_name}}', additionalData.document_name);
-    }
-    if (additionalData.amount) {
-      templateParams.message = templateParams.message.replace('{{amount}}', additionalData.amount.toLocaleString());
-    }
+    // Log the parameters for debugging
+    console.log('📧 Sending email with params:', {
+      serviceId: EMAILJS_CONFIG.serviceId,
+      templateId: EMAILJS_CONFIG.templateId,
+      templateParams
+    });
 
-    // For development, log to console (won't actually send)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('📧 Email would be sent:', {
-        to: to_email,
-        type,
-        templateParams
-      });
-      
-      // If you want to test actual sending in development, comment out the above and use this:
-      // const response = await emailjs.send(
-      //   EMAILJS_CONFIG.serviceId,
-      //   EMAILJS_CONFIG.templateId,
-      //   templateParams
-      // );
-      // return { success: true, data: response };
-      
-      return { success: true, mock: true };
-    }
+    // For development, we'll actually send emails (comment this out if you want to mock)
+    // if (process.env.NODE_ENV === 'development' && process.env.REACT_APP_MOCK_EMAILS === 'true') {
+    //   console.log('📧 Email would be sent (mocked):', templateParams);
+    //   return { success: true, mock: true };
+    // }
 
     // Send email using EmailJS
     const response = await emailjs.send(
@@ -113,7 +108,11 @@ export const sendEmail = async (to_email, company_name, type, additionalData = {
     return { success: true, data: response };
   } catch (error) {
     console.error('❌ Failed to send email:', error);
-    return { success: false, error: error.message };
+    // Log the full error for debugging
+    if (error.text) {
+      console.error('Error details:', error.text);
+    }
+    return { success: false, error: error.message || error.text || 'Unknown error' };
   }
 };
 

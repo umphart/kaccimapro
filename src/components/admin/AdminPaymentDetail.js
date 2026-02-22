@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { 
-  sendPaymentApproved,
+  sendPaymentApproved, 
   sendPaymentRejected 
 } from '../../utils/emailService';
 
@@ -120,72 +120,123 @@ const AdminPaymentDetail = () => {
     }
   };
 
-const handleApprove = async (payment) => {
-  try {
-    // Update payment status in Supabase
-    const { error: paymentError } = await supabase
-      .from('payments')
-      .update({ 
-        status: 'approved',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', payment.id);
+  const handleApprove = async () => {
+    try {
+      // Update payment status in Supabase
+      const { error } = await supabase
+        .from('payments')
+        .update({ 
+          status: 'approved',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
 
-    if (paymentError) throw paymentError;
+      if (error) throw error;
 
-    // Send email notification via EmailJS
-    const emailResult = await sendPaymentApproved(
-      organization.email,
-      organization.company_name,
-      payment.amount
-    );
+      // Send email notification via EmailJS
+      let emailResult = { success: true };
+      if (organization && organization.email) {
+        emailResult = await sendPaymentApproved(
+          organization.email,
+          organization.company_name,
+          payment.amount
+        );
 
-    if (!emailResult.success) {
-      console.warn('Email notification failed but payment was approved:', emailResult.error);
+        if (!emailResult.success) {
+          console.warn('Email notification failed but payment was approved:', emailResult.error);
+        }
+      }
+
+      // Create notification in Supabase (optional)
+      if (organization) {
+        await supabase
+          .from('organization_notifications')
+          .insert([{
+            organization_id: organization.id,
+            type: 'payment_approved',
+            title: 'Payment Approved',
+            message: `Your payment of ₦${payment.amount?.toLocaleString()} has been approved.`,
+            category: 'payment',
+            read: false
+          }]);
+      }
+
+      showAlert('success', `Payment approved successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
+      
+      // Update organization status if this is the first approved payment
+      if (organization && organization.status === 'pending') {
+        await supabase
+          .from('organizations')
+          .update({ status: 'approved' })
+          .eq('id', organization.id);
+      }
+
+      setTimeout(() => {
+        navigate('/admin/payments');
+      }, 2000);
+    } catch (error) {
+      console.error('Error approving payment:', error);
+      showAlert('error', 'Failed to approve payment');
     }
+  };
 
-    showAlert('success', `Payment approved successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
-  } catch (error) {
-    console.error('Error approving payment:', error);
-    showAlert('error', 'Failed to approve payment');
-  }
-};
+  const handleReject = async () => {
+    if (!rejectReason.trim()) return;
 
-const handleReject = async (payment, reason) => {
-  if (!reason.trim()) return;
+    try {
+      // Update payment status in Supabase
+      const { error } = await supabase
+        .from('payments')
+        .update({ 
+          status: 'rejected',
+          rejection_reason: rejectReason,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
 
-  try {
-    // Update payment status in Supabase
-    const { error: paymentError } = await supabase
-      .from('payments')
-      .update({ 
-        status: 'rejected',
-        rejection_reason: reason,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', payment.id);
+      if (error) throw error;
 
-    if (paymentError) throw paymentError;
+      // Send email notification via EmailJS
+      let emailResult = { success: true };
+      if (organization && organization.email) {
+        emailResult = await sendPaymentRejected(
+          organization.email,
+          organization.company_name,
+          payment.amount,
+          rejectReason
+        );
 
-    // Send email notification via EmailJS
-    const emailResult = await sendPaymentRejected(
-      organization.email,
-      organization.company_name,
-      payment.amount,
-      reason
-    );
+        if (!emailResult.success) {
+          console.warn('Email notification failed but payment was rejected:', emailResult.error);
+        }
+      }
 
-    if (!emailResult.success) {
-      console.warn('Email notification failed but payment was rejected:', emailResult.error);
+      // Create notification in Supabase (optional)
+      if (organization) {
+        await supabase
+          .from('organization_notifications')
+          .insert([{
+            organization_id: organization.id,
+            type: 'payment_rejected',
+            title: 'Payment Rejected',
+            message: `Your payment of ₦${payment.amount?.toLocaleString()} was rejected. Reason: ${rejectReason}`,
+            category: 'payment',
+            read: false
+          }]);
+      }
+
+      showAlert('success', `Payment rejected successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
+      setRejectDialogOpen(false);
+      setRejectReason('');
+      
+      setTimeout(() => {
+        navigate('/admin/payments');
+      }, 2000);
+    } catch (error) {
+      console.error('Error rejecting payment:', error);
+      showAlert('error', 'Failed to reject payment');
     }
-
-    showAlert('success', `Payment rejected successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
-  } catch (error) {
-    console.error('Error rejecting payment:', error);
-    showAlert('error', 'Failed to reject payment');
-  }
-};
-
+  };
 
   const getStatusChip = (status) => {
     const config = {
@@ -448,6 +499,9 @@ const handleReject = async (payment, reason) => {
           Reject Payment
         </DialogTitle>
         <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2, color: '#666' }}>
+            This will send an email notification to {organization?.email}
+          </Typography>
           <TextField
             autoFocus
             margin="dense"
@@ -458,6 +512,7 @@ const handleReject = async (payment, reason) => {
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
             variant="outlined"
+            placeholder="Please explain why this payment is being rejected..."
           />
         </DialogContent>
         <DialogActions>
@@ -468,7 +523,7 @@ const handleReject = async (payment, reason) => {
             variant="contained"
             disabled={!rejectReason.trim()}
           >
-            Reject Payment
+            Reject Payment & Send Email
           </Button>
         </DialogActions>
       </Dialog>
@@ -481,7 +536,7 @@ const handleReject = async (payment, reason) => {
         fullWidth
       >
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          Payment Receipt
+          Payment Receipt - {organization?.company_name}
           <IconButton onClick={() => setReceiptModalOpen(false)}>
             <CancelIcon />
           </IconButton>
