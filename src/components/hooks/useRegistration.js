@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
+import { sendAdminRegistrationNotification } from '../../utils/adminNotificationService';
 
 export const useRegistration = () => {
   const navigate = useNavigate();
@@ -252,10 +253,29 @@ export const useRegistration = () => {
 
       if (insertError) throw insertError;
 
-      setOrganizationId(data[0].id);
+      const newOrganizationId = data[0].id;
+      setOrganizationId(newOrganizationId);
       localStorage.removeItem('registrationFormData');
+
+      // Send admin notification email about new registration
+      try {
+        const notificationData = {
+          id: newOrganizationId,
+          company_name: formData.companyName.trim(),
+          email: formData.email.trim().toLowerCase(),
+          phone_number: formData.phoneNumber.trim(),
+          cac_number: formData.cacNumber.trim(),
+          business_nature: formData.businessNature
+        };
+        
+        await sendAdminRegistrationNotification(notificationData);
+        console.log('✅ Admin notification sent for new registration');
+      } catch (emailError) {
+        // Don't block registration if email fails
+        console.warn('⚠️ Admin notification failed:', emailError);
+      }
       
-      return data[0].id;
+      return newOrganizationId;
       
     } catch (error) {
       console.error('Error:', error);

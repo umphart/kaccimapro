@@ -4,115 +4,124 @@ import emailjs from '@emailjs/browser';
 const EMAILJS_CONFIG = {
   publicKey: process.env.REACT_APP_EMAILJS_PUBLIC_KEY || 'vEb1fxTEwxzpmcNmm',
   serviceId: process.env.REACT_APP_EMAILJS_SERVICE_ID || 'service_hoj7fzf',
-  templateId: process.env.REACT_APP_EMAILJS_TEMPLATE_ID || 'template_orimz2f'
+  // Your actual template IDs
+  templateIds: {
+    organizationApproved: 'template_orimz2f',  // For approval emails
+    organizationRejected: 'template_kwa5fnl',   // For rejection emails
+    documentApproved: 'template_orimz2f',       // Using approval template for doc approval
+    documentRejected: 'template_kwa5fnl',        // Using rejection template for doc rejection
+    paymentApproved: 'template_orimz2f',         // Using approval template for payment approval
+    paymentRejected: 'template_kwa5fnl'          // Using rejection template for payment rejection
+  }
 };
 
 // Initialize EmailJS
 emailjs.init(EMAILJS_CONFIG.publicKey);
 
-// Email templates configuration
-const emailTemplates = {
-  organizationApproved: {
-    subject: '🎉 Your Organization Has Been Approved!',
-    bg_color: '#e8f5e9',
-    message: 'Great news! Your organization registration has been APPROVED. You can now access all features.',
-    action_text: 'Go to Dashboard',
-    action_url: `${window.location.origin}/dashboard`
-  },
-  
-  organizationRejected: {
-    subject: '❌ Organization Registration Update',
-    bg_color: '#ffebee',
-    message: 'We have reviewed your organization registration and it was REJECTED.'
-  },
-  
-  documentApproved: {
-    subject: '✅ Document Approved',
-    bg_color: '#e8f5e9',
-    message: 'Your document "{{document_name}}" has been APPROVED.'
-  },
-  
-  documentRejected: {
-    subject: '📄 Document Needs Attention',
-    bg_color: '#fff3e0',
-    message: 'Your document "{{document_name}}" requires your attention.'
-  },
-  
-  paymentApproved: {
-    subject: '💰 Payment Confirmed',
-    bg_color: '#e8f5e9',
-    message: 'Your payment of ₦{{amount}} has been APPROVED.'
-  },
-  
-  paymentRejected: {
-    subject: '❌ Payment Verification Failed',
-    bg_color: '#ffebee',
-    message: 'Your payment of ₦{{amount}} could not be verified.'
-  }
-};
-
 // Main function to send emails
 export const sendEmail = async (to_email, company_name, type, additionalData = {}) => {
   try {
-    // Get template configuration
-    const template = emailTemplates[type];
-    if (!template) {
-      throw new Error(`Unknown email type: ${type}`);
+    // Get the appropriate template ID for this email type
+    const templateId = EMAILJS_CONFIG.templateIds[type];
+    if (!templateId) {
+      throw new Error(`No template configured for email type: ${type}`);
     }
 
-    // Process message to replace placeholders
-    let message = template.message;
-    if (additionalData.document_name) {
-      message = message.replace('{{document_name}}', additionalData.document_name);
-    }
-    if (additionalData.amount) {
-      message = message.replace('{{amount}}', additionalData.amount.toLocaleString());
-    }
-
-    // Prepare template parameters - MUST match template variables exactly
+    // Prepare template parameters
     const templateParams = {
       to_email: to_email,
       company_name: company_name,
-      subject: template.subject,
-      message: message,
-      bg_color: template.bg_color,
+      reply_to: 'pharouq900@gmail.com',
+      amount: additionalData.amount ? additionalData.amount.toLocaleString() : '',
       reason: additionalData.reason || '',
       document_name: additionalData.document_name || '',
-      amount: additionalData.amount ? additionalData.amount.toLocaleString() : '',
-      action_url: template.action_url || '',
-      action_text: template.action_text || '',
-      reply_to: 'pharouq900@gmail.com'
+      action_url: additionalData.action_url || `${window.location.origin}/dashboard`,
+      action_text: 'Go to Dashboard'
     };
 
-    // Log the parameters for debugging
-    console.log('📧 Sending email with params:', {
-      serviceId: EMAILJS_CONFIG.serviceId,
-      templateId: EMAILJS_CONFIG.templateId,
-      templateParams
-    });
+    // Add subject and message based on email type
+    if (type.includes('Approved')) {
+      templateParams.subject = getApprovalSubject(type, additionalData);
+      templateParams.message = getApprovalMessage(type, additionalData);
+      templateParams.bg_color = '#e8f5e9';
+    } else if (type.includes('Rejected')) {
+      templateParams.subject = getRejectionSubject(type, additionalData);
+      templateParams.message = getRejectionMessage(type, additionalData);
+      templateParams.bg_color = '#ffebee';
+    }
 
-    // For development, we'll actually send emails (comment this out if you want to mock)
-    // if (process.env.NODE_ENV === 'development' && process.env.REACT_APP_MOCK_EMAILS === 'true') {
-    //   console.log('📧 Email would be sent (mocked):', templateParams);
-    //   return { success: true, mock: true };
-    // }
+    console.log('📧 Sending email:', {
+      to: to_email,
+      type,
+      templateId,
+      subject: templateParams.subject
+    });
 
     // Send email using EmailJS
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,
-      EMAILJS_CONFIG.templateId,
+      templateId,
       templateParams
     );
 
-    console.log('✅ Email sent successfully:', response);
+    console.log('✅ Email sent successfully to:', to_email);
     return { success: true, data: response };
   } catch (error) {
     console.error('❌ Failed to send email:', error);
-    // Log the full error for debugging
-    if (error.text) {
-      console.error('Error details:', error.text);
-    }
-    return { success: false, error: error.message || error.text || 'Unknown error' };
+    return { success: false, error: error.message };
+  }
+};
+
+// Helper functions for subjects and messages
+const getApprovalSubject = (type, data) => {
+  switch(type) {
+    case 'organizationApproved':
+      return '🎉 Your Organization Has Been Approved!';
+    case 'documentApproved':
+      return `✅ Document Approved: ${data.document_name}`;
+    case 'paymentApproved':
+      return `💰 Payment Confirmed: ₦${data.amount?.toLocaleString()}`;
+    default:
+      return 'Update from Pharouq900';
+  }
+};
+
+const getApprovalMessage = (type, data) => {
+  switch(type) {
+    case 'organizationApproved':
+      return 'Great news! Your organization registration has been APPROVED. You can now access all features and start using our platform.';
+    case 'documentApproved':
+      return `Your document "${data.document_name}" has been reviewed and APPROVED. All requirements have been met.`;
+    case 'paymentApproved':
+      return `Your payment of ₦${data.amount?.toLocaleString()} has been successfully processed and APPROVED. Thank you for your payment!`;
+    default:
+      return 'Your request has been approved.';
+  }
+};
+
+const getRejectionSubject = (type, data) => {
+  switch(type) {
+    case 'organizationRejected':
+      return '❌ Organization Registration Update';
+    case 'documentRejected':
+      return `📄 Document Needs Attention: ${data.document_name}`;
+    case 'paymentRejected':
+      return '❌ Payment Verification Failed';
+    default:
+      return 'Important Update from Pharouq900';
+  }
+};
+
+const getRejectionMessage = (type, data) => {
+  switch(type) {
+    case 'organizationRejected':
+      return 'We have reviewed your organization registration and it was REJECTED. Please see the reason below and take necessary action.';
+    case 'documentRejected':
+      return `Your document "${data.document_name}" requires your attention. It has been REJECTED.`;
+    case 'paymentRejected':
+      return `Your payment of ₦${data.amount?.toLocaleString()} could not be verified and has been REJECTED.`;
+    default:
+      return 'Your request could not be processed at this time.';
   }
 };
 

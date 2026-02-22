@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
+import { sendAdminPaymentNotification } from '../../utils/adminNotificationService';
 import PaymentSummary from './PaymentSummary';
 import { Box, CircularProgress, Container, Paper, Typography, Alert as MuiAlert, Snackbar } from '@mui/material';
 import Sidebar from '../Sidebar';
@@ -182,87 +183,92 @@ const Payment = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+ const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  if (!user) {
+    showAlert('error', 'Please login first');
+    navigate('/login');
+    return;
+  }
+
+  if (!organization) {
+    showAlert('error', 'Organization not found');
+    return;
+  }
+
+  if (!receiptFile) {
+    showAlert('error', 'Please select a receipt file');
+    return;
+  }
+
+  if (paymentType === 'not_due') {
+    showAlert('error', 'No payment is due at this time');
+    return;
+  }
+
+  setSubmitting(true);
+
+  try {
+    // Upload receipt
+    const timestamp = Date.now();
+    const cleanFileName = receiptFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
+    const fileName = `${timestamp}_${cleanFileName}`;
+    const filePath = `${user.id}/receipts/${fileName}`;
     
-    if (!user) {
-      showAlert('error', 'Please login first');
-      navigate('/login');
-      return;
+    const { error: uploadError } = await supabase.storage
+      .from('documents')
+      .upload(filePath, receiptFile);
+
+    if (uploadError) {
+      throw new Error(`Upload failed: ${uploadError.message}`);
     }
 
-    if (!organization) {
-      showAlert('error', 'Organization not found');
-      return;
+    // Determine payment period (year)
+    const currentYear = new Date().getFullYear();
+    const paymentYear = paymentType === 'renewal' ? currentYear : currentYear;
+
+    // Create payment record with payment type
+    const paymentData = {
+      organization_id: organization.id,
+      user_id: user.id,
+      amount: paymentAmount,
+      payment_type: paymentType, // 'first' or 'renewal'
+      payment_method: 'Bank Transfer',
+      receipt_path: filePath,
+      status: 'pending',
+      payment_year: paymentYear, // Track which year this payment covers
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const { error: paymentError, data: insertedPayment } = await supabase
+      .from('payments')
+      .insert([paymentData])
+      .select()
+      .single();
+
+    if (paymentError) {
+      console.error('Payment insert error:', paymentError);
+      throw new Error(paymentError.message);
     }
 
-    if (!receiptFile) {
-      showAlert('error', 'Please select a receipt file');
-      return;
-    }
+    // Send admin notification email
+    await sendAdminPaymentNotification(insertedPayment, organization);
 
-    if (paymentType === 'not_due') {
-      showAlert('error', 'No payment is due at this time');
-      return;
-    }
+    showAlert('success', 'Payment submitted successfully! Redirecting to dashboard...');
+    
+    setTimeout(() => {
+      navigate('/dashboard');
+    }, 2000);
 
-    setSubmitting(true);
-
-    try {
-      // Upload receipt
-      const timestamp = Date.now();
-      const cleanFileName = receiptFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
-      const fileName = `${timestamp}_${cleanFileName}`;
-      const filePath = `${user.id}/receipts/${fileName}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('documents')
-        .upload(filePath, receiptFile);
-
-      if (uploadError) {
-        throw new Error(`Upload failed: ${uploadError.message}`);
-      }
-
-      // Determine payment period (year)
-      const currentYear = new Date().getFullYear();
-      const paymentYear = paymentType === 'renewal' ? currentYear : currentYear;
-
-      // Create payment record with payment type
-      const paymentData = {
-        organization_id: organization.id,
-        user_id: user.id,
-        amount: paymentAmount,
-        payment_type: paymentType, // 'first' or 'renewal'
-        payment_method: 'Bank Transfer',
-        receipt_path: filePath,
-        status: 'pending',
-        payment_year: paymentYear, // Track which year this payment covers
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      const { error: paymentError } = await supabase
-        .from('payments')
-        .insert([paymentData]);
-
-      if (paymentError) {
-        console.error('Payment insert error:', paymentError);
-        throw new Error(paymentError.message);
-      }
-
-      showAlert('success', 'Payment submitted successfully! Redirecting to dashboard...');
-      
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
-
-    } catch (error) {
-      console.error('Payment process error:', error);
-      showAlert('error', error.message || 'Failed to process payment');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  } catch (error) {
+    console.error('Payment process error:', error);
+    showAlert('error', error.message || 'Failed to process payment');
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   // Consistent loading state with other components
   if (loading) {
