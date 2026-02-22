@@ -112,14 +112,18 @@ export const sendPaymentApprovedEmail = async (email, companyName, amount, organ
 // PAYMENT REJECTION EMAIL - OPTIONAL
 // ============================================
 
-export const sendPaymentRejectedEmail = async (email, companyName, amount, rejectionReason) => {
+// ============================================
+// PAYMENT REJECTION EMAIL - WITH OVERRIDE OPTION
+// ============================================
+
+export const sendPaymentRejectedEmail = async (email, companyName, amount, rejectionReason, forceSend = false) => {
   try {
     if (!email) {
       throw new Error('Recipient email is required');
     }
 
-    // Check if rejection emails are enabled
-    if (!EMAIL_CONFIG.SEND_REJECTION_EMAILS) {
+    // Check if rejection emails are enabled - allow force send
+    if (!EMAIL_CONFIG.SEND_REJECTION_EMAILS && !forceSend) {
       console.log('ℹ️ Rejection emails are disabled by configuration');
       return { success: true, skipped: true, message: 'Rejection emails disabled' };
     }

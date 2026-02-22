@@ -5,6 +5,7 @@ import {
   sendPaymentApprovedEmail,
   sendPaymentRejectedEmail 
 } from '../../utils/emailService';
+import emailjs from '@emailjs/browser';
 
 import {
   Box,
@@ -289,102 +290,122 @@ const AdminPaymentDetail = () => {
     }
   };
 
-  const handleReject = async () => {
-    if (!rejectReason.trim()) return;
-    if (processing) return;
+const handleReject = async () => {
+  if (!rejectReason.trim()) return;
+  if (processing) return;
 
-    try {
-      setProcessing(true);
-      
-      if (!id || id === 'undefined') {
-        throw new Error('Invalid payment ID');
-      }
+  try {
+    setProcessing(true);
+    
+    if (!id || id === 'undefined') {
+      throw new Error('Invalid payment ID');
+    }
 
-      // Update payment status to rejected
-      const { error: paymentError } = await supabase
-        .from('payments')
-        .update({ 
-          status: 'rejected',
-          rejection_reason: rejectReason,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
+    // Update payment status to rejected
+    const { error: paymentError } = await supabase
+      .from('payments')
+      .update({ 
+        status: 'rejected',
+        rejection_reason: rejectReason,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
 
-      if (paymentError) throw paymentError;
+    if (paymentError) throw paymentError;
 
-      // Create notification in Supabase
-      if (organization) {
-        await supabase
-          .from('organization_notifications')
-          .insert([{
-            organization_id: organization.id,
-            type: 'payment_rejected',
-            title: 'Payment Rejected',
-            message: `Your payment of ₦${payment.amount?.toLocaleString()} was rejected. Reason: ${rejectReason}`,
-            category: 'payment',
-            read: false,
-            created_at: new Date().toISOString()
-          }]);
-      }
+    // Create notification in Supabase
+    if (organization) {
+      await supabase
+        .from('organization_notifications')
+        .insert([{
+          organization_id: organization.id,
+          type: 'payment_rejected',
+          title: 'Payment Rejected',
+          message: `Your payment of ₦${payment.amount?.toLocaleString()} was rejected. Reason: ${rejectReason}`,
+          category: 'payment',
+          read: false,
+          created_at: new Date().toISOString()
+        }]);
+    }
 
-      // Send rejection email only if enabled
-      if (sendRejectionEmail && organization) {
-        try {
-          const emailResult = await sendPaymentRejectedEmail(
-            organization.email,
-            organization.company_name,
-            payment.amount,
-            rejectReason
-          );
+    // Send rejection email only if enabled in UI - BYPASS GLOBAL CONFIG
+    if (sendRejectionEmail && organization) {
+      try {
+        // Direct email send without checking global config
+        const templateParams = {
+          to_email: organization.email,
+          company_name: organization.company_name,
+          main_message: `Update regarding your payment of ₦${payment.amount?.toLocaleString()}`,
+          details: `We regret to inform you that your payment has been rejected. 
           
-          if (emailResult.success && !emailResult.skipped) {
-            console.log('✅ Rejection email sent');
-            
-            // Log email sent
-            await logEmailToDatabase(
-              organization.id,
-              'payment_rejected',
-              organization.email,
-              'sent',
-              { 
+Reason for rejection: ${rejectReason}
+
+Please contact our support team for assistance or to resolve any issues with your payment.`,
+          action_url: `${window.location.origin}/support`,
+          action_text: 'Contact Support',
+          reply_to: 'support@pharouq900.com'
+        };
+
+        console.log('📧 Sending payment rejection email to:', organization.email);
+
+        const response = await emailjs.send(
+          'service_hoj7fzf', // Your service ID
+          'template_orimz2f', // Your template ID
+          templateParams
+        );
+
+        if (response) {
+          console.log('✅ Rejection email sent successfully');
+          
+          // Log email sent
+          await supabase
+            .from('email_logs')
+            .insert([{
+              organization_id: organization.id,
+              email_type: 'payment_rejected',
+              recipient: organization.email,
+              status: 'sent',
+              metadata: { 
                 amount: payment.amount, 
                 reason: rejectReason,
                 payment_id: payment.id
-              }
-            );
-          } else if (emailResult.skipped) {
-            console.log('ℹ️ Rejection email skipped (disabled)');
-          }
-        } catch (emailError) {
-          console.warn('Failed to send rejection email:', emailError);
-          
-          // Log email failure
-          await logEmailToDatabase(
-            organization.id,
-            'payment_rejected',
-            organization.email,
-            'failed',
-            { amount: payment.amount, reason: rejectReason, payment_id: payment.id },
-            emailError.message
-          );
+              },
+              created_at: new Date().toISOString()
+            }]);
         }
+      } catch (emailError) {
+        console.warn('Failed to send rejection email:', emailError);
+        
+        // Log email failure
+        await supabase
+          .from('email_logs')
+          .insert([{
+            organization_id: organization.id,
+            email_type: 'payment_rejected',
+            recipient: organization.email,
+            status: 'failed',
+            error: emailError.message,
+            metadata: { amount: payment.amount, reason: rejectReason, payment_id: payment.id },
+            created_at: new Date().toISOString()
+          }]);
       }
-
-      showAlert('success', 'Payment rejected successfully');
-      setRejectDialogOpen(false);
-      setRejectReason('');
-      setSendRejectionEmail(false);
-      
-      setTimeout(() => {
-        navigate('/admin/payments');
-      }, 3000);
-    } catch (error) {
-      console.error('Error rejecting payment:', error);
-      showAlert('error', error.message || 'Failed to reject payment');
-    } finally {
-      setProcessing(false);
     }
-  };
+
+    showAlert('success', 'Payment rejected successfully');
+    setRejectDialogOpen(false);
+    setRejectReason('');
+    setSendRejectionEmail(false);
+    
+    setTimeout(() => {
+      navigate('/admin/payments');
+    }, 3000);
+  } catch (error) {
+    console.error('Error rejecting payment:', error);
+    showAlert('error', error.message || 'Failed to reject payment');
+  } finally {
+    setProcessing(false);
+  }
+};
 
   const getStatusChip = (status) => {
     const config = {
