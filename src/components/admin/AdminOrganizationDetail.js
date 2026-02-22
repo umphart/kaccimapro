@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { 
-  sendOrganizationApproved,
-  sendOrganizationRejected 
-} from '../../utils/emailService'; // Updated import - single service
+// NO EMAIL IMPORTS - all email functionality removed
 import {
   Box,
   Container,
@@ -270,7 +267,7 @@ const AdminOrganizationDetail = () => {
 
       if (notifError) throw notifError;
 
-      // NO EMAIL SENT FOR DOCUMENT APPROVAL - removed intentionally
+      // NO EMAIL SENT - in-app notification only
 
       // Update local state
       setDocumentStatus(prev => ({ ...prev, [doc.key]: 'approved' }));
@@ -307,7 +304,7 @@ const AdminOrganizationDetail = () => {
 
       if (notifError) throw notifError;
 
-      // NO EMAIL SENT FOR DOCUMENT REJECTION - removed intentionally
+      // NO EMAIL SENT - in-app notification only
 
       // Update local state
       setDocumentStatus(prev => ({ ...prev, [doc.key]: 'rejected' }));
@@ -350,7 +347,7 @@ const AdminOrganizationDetail = () => {
 
       if (orgError) throw orgError;
 
-      // Create notification in Supabase
+      // Create notification in Supabase ONLY (no email)
       await supabase
         .from('organization_notifications')
         .insert([{
@@ -363,21 +360,9 @@ const AdminOrganizationDetail = () => {
           read: false
         }]);
 
-      // Send email notification via EmailJS for ORGANIZATION APPROVAL ONLY
-      let emailResult = { success: true };
-      if (organization && organization.email) {
-        try {
-          emailResult = await sendOrganizationApproved(
-            organization.email,
-            organization.company_name
-          );
-        } catch (emailError) {
-          console.warn('Email notification failed but organization was approved:', emailError);
-          emailResult = { success: false, error: emailError.message };
-        }
-      }
+      // NO EMAIL SENT - organization approval emails removed as requested
 
-      showAlert('success', `Organization approved successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
+      showAlert('success', 'Organization approved successfully');
       setApproveOrgDialog(false);
       fetchOrganizationDetails(); // Refresh data
     } catch (error) {
@@ -406,7 +391,7 @@ const AdminOrganizationDetail = () => {
 
       if (orgError) throw orgError;
 
-      // Create notification in Supabase
+      // Create notification in Supabase ONLY (no email)
       await supabase
         .from('organization_notifications')
         .insert([{
@@ -419,22 +404,9 @@ const AdminOrganizationDetail = () => {
           read: false
         }]);
 
-      // Send email notification via EmailJS for ORGANIZATION REJECTION ONLY
-      let emailResult = { success: true };
-      if (organization && organization.email) {
-        try {
-          emailResult = await sendOrganizationRejected(
-            organization.email,
-            organization.company_name,
-            orgRejectReason
-          );
-        } catch (emailError) {
-          console.warn('Email notification failed but organization was rejected:', emailError);
-          emailResult = { success: false, error: emailError.message };
-        }
-      }
+      // NO EMAIL SENT - organization rejection emails removed as requested
 
-      showAlert('success', `Organization rejected successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
+      showAlert('success', 'Organization rejected successfully');
       setRejectOrgDialog(false);
       setOrgRejectReason('');
       fetchOrganizationDetails(); // Refresh data
@@ -643,7 +615,7 @@ const AdminOrganizationDetail = () => {
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2, color: '#666' }}>
-            This will send an email notification to {organization?.email}
+            This will create an in-app notification only (no email will be sent):
           </Typography>
           <TextField
             autoFocus
@@ -665,7 +637,7 @@ const AdminOrganizationDetail = () => {
             variant="contained"
             disabled={!orgRejectReason.trim() || processing}
           >
-            {processing ? 'Processing...' : 'Reject Organization & Send Email'}
+            {processing ? 'Processing...' : 'Reject Organization'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -686,7 +658,7 @@ const AdminOrganizationDetail = () => {
             </Alert>
           )}
           <Typography variant="body2" sx={{ color: '#666' }}>
-            This will send an approval email to {organization?.email}
+            This will create an in-app notification only (no email will be sent):
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -697,7 +669,7 @@ const AdminOrganizationDetail = () => {
             variant="contained"
             disabled={!allDocumentsApproved || processing}
           >
-            {processing ? 'Processing...' : 'Approve Organization & Send Email'}
+            {processing ? 'Processing...' : 'Approve Organization'}
           </Button>
         </DialogActions>
       </Dialog>

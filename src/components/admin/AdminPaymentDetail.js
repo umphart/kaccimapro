@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { 
-  sendOrganizationApproved // When payment is approved, organization is approved
+  sendPaymentApprovedEmail // Only import payment approval email function
 } from '../../utils/emailService';
 
 import {
@@ -190,15 +190,19 @@ const AdminPaymentDetail = () => {
             read: false
           }]);
 
-        // Send organization approval email
+        // Send PAYMENT APPROVAL EMAIL only (not organization approval email)
         let emailResult = { success: true };
         try {
-          emailResult = await sendOrganizationApproved(
+          emailResult = await sendPaymentApprovedEmail(
             organization.email,
-            organization.company_name
+            organization.company_name,
+            payment.amount
           );
+          if (emailResult.success) {
+            console.log('✅ Payment approval email sent to organization');
+          }
         } catch (emailError) {
-          console.warn('Email notification failed but organization was approved:', emailError);
+          console.warn('Email notification failed:', emailError);
         }
       }
 
@@ -215,7 +219,7 @@ const AdminPaymentDetail = () => {
     }
   };
 
-  // Add back the handleReject function (without email)
+  // Handle payment rejection (no email sent)
   const handleReject = async () => {
     if (!rejectReason.trim()) return;
     if (processing) return;

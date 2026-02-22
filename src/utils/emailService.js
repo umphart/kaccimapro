@@ -6,7 +6,7 @@ const EMAILJS_CONFIG = {
   serviceId: process.env.REACT_APP_EMAILJS_SERVICE_ID || 'service_hoj7fzf',
   templates: {
     admin: 'template_kwa5fnl',     // For admin notifications (new registrations)
-    org: 'template_orimz2f'         // For organization notifications (approvals/rejections)
+    org: 'template_orimz2f'         // For organization notifications (payment approvals ONLY)
   }
 };
 
@@ -20,7 +20,6 @@ const ADMIN_EMAIL = 'pharouq900@gmail.com';
 // ADMIN NOTIFICATIONS (New Registrations ONLY)
 // ============================================
 
-// Send notification to admin about new registration
 export const sendAdminRegistrationNotification = async (orgData) => {
   try {
     const templateParams = {
@@ -57,50 +56,30 @@ Registration Details:
 };
 
 // ============================================
-// ORGANIZATION NOTIFICATIONS (Approvals/Rejections)
+// PAYMENT APPROVAL EMAIL ONLY
 // ============================================
 
-// Main function to send emails to organizations
-const sendOrgEmail = async (to_email, type, data) => {
+// Send email when payment is approved (organization gets approved)
+export const sendPaymentApprovedEmail = async (email, companyName, amount) => {
   try {
-    if (!to_email) {
+    if (!email) {
       throw new Error('Recipient email is required');
     }
 
-    let templateParams = {};
+    const templateParams = {
+      to_email: email,
+      status: 'approved',
+      title: 'Payment Approved! 🎉',
+      company_name: companyName,
+      main_message: `Congratulations! Your payment of ₦${amount?.toLocaleString()} has been approved and your organization is now fully activated.`,
+      bg_color: '#e8f5e9',
+      details: 'You can now access all features of your dashboard.',
+      action_url: `${window.location.origin}/dashboard`,
+      action_text: 'Go to Dashboard',
+      reason: '' // Empty reason for approval
+    };
 
-    if (type === 'organization_approved') {
-      templateParams = {
-        to_email: to_email,
-        status: 'approved',
-        title: 'Organization Approved',
-        company_name: data.company_name,
-        main_message: 'Congratulations! Your organization registration has been approved.',
-        bg_color: '#e8f5e9',
-        details: 'Your organization is now fully registered and you can access all features.',
-        action_url: `${window.location.origin}/dashboard`,
-        action_text: 'Go to Dashboard'
-      };
-    } 
-    else if (type === 'organization_rejected') {
-      templateParams = {
-        to_email: to_email,
-        status: 'rejected',
-        title: 'Organization Rejected',
-        company_name: data.company_name,
-        main_message: 'We regret to inform you that your organization registration has been rejected.',
-        bg_color: '#ffebee',
-        details: 'Your organization registration could not be approved at this time.',
-        reason: data.reason,
-        action_url: `${window.location.origin}/contact`,
-        action_text: 'Contact Support'
-      };
-    }
-
-    console.log('📧 Sending email to organization:', {
-      to: to_email,
-      type
-    });
+    console.log('📧 Sending payment approval email to:', email);
 
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,
@@ -108,22 +87,17 @@ const sendOrgEmail = async (to_email, type, data) => {
       templateParams
     );
 
-    console.log('✅ Email sent successfully to organization:', to_email);
+    console.log('✅ Payment approval email sent successfully');
     return { success: true, data: response };
   } catch (error) {
-    console.error('❌ Failed to send email:', error);
+    console.error('❌ Failed to send payment approval email:', error);
     return { success: false, error: error.message };
   }
 };
 
-// Helper functions for organization notifications
-export const sendOrganizationApproved = (email, companyName) => {
-  return sendOrgEmail(email, 'organization_approved', { company_name: companyName });
-};
-
-export const sendOrganizationRejected = (email, companyName, reason) => {
-  return sendOrgEmail(email, 'organization_rejected', { company_name: companyName, reason });
-};
-
-// Note: Payment notification functions have been removed
-// When payment is approved, organization is approved - use sendOrganizationApproved
+// ============================================
+// REMOVED FUNCTIONS (No emails for these):
+// - sendOrganizationApproved
+// - sendOrganizationRejected
+// - sendPaymentRejected
+// ============================================
