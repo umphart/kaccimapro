@@ -34,7 +34,9 @@ import {
   TextField,
   FormControlLabel,
   Switch,
-  Tooltip
+  Tooltip,
+  Badge,
+  LinearProgress
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -49,7 +51,8 @@ import {
   Pending as PendingIcon,
   Visibility as VisibilityIcon,
   Warning as WarningIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  Error as ErrorIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminSidebar from './AdminSidebar';
@@ -69,6 +72,7 @@ const AdminPaymentDetail = () => {
   const [documents, setDocuments] = useState([]);
   const [documentStatus, setDocumentStatus] = useState({});
   const [allDocumentsApproved, setAllDocumentsApproved] = useState(false);
+  const [documentsWithIssues, setDocumentsWithIssues] = useState([]);
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -127,6 +131,7 @@ const AdminPaymentDetail = () => {
             cac_number,
             status,
             business_nature,
+            office_address,
             cover_letter_path,
             memorandum_path,
             registration_cert_path,
@@ -182,6 +187,7 @@ const AdminPaymentDetail = () => {
       // Build documents list with status
       const docs = [];
       const status = {};
+      const issues = [];
 
       documentFields.forEach(field => {
         if (organization[field.key]) {
@@ -202,17 +208,23 @@ const AdminPaymentDetail = () => {
               status[field.key] = 'approved';
             } else if (latest.type === 'document_rejected') {
               status[field.key] = 'rejected';
+              // Extract reason if available
+              const reason = latest.message?.split('Reason: ')[1] || 'Document was rejected';
+              issues.push({ name: field.name, reason });
             } else {
               status[field.key] = 'pending';
+              issues.push({ name: field.name, reason: 'Pending review' });
             }
           } else {
             status[field.key] = 'pending';
+            issues.push({ name: field.name, reason: 'Not yet reviewed' });
           }
         }
       });
 
       setDocuments(docs);
       setDocumentStatus(status);
+      setDocumentsWithIssues(issues);
 
       // Check if all documents are approved
       const allApproved = docs.every(doc => status[doc.key] === 'approved');
@@ -260,6 +272,15 @@ const AdminPaymentDetail = () => {
       
       if (!id || id === 'undefined') {
         throw new Error('Invalid payment ID');
+      }
+
+      // Double-check document approval status before proceeding
+      const allDocsApproved = documents.every(doc => documentStatus[doc.key] === 'approved');
+      
+      if (!allDocsApproved) {
+        showAlert('error', 'Cannot approve payment: Not all documents are approved');
+        setProcessing(false);
+        return;
       }
 
       // Update payment status
@@ -520,6 +541,13 @@ Please contact our support team for assistance or to resolve any issues with you
     );
   };
 
+  const getDocumentStatusSummary = () => {
+    const approved = Object.values(documentStatus).filter(s => s === 'approved').length;
+    const pending = Object.values(documentStatus).filter(s => s === 'pending').length;
+    const rejected = Object.values(documentStatus).filter(s => s === 'rejected').length;
+    return { approved, pending, rejected };
+  };
+
   const navigateToOrganizationDocuments = () => {
     navigate(`/admin/organizations/${organization?.id}`);
   };
@@ -547,6 +575,8 @@ Please contact our support team for assistance or to resolve any issues with you
     );
   }
 
+  const documentSummary = getDocumentStatusSummary();
+
   return (
     <>
       <Snackbar
@@ -562,13 +592,30 @@ Please contact our support team for assistance or to resolve any issues with you
 
       {/* Document Check Dialog */}
       <Dialog open={documentCheckDialog} onClose={() => setDocumentCheckDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif', display: 'flex', alignItems: 'center', gap: 1, color: '#ed6c02' }}>
-          <WarningIcon color="warning" />
-          Documents Not Fully Approved
+        <DialogTitle sx={{ 
+          fontFamily: '"Poppins", sans-serif', 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1, 
+          color: documentsWithIssues.some(d => d.reason.includes('rejected')) ? '#d32f2f' : '#ed6c02'
+        }}>
+          {documentsWithIssues.some(d => d.reason.includes('rejected')) ? (
+            <ErrorIcon color="error" />
+          ) : (
+            <WarningIcon color="warning" />
+          )}
+          {documentsWithIssues.some(d => d.reason.includes('rejected')) 
+            ? 'Documents Need Attention' 
+            : 'Documents Not Fully Approved'}
         </DialogTitle>
         <DialogContent>
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            All organization documents must be approved before payment can be approved.
+          <Alert 
+            severity={documentsWithIssues.some(d => d.reason.includes('rejected')) ? 'error' : 'warning'} 
+            sx={{ mb: 2 }}
+          >
+            {documentsWithIssues.some(d => d.reason.includes('rejected')) 
+              ? 'Some documents have been rejected and need to be re-uploaded before payment can be approved.'
+              : 'All organization documents must be approved before payment can be approved.'}
           </Alert>
           
           <Typography variant="body2" sx={{ mb: 2, fontWeight: 600 }}>
@@ -589,8 +636,10 @@ Please contact our support team for assistance or to resolve any issues with you
                 </ListItemIcon>
                 <ListItemText 
                   primary={doc.name}
-                  secondary={documentStatus[doc.key] === 'approved' ? 'Approved' : 
-                            documentStatus[doc.key] === 'rejected' ? 'Rejected' : 'Pending'}
+                  secondary={
+                    documentStatus[doc.key] === 'approved' ? 'Approved' : 
+                    documentStatus[doc.key] === 'rejected' ? 'Rejected - Needs re-upload' : 'Pending Review'
+                  }
                   secondaryTypographyProps={{
                     color: documentStatus[doc.key] === 'approved' ? 'success' :
                            documentStatus[doc.key] === 'rejected' ? 'error' : 'warning'
@@ -599,6 +648,20 @@ Please contact our support team for assistance or to resolve any issues with you
               </ListItem>
             ))}
           </List>
+
+          {documentsWithIssues.length > 0 && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+              <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <InfoIcon fontSize="small" color="info" />
+                Details:
+              </Typography>
+              {documentsWithIssues.map((issue, index) => (
+                <Typography key={index} variant="body2" sx={{ ml: 3, mb: 0.5 }}>
+                  • {issue.name}: {issue.reason}
+                </Typography>
+              ))}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDocumentCheckDialog(false)}>
@@ -802,28 +865,48 @@ Please contact our support team for assistance or to resolve any issues with you
                           <ListItemText 
                             primary="Documents Status"
                             secondary={
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                                <Chip
-                                  size="small"
-                                  icon={<CheckCircleIcon />}
-                                  label={`${Object.values(documentStatus).filter(s => s === 'approved').length} Approved`}
-                                  color="success"
-                                  variant="outlined"
+                              <Box sx={{ mt: 1 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                  <Chip
+                                    size="small"
+                                    icon={<CheckCircleIcon />}
+                                    label={`${documentSummary.approved} Approved`}
+                                    color="success"
+                                    variant="outlined"
+                                  />
+                                  <Chip
+                                    size="small"
+                                    icon={<PendingIcon />}
+                                    label={`${documentSummary.pending} Pending`}
+                                    color="warning"
+                                    variant="outlined"
+                                  />
+                                  <Chip
+                                    size="small"
+                                    icon={<CancelIcon />}
+                                    label={`${documentSummary.rejected} Rejected`}
+                                    color="error"
+                                    variant="outlined"
+                                  />
+                                </Box>
+                                
+                                {/* Progress bar */}
+                                <LinearProgress 
+                                  variant="determinate" 
+                                  value={(documentSummary.approved / documents.length) * 100}
+                                  sx={{ 
+                                    height: 8, 
+                                    borderRadius: 4,
+                                    bgcolor: '#e0e0e0',
+                                    '& .MuiLinearProgress-bar': {
+                                      bgcolor: documentSummary.rejected > 0 ? '#dc3545' : '#15e420'
+                                    }
+                                  }}
                                 />
-                                <Chip
-                                  size="small"
-                                  icon={<PendingIcon />}
-                                  label={`${Object.values(documentStatus).filter(s => s === 'pending').length} Pending`}
-                                  color="warning"
-                                  variant="outlined"
-                                />
-                                <Chip
-                                  size="small"
-                                  icon={<CancelIcon />}
-                                  label={`${Object.values(documentStatus).filter(s => s === 'rejected').length} Rejected`}
-                                  color="error"
-                                  variant="outlined"
-                                />
+                                
+                                <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
+                                  {documentSummary.approved} of {documents.length} documents approved
+                                </Typography>
                               </Box>
                             }
                           />
@@ -852,7 +935,13 @@ Please contact our support team for assistance or to resolve any issues with you
                       </Button>
                       
                       <Tooltip 
-                        title={!allDocumentsApproved ? "All documents must be approved before payment can be approved" : ""}
+                        title={
+                          !allDocumentsApproved 
+                            ? documentSummary.rejected > 0
+                              ? `${documentSummary.rejected} document(s) are rejected and need to be re-uploaded`
+                              : `${documentSummary.pending} document(s) are pending approval`
+                            : "Approve payment and automatically activate organization"
+                        }
                       >
                         <span>
                           <Button
@@ -861,12 +950,23 @@ Please contact our support team for assistance or to resolve any issues with you
                             onClick={handleApproveClick}
                             disabled={processing || !allDocumentsApproved}
                             sx={{ 
-                              bgcolor: allDocumentsApproved ? '#15e420' : '#ccc',
-                              '&:hover': { bgcolor: allDocumentsApproved ? '#12c21e' : '#ccc' },
-                              '&.Mui-disabled': { bgcolor: '#ccc' }
+                              bgcolor: allDocumentsApproved ? '#15e420' : 
+                                      documentSummary.rejected > 0 ? '#dc3545' : '#ccc',
+                              '&:hover': { 
+                                bgcolor: allDocumentsApproved ? '#12c21e' : 
+                                        documentSummary.rejected > 0 ? '#bb2d3b' : '#ccc' 
+                              },
+                              '&.Mui-disabled': { 
+                                bgcolor: documentSummary.rejected > 0 ? '#dc3545' : '#ccc',
+                                color: '#fff',
+                                opacity: documentSummary.rejected > 0 ? 0.7 : 0.5
+                              }
                             }}
                           >
-                            {processing ? 'Processing...' : 'Approve Payment & Activate Organization'}
+                            {processing ? 'Processing...' : 
+                             documentSummary.rejected > 0 ? 'Documents Need Attention' :
+                             !allDocumentsApproved ? 'Documents Pending' : 
+                             'Approve Payment & Activate Organization'}
                           </Button>
                         </span>
                       </Tooltip>
@@ -874,7 +974,7 @@ Please contact our support team for assistance or to resolve any issues with you
                     
                     {!allDocumentsApproved && (
                       <Alert 
-                        severity="warning" 
+                        severity={documentSummary.rejected > 0 ? "error" : "warning"} 
                         sx={{ mt: 2 }}
                         action={
                           <Button 
@@ -886,11 +986,19 @@ Please contact our support team for assistance or to resolve any issues with you
                           </Button>
                         }
                       >
-                        Cannot approve payment until all organization documents are approved.
-                        {Object.values(documentStatus).filter(s => s === 'pending').length > 0 && 
-                          ` ${Object.values(documentStatus).filter(s => s === 'pending').length} document(s) pending.`}
-                        {Object.values(documentStatus).filter(s => s === 'rejected').length > 0 && 
-                          ` ${Object.values(documentStatus).filter(s => s === 'rejected').length} document(s) rejected.`}
+                        {documentSummary.rejected > 0 ? (
+                          <>
+                            <strong>Action required:</strong> {documentSummary.rejected} document(s) have been rejected 
+                            and need to be re-uploaded before payment can be approved.
+                          </>
+                        ) : documentSummary.pending > 0 ? (
+                          <>
+                            <strong>Pending:</strong> {documentSummary.pending} document(s) are still pending review. 
+                            Please review all documents before approving payment.
+                          </>
+                        ) : (
+                          'Cannot approve payment until all organization documents are approved.'
+                        )}
                       </Alert>
                     )}
                   </Paper>
