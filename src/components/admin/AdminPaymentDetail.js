@@ -33,7 +33,8 @@ import {
   DialogActions,
   TextField,
   FormControlLabel,
-  Switch
+  Switch,
+  Tooltip
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -47,7 +48,8 @@ import {
   Verified as VerifiedIcon,
   Pending as PendingIcon,
   Visibility as VisibilityIcon,
-  Warning as WarningIcon
+  Warning as WarningIcon,
+  Info as InfoIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminSidebar from './AdminSidebar';
@@ -64,6 +66,9 @@ const AdminPaymentDetail = () => {
   const [loading, setLoading] = useState(true);
   const [payment, setPayment] = useState(null);
   const [organization, setOrganization] = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [documentStatus, setDocumentStatus] = useState({});
+  const [allDocumentsApproved, setAllDocumentsApproved] = useState(false);
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -71,6 +76,18 @@ const AdminPaymentDetail = () => {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [sendRejectionEmail, setSendRejectionEmail] = useState(false);
+  const [documentCheckDialog, setDocumentCheckDialog] = useState(false);
+
+  const documentFields = [
+    { key: 'cover_letter_path', name: 'Cover Letter', required: true },
+    { key: 'memorandum_path', name: 'Memorandum', required: true },
+    { key: 'registration_cert_path', name: 'Registration Certificate', required: true },
+    { key: 'incorporation_cert_path', name: 'Incorporation Certificate', required: true },
+    { key: 'premises_cert_path', name: 'Premises Certificate', required: true },
+    { key: 'company_logo_path', name: 'Company Logo', required: true },
+    { key: 'form_c07_path', name: 'Form C07', required: true },
+    { key: 'id_document_path', name: 'ID Document', required: true }
+  ];
 
   useEffect(() => {
     if (id && id !== 'undefined') {
@@ -97,6 +114,7 @@ const AdminPaymentDetail = () => {
         throw new Error('Invalid payment ID');
       }
 
+      // Fetch payment data with organization
       const { data: paymentData, error: paymentError } = await supabase
         .from('payments')
         .select(`
@@ -108,7 +126,15 @@ const AdminPaymentDetail = () => {
             phone_number,
             cac_number,
             status,
-            business_nature
+            business_nature,
+            cover_letter_path,
+            memorandum_path,
+            registration_cert_path,
+            incorporation_cert_path,
+            premises_cert_path,
+            company_logo_path,
+            form_c07_path,
+            id_document_path
           )
         `)
         .eq('id', id)
@@ -119,6 +145,11 @@ const AdminPaymentDetail = () => {
 
       setPayment(paymentData);
       setOrganization(paymentData.organizations);
+
+      // Check document approval status
+      if (paymentData.organizations) {
+        await checkDocumentApprovalStatus(paymentData.organizations.id);
+      }
 
       if (paymentData.receipt_path) {
         const bucket = paymentData.receipt_path.includes('receipts') ? 'documents' : 'receipts';
@@ -133,6 +164,62 @@ const AdminPaymentDetail = () => {
       showAlert('error', error.message || 'Failed to load payment details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkDocumentApprovalStatus = async (organizationId) => {
+    try {
+      // Fetch document approval/rejection notifications
+      const { data: notifications, error: notifError } = await supabase
+        .from('organization_notifications')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .in('type', ['document_approved', 'document_rejected'])
+        .order('created_at', { ascending: false });
+
+      if (notifError) throw notifError;
+
+      // Build documents list with status
+      const docs = [];
+      const status = {};
+
+      documentFields.forEach(field => {
+        if (organization[field.key]) {
+          docs.push({
+            key: field.key,
+            name: field.name,
+            path: organization[field.key]
+          });
+
+          // Check latest notification for this document
+          const docNotifications = notifications?.filter(n => 
+            n.title?.includes(field.name)
+          );
+
+          if (docNotifications && docNotifications.length > 0) {
+            const latest = docNotifications[0];
+            if (latest.type === 'document_approved') {
+              status[field.key] = 'approved';
+            } else if (latest.type === 'document_rejected') {
+              status[field.key] = 'rejected';
+            } else {
+              status[field.key] = 'pending';
+            }
+          } else {
+            status[field.key] = 'pending';
+          }
+        }
+      });
+
+      setDocuments(docs);
+      setDocumentStatus(status);
+
+      // Check if all documents are approved
+      const allApproved = docs.every(doc => status[doc.key] === 'approved');
+      setAllDocumentsApproved(allApproved);
+
+    } catch (error) {
+      console.error('Error checking document status:', error);
     }
   };
 
@@ -154,6 +241,17 @@ const AdminPaymentDetail = () => {
     }
   };
 
+  const handleApproveClick = () => {
+    // Check if all documents are approved
+    if (!allDocumentsApproved) {
+      setDocumentCheckDialog(true);
+      return;
+    }
+    
+    // If all documents are approved, proceed with payment approval
+    handleApprove();
+  };
+
   const handleApprove = async () => {
     if (processing) return;
     
@@ -169,6 +267,7 @@ const AdminPaymentDetail = () => {
         .from('payments')
         .update({ 
           status: 'approved',
+          approved_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('id', id);
@@ -231,7 +330,6 @@ const AdminPaymentDetail = () => {
           );
           
           if (emailResult.success) {
-          
             
             // Log email sent to database
             await logEmailToDatabase(
@@ -290,122 +388,119 @@ const AdminPaymentDetail = () => {
     }
   };
 
-const handleReject = async () => {
-  if (!rejectReason.trim()) return;
-  if (processing) return;
+  const handleReject = async () => {
+    if (!rejectReason.trim()) return;
+    if (processing) return;
 
-  try {
-    setProcessing(true);
-    
-    if (!id || id === 'undefined') {
-      throw new Error('Invalid payment ID');
-    }
+    try {
+      setProcessing(true);
+      
+      if (!id || id === 'undefined') {
+        throw new Error('Invalid payment ID');
+      }
 
-    // Update payment status to rejected
-    const { error: paymentError } = await supabase
-      .from('payments')
-      .update({ 
-        status: 'rejected',
-        rejection_reason: rejectReason,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id);
+      // Update payment status to rejected
+      const { error: paymentError } = await supabase
+        .from('payments')
+        .update({ 
+          status: 'rejected',
+          rejection_reason: rejectReason,
+          rejected_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
 
-    if (paymentError) throw paymentError;
+      if (paymentError) throw paymentError;
 
-    // Create notification in Supabase
-    if (organization) {
-      await supabase
-        .from('organization_notifications')
-        .insert([{
-          organization_id: organization.id,
-          type: 'payment_rejected',
-          title: 'Payment Rejected',
-          message: `Your payment of ₦${payment.amount?.toLocaleString()} was rejected. Reason: ${rejectReason}`,
-          category: 'payment',
-          read: false,
-          created_at: new Date().toISOString()
-        }]);
-    }
+      // Create notification in Supabase
+      if (organization) {
+        await supabase
+          .from('organization_notifications')
+          .insert([{
+            organization_id: organization.id,
+            type: 'payment_rejected',
+            title: 'Payment Rejected',
+            message: `Your payment of ₦${payment.amount?.toLocaleString()} was rejected. Reason: ${rejectReason}`,
+            category: 'payment',
+            read: false,
+            created_at: new Date().toISOString()
+          }]);
+      }
 
-    // Send rejection email only if enabled in UI - BYPASS GLOBAL CONFIG
-    if (sendRejectionEmail && organization) {
-      try {
-        // Direct email send without checking global config
-        const templateParams = {
-          to_email: organization.email,
-          company_name: organization.company_name,
-          main_message: `Update regarding your payment of ₦${payment.amount?.toLocaleString()}`,
-          details: `We regret to inform you that your payment has been rejected. 
-          
+      // Send rejection email only if enabled in UI
+      if (sendRejectionEmail && organization) {
+        try {
+          const templateParams = {
+            to_email: organization.email,
+            company_name: organization.company_name,
+            main_message: `Update regarding your payment of ₦${payment.amount?.toLocaleString()}`,
+            details: `We regret to inform you that your payment has been rejected. 
+            
 Reason for rejection: ${rejectReason}
 
 Please contact our support team for assistance or to resolve any issues with your payment.`,
-          action_url: `${window.location.origin}/support`,
-          action_text: 'Contact Support',
-          reply_to: 'support@pharouq900.com'
-        };
+            action_url: `${window.location.origin}/support`,
+            action_text: 'Contact Support',
+            reply_to: 'support@pharouq900.com'
+          };
 
-      
+          const response = await emailjs.send(
+            'service_hoj7fzf',
+            'template_orimz2f',
+            templateParams
+          );
 
-        const response = await emailjs.send(
-          'service_hoj7fzf', // Your service ID
-          'template_orimz2f', // Your template ID
-          templateParams
-        );
-
-        if (response) {
+          if (response) {
+            
+            // Log email sent
+            await supabase
+              .from('email_logs')
+              .insert([{
+                organization_id: organization.id,
+                email_type: 'payment_rejected',
+                recipient: organization.email,
+                status: 'sent',
+                metadata: { 
+                  amount: payment.amount, 
+                  reason: rejectReason,
+                  payment_id: payment.id
+                },
+                created_at: new Date().toISOString()
+              }]);
+          }
+        } catch (emailError) {
+          console.warn('Failed to send rejection email:', emailError);
           
-          
-          // Log email sent
+          // Log email failure
           await supabase
             .from('email_logs')
             .insert([{
               organization_id: organization.id,
               email_type: 'payment_rejected',
               recipient: organization.email,
-              status: 'sent',
-              metadata: { 
-                amount: payment.amount, 
-                reason: rejectReason,
-                payment_id: payment.id
-              },
+              status: 'failed',
+              error: emailError.message,
+              metadata: { amount: payment.amount, reason: rejectReason, payment_id: payment.id },
               created_at: new Date().toISOString()
             }]);
         }
-      } catch (emailError) {
-        console.warn('Failed to send rejection email:', emailError);
-        
-        // Log email failure
-        await supabase
-          .from('email_logs')
-          .insert([{
-            organization_id: organization.id,
-            email_type: 'payment_rejected',
-            recipient: organization.email,
-            status: 'failed',
-            error: emailError.message,
-            metadata: { amount: payment.amount, reason: rejectReason, payment_id: payment.id },
-            created_at: new Date().toISOString()
-          }]);
       }
-    }
 
-    showAlert('success', 'Payment rejected successfully');
-    setRejectDialogOpen(false);
-    setRejectReason('');
-    setSendRejectionEmail(false);
-    
-    setTimeout(() => {
-      navigate('/admin/payments');
-    }, 3000);
-  } catch (error) {
-    console.error('Error rejecting payment:', error);
-    showAlert('error', error.message || 'Failed to reject payment');
-  } finally {
-    setProcessing(false);
-  }
-};
+      showAlert('success', 'Payment rejected successfully');
+      setRejectDialogOpen(false);
+      setRejectReason('');
+      setSendRejectionEmail(false);
+      
+      setTimeout(() => {
+        navigate('/admin/payments');
+      }, 3000);
+    } catch (error) {
+      console.error('Error rejecting payment:', error);
+      showAlert('error', error.message || 'Failed to reject payment');
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const getStatusChip = (status) => {
     const config = {
@@ -423,6 +518,10 @@ Please contact our support team for assistance or to resolve any issues with you
         sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 500 }}
       />
     );
+  };
+
+  const navigateToOrganizationDocuments = () => {
+    navigate(`/admin/organizations/${organization?.id}`);
   };
 
   if (loading) {
@@ -460,6 +559,60 @@ Please contact our support team for assistance or to resolve any issues with you
           {alert.message}
         </Alert>
       </Snackbar>
+
+      {/* Document Check Dialog */}
+      <Dialog open={documentCheckDialog} onClose={() => setDocumentCheckDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif', display: 'flex', alignItems: 'center', gap: 1, color: '#ed6c02' }}>
+          <WarningIcon color="warning" />
+          Documents Not Fully Approved
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            All organization documents must be approved before payment can be approved.
+          </Alert>
+          
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 600 }}>
+            Document Status:
+          </Typography>
+          
+          <List dense>
+            {documents.map((doc) => (
+              <ListItem key={doc.key}>
+                <ListItemIcon>
+                  {documentStatus[doc.key] === 'approved' ? (
+                    <CheckCircleIcon sx={{ color: '#28a745' }} fontSize="small" />
+                  ) : documentStatus[doc.key] === 'rejected' ? (
+                    <CancelIcon sx={{ color: '#dc3545' }} fontSize="small" />
+                  ) : (
+                    <PendingIcon sx={{ color: '#ffc107' }} fontSize="small" />
+                  )}
+                </ListItemIcon>
+                <ListItemText 
+                  primary={doc.name}
+                  secondary={documentStatus[doc.key] === 'approved' ? 'Approved' : 
+                            documentStatus[doc.key] === 'rejected' ? 'Rejected' : 'Pending'}
+                  secondaryTypographyProps={{
+                    color: documentStatus[doc.key] === 'approved' ? 'success' :
+                           documentStatus[doc.key] === 'rejected' ? 'error' : 'warning'
+                  }}
+                />
+              </ListItem>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDocumentCheckDialog(false)}>
+            Close
+          </Button>
+          <Button 
+            onClick={navigateToOrganizationDocuments}
+            variant="contained"
+            sx={{ bgcolor: '#15e420', '&:hover': { bgcolor: '#12c21e' } }}
+          >
+            Review Documents
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Container maxWidth="xl" sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', gap: 3 }}>
@@ -640,6 +793,41 @@ Please contact our support team for assistance or to resolve any issues with you
                             }
                           />
                         </ListItem>
+                        
+                        {/* Document Status Summary */}
+                        <ListItem>
+                          <ListItemIcon>
+                            <DescriptionIcon sx={{ color: '#15e420' }} />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Documents Status"
+                            secondary={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                <Chip
+                                  size="small"
+                                  icon={<CheckCircleIcon />}
+                                  label={`${Object.values(documentStatus).filter(s => s === 'approved').length} Approved`}
+                                  color="success"
+                                  variant="outlined"
+                                />
+                                <Chip
+                                  size="small"
+                                  icon={<PendingIcon />}
+                                  label={`${Object.values(documentStatus).filter(s => s === 'pending').length} Pending`}
+                                  color="warning"
+                                  variant="outlined"
+                                />
+                                <Chip
+                                  size="small"
+                                  icon={<CancelIcon />}
+                                  label={`${Object.values(documentStatus).filter(s => s === 'rejected').length} Rejected`}
+                                  color="error"
+                                  variant="outlined"
+                                />
+                              </Box>
+                            }
+                          />
+                        </ListItem>
                       </List>
                     ) : (
                       <Typography color="textSecondary">Organization details not available</Typography>
@@ -662,20 +850,49 @@ Please contact our support team for assistance or to resolve any issues with you
                       >
                         Reject Payment
                       </Button>
-                      <Button
-                        variant="contained"
-                        startIcon={<CheckCircleIcon />}
-                        onClick={handleApprove}
-                        disabled={processing}
-                        sx={{ 
-                          bgcolor: '#15e420', 
-                          '&:hover': { bgcolor: '#12c21e' },
-                          '&.Mui-disabled': { bgcolor: '#ccc' }
-                        }}
+                      
+                      <Tooltip 
+                        title={!allDocumentsApproved ? "All documents must be approved before payment can be approved" : ""}
                       >
-                        {processing ? 'Processing...' : 'Approve Payment & Activate Organization'}
-                      </Button>
+                        <span>
+                          <Button
+                            variant="contained"
+                            startIcon={<CheckCircleIcon />}
+                            onClick={handleApproveClick}
+                            disabled={processing || !allDocumentsApproved}
+                            sx={{ 
+                              bgcolor: allDocumentsApproved ? '#15e420' : '#ccc',
+                              '&:hover': { bgcolor: allDocumentsApproved ? '#12c21e' : '#ccc' },
+                              '&.Mui-disabled': { bgcolor: '#ccc' }
+                            }}
+                          >
+                            {processing ? 'Processing...' : 'Approve Payment & Activate Organization'}
+                          </Button>
+                        </span>
+                      </Tooltip>
                     </Box>
+                    
+                    {!allDocumentsApproved && (
+                      <Alert 
+                        severity="warning" 
+                        sx={{ mt: 2 }}
+                        action={
+                          <Button 
+                            color="inherit" 
+                            size="small"
+                            onClick={() => navigate(`/admin/organizations/${organization?.id}`)}
+                          >
+                            Review Documents
+                          </Button>
+                        }
+                      >
+                        Cannot approve payment until all organization documents are approved.
+                        {Object.values(documentStatus).filter(s => s === 'pending').length > 0 && 
+                          ` ${Object.values(documentStatus).filter(s => s === 'pending').length} document(s) pending.`}
+                        {Object.values(documentStatus).filter(s => s === 'rejected').length > 0 && 
+                          ` ${Object.values(documentStatus).filter(s => s === 'rejected').length} document(s) rejected.`}
+                      </Alert>
+                    )}
                   </Paper>
                 </Grid>
               )}
