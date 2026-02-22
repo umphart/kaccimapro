@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { sendAdminRegistrationNotification } from '../../utils/emailService'; // Updated import
+import { sendAdminRegistrationNotification } from '../../utils/emailService'; 
 
 export const useRegistration = () => {
   const navigate = useNavigate();

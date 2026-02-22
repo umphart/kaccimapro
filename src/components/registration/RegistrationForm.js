@@ -14,7 +14,6 @@ const RegistrationForm = () => {
     loading,
     alert,
     formData,
-    files,
     fileNames,
     organizationId,
     paymentStep,
@@ -25,7 +24,7 @@ const RegistrationForm = () => {
     submitRegistration,
     nextStep,
     prevStep,
-    goToPayment,
+    
     setAlert
   } = useRegistration();
   const navigate = useNavigate();
@@ -51,14 +50,14 @@ const handleSubmitRegistration = async () => {
 
 return (
     <div className="registration-container">
-      {alert && (
-        <div className={`mui-alert mui-alert-${alert.type}`}>
-          <span className="material-icons mui-alert-icon">
-            {alert.type === 'success' ? 'check_circle' : alert.type === 'info' ? 'info' : 'error'}
-          </span>
-          <span>{alert.message}</span>
-        </div>
-      )}
+{alert && (
+  <div className={`mui-alert mui-alert-${alert.type}`}>
+    <span className="material-icons mui-alert-icon">
+      {alert.type === 'success' ? '' : alert.type === 'info' ? 'info' : 'error'}
+    </span>
+    <span>{alert.message}</span>
+  </div>
+)}
 
       <center>
         <h1 style={{ color: '#15e420' }}>KACCIMA Member Registration</h1>

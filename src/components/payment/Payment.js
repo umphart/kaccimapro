@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { sendAdminPaymentNotification } from '../../utils/adminNotificationService';
+import { sendAdminPaymentNotification } from '../../utils/emailService';
 import PaymentSummary from './PaymentSummary';
 import { Box, CircularProgress, Container, Paper, Typography, Alert as MuiAlert, Snackbar } from '@mui/material';
 import Sidebar from '../Sidebar';

@@ -314,14 +314,14 @@ const Profile = () => {
 
   return (
     <>
-      {alert && (
-        <div className={`mui-alert mui-alert-${alert.type}`}>
-          <span className="material-icons mui-alert-icon">
-            {alert.type === 'success' ? 'check_circle' : alert.type === 'info' ? 'info' : 'error'}
-          </span>
-          <span>{alert.message}</span>
-        </div>
-      )}
+{alert && (
+  <div className={`mui-alert mui-alert-${alert.type}`}>
+    <span className="material-icons mui-alert-icon">
+      {alert.type === 'success' ? '' : alert.type === 'info' ? 'info' : 'error'}
+    </span>
+    <span>{alert.message}</span>
+  </div>
+)}
       
       <Layout>
         {renderContent()}
