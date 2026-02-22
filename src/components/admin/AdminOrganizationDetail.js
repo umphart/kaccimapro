@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-// NO EMAIL IMPORTS - all email functionality removed
 import {
   Box,
   Container,
@@ -40,13 +39,11 @@ import {
   Email as EmailIcon,
   Phone as PhoneIcon,
   LocationOn as LocationIcon,
-  Verified as VerifiedIcon,
   Pending as PendingIcon,
   Visibility as VisibilityIcon,
   Download as DownloadIcon,
   PictureAsPdf as PdfIcon,
   Image as ImageIcon,
-  Warning as WarningIcon,
   Info as InfoIcon,
   Close as CloseIcon
 } from '@mui/icons-material';
@@ -267,8 +264,6 @@ const AdminOrganizationDetail = () => {
 
       if (notifError) throw notifError;
 
-      // NO EMAIL SENT - in-app notification only
-
       // Update local state
       setDocumentStatus(prev => ({ ...prev, [doc.key]: 'approved' }));
       
@@ -303,8 +298,6 @@ const AdminOrganizationDetail = () => {
         }]);
 
       if (notifError) throw notifError;
-
-      // NO EMAIL SENT - in-app notification only
 
       // Update local state
       setDocumentStatus(prev => ({ ...prev, [doc.key]: 'rejected' }));
@@ -347,7 +340,7 @@ const AdminOrganizationDetail = () => {
 
       if (orgError) throw orgError;
 
-      // Create notification in Supabase ONLY (no email)
+      // Create notification in Supabase
       await supabase
         .from('organization_notifications')
         .insert([{
@@ -359,8 +352,6 @@ const AdminOrganizationDetail = () => {
           action_url: '/dashboard',
           read: false
         }]);
-
-      // NO EMAIL SENT - organization approval emails removed as requested
 
       showAlert('success', 'Organization approved successfully');
       setApproveOrgDialog(false);
@@ -391,7 +382,7 @@ const AdminOrganizationDetail = () => {
 
       if (orgError) throw orgError;
 
-      // Create notification in Supabase ONLY (no email)
+      // Create notification in Supabase
       await supabase
         .from('organization_notifications')
         .insert([{
@@ -403,8 +394,6 @@ const AdminOrganizationDetail = () => {
           action_url: '/contact',
           read: false
         }]);
-
-      // NO EMAIL SENT - organization rejection emails removed as requested
 
       showAlert('success', 'Organization rejected successfully');
       setRejectOrgDialog(false);
@@ -581,7 +570,7 @@ const AdminOrganizationDetail = () => {
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2, color: '#666' }}>
-            Please provide a reason for rejecting this document (no email will be sent):
+            Please provide a reason for rejecting this document:
           </Typography>
           <TextField
             autoFocus
@@ -615,7 +604,7 @@ const AdminOrganizationDetail = () => {
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2, color: '#666' }}>
-            This will create an in-app notification only (no email will be sent):
+            Please provide a reason for rejecting this organization:
           </Typography>
           <TextField
             autoFocus
@@ -657,9 +646,6 @@ const AdminOrganizationDetail = () => {
               Not all documents are approved yet. Please approve all documents first.
             </Alert>
           )}
-          <Typography variant="body2" sx={{ color: '#666' }}>
-            This will create an in-app notification only (no email will be sent):
-          </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setApproveOrgDialog(false)} disabled={processing}>Cancel</Button>
@@ -908,7 +894,7 @@ const AdminOrganizationDetail = () => {
                                       size="small" 
                                       onClick={() => setRejectDialog({ open: true, doc })}
                                       sx={{ color: '#dc3545' }}
-                                      title="Reject Document (No Email)"
+                                      title="Reject Document"
                                     >
                                       <CancelIcon />
                                     </IconButton>
@@ -917,7 +903,7 @@ const AdminOrganizationDetail = () => {
                                     size="small" 
                                     onClick={() => handleApproveDocument(doc)}
                                     sx={{ color: '#28a745' }}
-                                    title="Approve Document (No Email)"
+                                    title="Approve Document"
                                   >
                                     <CheckCircleIcon />
                                   </IconButton>
