@@ -25,8 +25,12 @@ export const sendEmail = async (options) => {
       action_text = 'Go to Dashboard'
     } = options;
 
+    // Validate email
+    if (!to_email) {
+      throw new Error('Recipient email is required');
+    }
+
     // Set values based on status and type
-    const type = status; // 'approved' or 'rejected'
     const header_title = status === 'approved' 
       ? (item_type === 'organization' ? 'Organization Approved' : 'Payment Approved')
       : (item_type === 'organization' ? 'Organization Rejected' : 'Payment Rejected');
@@ -37,10 +41,13 @@ export const sendEmail = async (options) => {
     
     const bg_color = status === 'approved' ? '#e8f5e9' : '#ffebee';
 
+    // Template parameters - MUST match your EmailJS template variables
     const templateParams = {
-      type: type,
-      header_title: header_title,
+      to_email: to_email,           // This is critical - sets the recipient
+      from_name: 'Pharouq900',
+      reply_to: 'pharouq900@gmail.com',
       company_name: company_name,
+      header_title: header_title,
       main_message: main_message,
       bg_color: bg_color,
       item_type: item_type,
@@ -54,7 +61,8 @@ export const sendEmail = async (options) => {
     console.log('📧 Sending email to organization:', {
       to: to_email,
       item_type,
-      status
+      status,
+      templateParams
     });
 
     const response = await emailjs.send(
@@ -72,8 +80,12 @@ export const sendEmail = async (options) => {
 };
 
 // Helper functions for specific email types
-export const sendOrganizationApproved = (email, companyName) => 
-  sendEmail({
+export const sendOrganizationApproved = (email, companyName) => {
+  if (!email) {
+    console.error('No email provided for organization approval');
+    return Promise.resolve({ success: false, error: 'No email provided' });
+  }
+  return sendEmail({
     to_email: email,
     item_type: 'organization',
     status: 'approved',
@@ -81,9 +93,14 @@ export const sendOrganizationApproved = (email, companyName) =>
     action_url: `${window.location.origin}/dashboard`,
     action_text: 'Go to Dashboard'
   });
+};
 
-export const sendOrganizationRejected = (email, companyName, reason) => 
-  sendEmail({
+export const sendOrganizationRejected = (email, companyName, reason) => {
+  if (!email) {
+    console.error('No email provided for organization rejection');
+    return Promise.resolve({ success: false, error: 'No email provided' });
+  }
+  return sendEmail({
     to_email: email,
     item_type: 'organization',
     status: 'rejected',
@@ -92,9 +109,14 @@ export const sendOrganizationRejected = (email, companyName, reason) =>
     action_url: `${window.location.origin}/contact`,
     action_text: 'Contact Support'
   });
+};
 
-export const sendPaymentApproved = (email, companyName, amount) => 
-  sendEmail({
+export const sendPaymentApproved = (email, companyName, amount) => {
+  if (!email) {
+    console.error('No email provided for payment approval');
+    return Promise.resolve({ success: false, error: 'No email provided' });
+  }
+  return sendEmail({
     to_email: email,
     item_type: 'payment',
     status: 'approved',
@@ -103,9 +125,14 @@ export const sendPaymentApproved = (email, companyName, amount) =>
     action_url: `${window.location.origin}/dashboard`,
     action_text: 'View Dashboard'
   });
+};
 
-export const sendPaymentRejected = (email, companyName, amount, reason) => 
-  sendEmail({
+export const sendPaymentRejected = (email, companyName, amount, reason) => {
+  if (!email) {
+    console.error('No email provided for payment rejection');
+    return Promise.resolve({ success: false, error: 'No email provided' });
+  }
+  return sendEmail({
     to_email: email,
     item_type: 'payment',
     status: 'rejected',
@@ -115,3 +142,4 @@ export const sendPaymentRejected = (email, companyName, amount, reason) =>
     action_url: `${window.location.origin}/contact`,
     action_text: 'Contact Support'
   });
+};
