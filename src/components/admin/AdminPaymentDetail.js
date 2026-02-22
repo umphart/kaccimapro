@@ -231,7 +231,7 @@ const AdminPaymentDetail = () => {
           );
           
           if (emailResult.success) {
-            console.log('✅ Enhanced payment approval email sent to organization');
+          
             
             // Log email sent to database
             await logEmailToDatabase(
@@ -346,7 +346,7 @@ Please contact our support team for assistance or to resolve any issues with you
           reply_to: 'support@pharouq900.com'
         };
 
-        console.log('📧 Sending payment rejection email to:', organization.email);
+      
 
         const response = await emailjs.send(
           'service_hoj7fzf', // Your service ID
@@ -355,7 +355,7 @@ Please contact our support team for assistance or to resolve any issues with you
         );
 
         if (response) {
-          console.log('✅ Rejection email sent successfully');
+          
           
           // Log email sent
           await supabase

@@ -164,7 +164,7 @@ const AdminDashboard = () => {
 
   const fetchStats = async () => {
     try {
-      console.log('Fetching stats...');
+   
       
       // Fetch all organizations
       const { data: allOrgs, error: orgsError } = await supabase

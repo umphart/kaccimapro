@@ -36,7 +36,7 @@ Registration Details:
       reply_to: orgData.email
     };
 
-    console.log('📧 Sending admin registration notification');
+    
 
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,

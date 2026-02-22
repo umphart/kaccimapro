@@ -115,7 +115,7 @@ const AdminReports = () => {
       }
       await fetchStats();
     } catch (error) {
-      console.error('Error fetching data:', error);
+      
       showAlert('error', 'Failed to load data');
     } finally {
       setLoading(false);
@@ -124,7 +124,7 @@ const AdminReports = () => {
 
   const fetchPayments = async () => {
     try {
-      console.log('Fetching payments...');
+    
       let query = supabase
         .from('payments')
         .select('*, organizations(company_name)');
@@ -138,7 +138,7 @@ const AdminReports = () => {
       const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
-      console.log('Payments fetched:', data);
+      
       setPayments(data || []);
     } catch (error) {
       console.error('Error fetching payments:', error);
@@ -148,7 +148,7 @@ const AdminReports = () => {
 
   const fetchOrganizations = async () => {
     try {
-      console.log('Fetching organizations...');
+      
       let query = supabase
         .from('organizations')
         .select('*');
@@ -162,7 +162,7 @@ const AdminReports = () => {
       const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
-      console.log('Organizations fetched:', data);
+      
       setOrganizations(data || []);
     } catch (error) {
       console.error('Error fetching organizations:', error);
@@ -212,7 +212,7 @@ const AdminReports = () => {
     try {
       // Try to fetch the image from public URL
       const imageUrl = `${window.location.origin}${imagePath}`;
-      console.log('Attempting to load logo from:', imageUrl);
+      
       const response = await fetch(imageUrl);
       
       if (response.ok) {
@@ -234,9 +234,7 @@ const AdminReports = () => {
 const exportToPDF = async () => {
   setExporting(true);
   try {
-    console.log(`Starting PDF export with ${reportType}:`, 
-      reportType === 'payments' ? payments.length : organizations.length);
-
+  
     const data = reportType === 'payments' ? payments : organizations;
 
     if (!data || data.length === 0) {
@@ -276,7 +274,6 @@ const exportToPDF = async () => {
       return itemDate >= start && itemDate <= end;
     });
 
-    console.log('Filtered data:', filteredData.length);
 
     if (filteredData.length === 0) {
       showAlert('error', `No ${reportType} found in selected date range`);
@@ -533,7 +530,7 @@ const exportToPDF = async () => {
     
     showAlert('success', `${reportType} report exported successfully`);
   } catch (error) {
-    console.error('Error exporting to PDF:', error);
+   
     showAlert('error', 'Failed to export PDF report: ' + error.message);
   } finally {
     setExporting(false);

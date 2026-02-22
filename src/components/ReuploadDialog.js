@@ -71,7 +71,7 @@ const ReuploadDialog = ({ open, onClose, notification, organization, onSuccess }
 
       // Get the appropriate bucket name
       const bucketName = getBucketName(documentField);
-      console.log('Using bucket:', bucketName);
+    
 
       // Upload file to storage
       const fileExt = selectedFile.name.split('.').pop();
@@ -94,7 +94,7 @@ const ReuploadDialog = ({ open, onClose, notification, organization, onSuccess }
         .from(bucketName)
         .getPublicUrl(fileName);
 
-      console.log('File uploaded successfully, URL:', publicUrl);
+    
 
       // Update organization record with new document path
       const { error: updateError } = await supabase

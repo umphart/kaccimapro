@@ -96,8 +96,7 @@ const AdminAuth = () => {
         throw new Error('No user data returned');
       }
 
-      console.log('Auth successful for user:', authData.user.id);
-
+   
       // Then check if user is an admin with better error handling
       const { data: adminData, error: adminError } = await supabase
         .from('admin_users')

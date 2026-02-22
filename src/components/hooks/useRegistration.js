@@ -269,10 +269,10 @@ export const useRegistration = () => {
         };
         
         await sendAdminRegistrationNotification(notificationData);
-        console.log('✅ Admin notification sent for new registration');
+      
       } catch (emailError) {
         // Don't block registration if email fails
-        console.warn('⚠️ Admin notification failed:', emailError);
+        
       }
       
       return newOrganizationId;

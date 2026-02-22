@@ -44,7 +44,7 @@ Registration Details:
       reply_to: orgData.email
     };
 
-    console.log('📧 Sending admin registration notification');
+    
 
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,
@@ -52,7 +52,7 @@ Registration Details:
       templateParams
     );
 
-    console.log('✅ Admin registration notification sent');
+ 
     return { success: true, data: response };
   } catch (error) {
     console.error('❌ Failed to send admin notification:', error);
@@ -92,7 +92,7 @@ export const sendPaymentApprovedEmail = async (email, companyName, amount, organ
       reply_to: 'support@pharouq900.com'
     };
 
-    console.log('📧 Sending enhanced payment approval email to:', email);
+ 
 
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,
@@ -100,10 +100,10 @@ export const sendPaymentApprovedEmail = async (email, companyName, amount, organ
       templateParams
     );
 
-    console.log('✅ Enhanced payment approval email sent successfully');
+    
     return { success: true, data: response };
   } catch (error) {
-    console.error('❌ Failed to send payment approval email:', error);
+    
     return { success: false, error: error.message };
   }
 };
@@ -124,7 +124,7 @@ export const sendPaymentRejectedEmail = async (email, companyName, amount, rejec
 
     // Check if rejection emails are enabled - allow force send
     if (!EMAIL_CONFIG.SEND_REJECTION_EMAILS && !forceSend) {
-      console.log('ℹ️ Rejection emails are disabled by configuration');
+
       return { success: true, skipped: true, message: 'Rejection emails disabled' };
     }
 
@@ -142,7 +142,7 @@ Please contact our support team for assistance or to resolve any issues with you
       reply_to: 'support@pharouq900.com'
     };
 
-    console.log('📧 Sending payment rejection email to:', email);
+   
 
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,
@@ -150,7 +150,7 @@ Please contact our support team for assistance or to resolve any issues with you
       templateParams
     );
 
-    console.log('✅ Payment rejection email sent successfully');
+
     return { success: true, data: response };
   } catch (error) {
     console.error('❌ Failed to send payment rejection email:', error);
