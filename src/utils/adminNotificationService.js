@@ -94,39 +94,4 @@ Please verify this payment in the admin dashboard.`,
   }
 };
 
-// Send notification to admin about document upload (if needed)
-export const sendAdminDocumentNotification = async (orgData, documentName) => {
-  try {
-    const templateParams = {
-      to_email: ADMIN_EMAIL,
-      company_name: orgData.company_name,
-      subject: '📄 New Document Uploaded',
-      message: `A new document has been uploaded for review.
-
-Document Details:
-• Organization: ${orgData.company_name}
-• Document: ${documentName}
-• Upload Date: ${new Date().toLocaleString()}
-
-Please review this document in the admin dashboard.`,
-      bg_color: '#e8f5e9',
-      action_url: `${window.location.origin}/admin/organizations/${orgData.id}`,
-      action_text: '📄 Review Document',
-      reply_to: orgData.email
-    };
-
-    console.log('📧 Sending admin document notification:', templateParams);
-
-    const response = await emailjs.send(
-      EMAILJS_CONFIG.serviceId,
-      EMAILJS_CONFIG.templateId,
-      templateParams
-    );
-
-    console.log('✅ Admin document notification sent');
-    return { success: true, data: response };
-  } catch (error) {
-    console.error('❌ Failed to send admin document notification:', error);
-    return { success: false, error: error.message };
-  }
-};
+// Document notification function removed - no emails for document uploads

@@ -16,11 +16,10 @@ export const sendEmail = async (options) => {
   try {
     const {
       to_email,
-      type, // organizationApproved, organizationRejected, documentApproved, documentRejected, paymentApproved, paymentRejected
+      type, // organizationApproved, organizationRejected, paymentApproved, paymentRejected
       company_name = '',
       amount = '',
       reason = '',
-      document_name = '',
       action_url = '',
       action_text = 'Go to Dashboard'
     } = options;
@@ -46,7 +45,6 @@ export const sendEmail = async (options) => {
       
       // Optional fields
       reason: reason || '',
-      document_name: document_name || '',
       amount: amount ? (typeof amount === 'number' ? amount.toLocaleString() : amount) : '',
       
       // Action
@@ -83,12 +81,6 @@ const generateMessage = (type, data) => {
     case 'organizationRejected':
       return `We have reviewed your organization registration and it was REJECTED. Please see the reason below and take necessary action.`;
       
-    case 'documentApproved':
-      return `Your document "${data.document_name}" has been reviewed and APPROVED. All requirements have been met.`;
-      
-    case 'documentRejected':
-      return `Your document "${data.document_name}" requires your attention. It has been REJECTED.`;
-      
     case 'paymentApproved':
       return `Your payment of ₦${data.amount?.toLocaleString()} has been successfully processed and APPROVED. Thank you for your payment!`;
       
@@ -120,27 +112,6 @@ export const sendOrganizationRejected = (email, companyName, reason) =>
     action_text: 'Contact Support'
   });
 
-export const sendDocumentApproved = (email, companyName, documentName) => 
-  sendEmail({
-    to_email: email,
-    type: 'documentApproved',
-    company_name: companyName,
-    document_name: documentName,
-    action_url: `${window.location.origin}/documents`,
-    action_text: 'View Documents'
-  });
-
-export const sendDocumentRejected = (email, companyName, documentName, reason) => 
-  sendEmail({
-    to_email: email,
-    type: 'documentRejected',
-    company_name: companyName,
-    document_name: documentName,
-    reason: reason,
-    action_url: `${window.location.origin}/documents`,
-    action_text: 'Upload New Document'
-  });
-
 export const sendPaymentApproved = (email, companyName, amount) => 
   sendEmail({
     to_email: email,
@@ -161,3 +132,5 @@ export const sendPaymentRejected = (email, companyName, amount, reason) =>
     action_url: `${window.location.origin}/contact`,
     action_text: 'Contact Support'
   });
+
+// Document functions removed - no emails will be sent for documents
