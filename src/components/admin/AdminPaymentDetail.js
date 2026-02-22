@@ -215,8 +215,58 @@ const AdminPaymentDetail = () => {
     }
   };
 
-  // Note: Payment rejection emails have been removed as requested
-  // Only organization approval emails are sent when payment is approved
+  // Add back the handleReject function (without email)
+  const handleReject = async () => {
+    if (!rejectReason.trim()) return;
+    if (processing) return;
+
+    try {
+      setProcessing(true);
+      
+      if (!id || id === 'undefined') {
+        throw new Error('Invalid payment ID');
+      }
+
+      // Update payment status to rejected
+      const { error } = await supabase
+        .from('payments')
+        .update({ 
+          status: 'rejected',
+          rejection_reason: rejectReason,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Create notification in Supabase (no email)
+      if (organization) {
+        await supabase
+          .from('organization_notifications')
+          .insert([{
+            organization_id: organization.id,
+            type: 'payment_rejected',
+            title: 'Payment Rejected',
+            message: `Your payment of ₦${payment.amount?.toLocaleString()} was rejected. Reason: ${rejectReason}`,
+            category: 'payment',
+            read: false
+          }]);
+      }
+
+      showAlert('success', 'Payment rejected successfully');
+      setRejectDialogOpen(false);
+      setRejectReason('');
+      
+      setTimeout(() => {
+        navigate('/admin/payments');
+      }, 2000);
+    } catch (error) {
+      console.error('Error rejecting payment:', error);
+      showAlert('error', error.message || 'Failed to reject payment');
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const getStatusChip = (status) => {
     const config = {
@@ -486,7 +536,7 @@ const AdminPaymentDetail = () => {
         </Box>
       </Container>
 
-      {/* Reject Dialog - Note: No email is sent for rejection */}
+      {/* Reject Dialog - No email is sent for rejection */}
       <Dialog open={rejectDialogOpen} onClose={() => !processing && setRejectDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif' }}>
           Reject Payment
