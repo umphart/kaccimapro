@@ -65,9 +65,17 @@ const AdminPaymentDetail = () => {
   const [rejectReason, setRejectReason] = useState('');
   const [receiptUrl, setReceiptUrl] = useState(null);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [processing, setProcessing] = useState(false); // Add processing state
 
   useEffect(() => {
-    fetchPaymentDetails();
+    // Only fetch if id exists and is valid
+    if (id && id !== 'undefined') {
+      fetchPaymentDetails();
+    } else {
+      console.error('Invalid payment ID:', id);
+      showAlert('error', 'Invalid payment ID');
+      setLoading(false);
+    }
   }, [id]);
 
   const showAlert = (type, message) => {
@@ -81,6 +89,11 @@ const AdminPaymentDetail = () => {
   const fetchPaymentDetails = async () => {
     setLoading(true);
     try {
+      // Validate id before making request
+      if (!id || id === 'undefined') {
+        throw new Error('Invalid payment ID');
+      }
+
       // Fetch payment with organization details
       const { data: paymentData, error: paymentError } = await supabase
         .from('payments')
@@ -100,6 +113,10 @@ const AdminPaymentDetail = () => {
 
       if (paymentError) throw paymentError;
 
+      if (!paymentData) {
+        throw new Error('Payment not found');
+      }
+
       setPayment(paymentData);
       setOrganization(paymentData.organizations);
 
@@ -114,14 +131,24 @@ const AdminPaymentDetail = () => {
 
     } catch (error) {
       console.error('Error fetching payment details:', error);
-      showAlert('error', 'Failed to load payment details');
+      showAlert('error', error.message || 'Failed to load payment details');
     } finally {
       setLoading(false);
     }
   };
 
   const handleApprove = async () => {
+    // Prevent double submission
+    if (processing) return;
+    
     try {
+      setProcessing(true);
+      
+      // Validate id
+      if (!id || id === 'undefined') {
+        throw new Error('Invalid payment ID');
+      }
+
       // Update payment status in Supabase
       const { error } = await supabase
         .from('payments')
@@ -136,18 +163,19 @@ const AdminPaymentDetail = () => {
       // Send email notification via EmailJS
       let emailResult = { success: true };
       if (organization && organization.email) {
-        emailResult = await sendPaymentApproved(
-          organization.email,
-          organization.company_name,
-          payment.amount
-        );
-
-        if (!emailResult.success) {
-          console.warn('Email notification failed but payment was approved:', emailResult.error);
+        try {
+          emailResult = await sendPaymentApproved(
+            organization.email,
+            organization.company_name,
+            payment.amount
+          );
+        } catch (emailError) {
+          console.warn('Email notification failed:', emailError);
+          emailResult = { success: false, error: emailError.message };
         }
       }
 
-      // Create notification in Supabase (optional)
+      // Create notification in Supabase
       if (organization) {
         await supabase
           .from('organization_notifications')
@@ -171,19 +199,30 @@ const AdminPaymentDetail = () => {
           .eq('id', organization.id);
       }
 
+      // Navigate after delay
       setTimeout(() => {
         navigate('/admin/payments');
       }, 2000);
     } catch (error) {
       console.error('Error approving payment:', error);
-      showAlert('error', 'Failed to approve payment');
+      showAlert('error', error.message || 'Failed to approve payment');
+    } finally {
+      setProcessing(false);
     }
   };
 
   const handleReject = async () => {
     if (!rejectReason.trim()) return;
+    if (processing) return;
 
     try {
+      setProcessing(true);
+      
+      // Validate id
+      if (!id || id === 'undefined') {
+        throw new Error('Invalid payment ID');
+      }
+
       // Update payment status in Supabase
       const { error } = await supabase
         .from('payments')
@@ -199,19 +238,20 @@ const AdminPaymentDetail = () => {
       // Send email notification via EmailJS
       let emailResult = { success: true };
       if (organization && organization.email) {
-        emailResult = await sendPaymentRejected(
-          organization.email,
-          organization.company_name,
-          payment.amount,
-          rejectReason
-        );
-
-        if (!emailResult.success) {
-          console.warn('Email notification failed but payment was rejected:', emailResult.error);
+        try {
+          emailResult = await sendPaymentRejected(
+            organization.email,
+            organization.company_name,
+            payment.amount,
+            rejectReason
+          );
+        } catch (emailError) {
+          console.warn('Email notification failed:', emailError);
+          emailResult = { success: false, error: emailError.message };
         }
       }
 
-      // Create notification in Supabase (optional)
+      // Create notification in Supabase
       if (organization) {
         await supabase
           .from('organization_notifications')
@@ -234,7 +274,9 @@ const AdminPaymentDetail = () => {
       }, 2000);
     } catch (error) {
       console.error('Error rejecting payment:', error);
-      showAlert('error', 'Failed to reject payment');
+      showAlert('error', error.message || 'Failed to reject payment');
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -268,6 +310,13 @@ const AdminPaymentDetail = () => {
     return (
       <Container>
         <Typography>Payment not found</Typography>
+        <Button 
+          variant="contained" 
+          onClick={() => navigate('/admin/payments')}
+          sx={{ mt: 2, bgcolor: '#15e420' }}
+        >
+          Back to Payments
+        </Button>
       </Container>
     );
   }
@@ -473,6 +522,7 @@ const AdminPaymentDetail = () => {
                         color="error"
                         startIcon={<CancelIcon />}
                         onClick={() => setRejectDialogOpen(true)}
+                        disabled={processing}
                       >
                         Reject Payment
                       </Button>
@@ -480,9 +530,14 @@ const AdminPaymentDetail = () => {
                         variant="contained"
                         startIcon={<CheckCircleIcon />}
                         onClick={handleApprove}
-                        sx={{ bgcolor: '#15e420', '&:hover': { bgcolor: '#12c21e' } }}
+                        disabled={processing}
+                        sx={{ 
+                          bgcolor: '#15e420', 
+                          '&:hover': { bgcolor: '#12c21e' },
+                          '&.Mui-disabled': { bgcolor: '#ccc' }
+                        }}
                       >
-                        Approve Payment
+                        {processing ? 'Processing...' : 'Approve Payment'}
                       </Button>
                     </Box>
                   </Paper>
@@ -494,7 +549,7 @@ const AdminPaymentDetail = () => {
       </Container>
 
       {/* Reject Dialog */}
-      <Dialog open={rejectDialogOpen} onClose={() => setRejectDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={rejectDialogOpen} onClose={() => !processing && setRejectDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif' }}>
           Reject Payment
         </DialogTitle>
@@ -513,17 +568,20 @@ const AdminPaymentDetail = () => {
             onChange={(e) => setRejectReason(e.target.value)}
             variant="outlined"
             placeholder="Please explain why this payment is being rejected..."
+            disabled={processing}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setRejectDialogOpen(false)} disabled={processing}>
+            Cancel
+          </Button>
           <Button 
             onClick={handleReject} 
             color="error" 
             variant="contained"
-            disabled={!rejectReason.trim()}
+            disabled={!rejectReason.trim() || processing}
           >
-            Reject Payment & Send Email
+            {processing ? 'Processing...' : 'Reject Payment & Send Email'}
           </Button>
         </DialogActions>
       </Dialog>
