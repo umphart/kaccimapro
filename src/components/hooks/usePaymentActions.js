@@ -116,7 +116,7 @@ export const usePaymentActions = (payment, organization, paymentId, showAlert, n
                 payment_id: payment.id
               }
             );
-            showAlert('success', 'Payment approved and notification email sent successfully');
+            if (showAlert) showAlert('success', 'Payment approved and notification email sent successfully');
           } else {
             await logEmailToDatabase(
               organization.id,
@@ -126,7 +126,7 @@ export const usePaymentActions = (payment, organization, paymentId, showAlert, n
               { amount: payment.amount, payment_id: payment.id },
               emailResult.error
             );
-            showAlert('warning', 'Payment approved but email notification failed');
+            if (showAlert) showAlert('warning', 'Payment approved but email notification failed');
           }
         } catch (emailError) {
           console.warn('Email notification failed:', emailError);
@@ -138,10 +138,10 @@ export const usePaymentActions = (payment, organization, paymentId, showAlert, n
             { amount: payment.amount, payment_id: payment.id },
             emailError.message
           );
-          showAlert('warning', 'Payment approved but email notification failed');
+          if (showAlert) showAlert('warning', 'Payment approved but email notification failed');
         }
       } else {
-        showAlert('success', 'Payment approved successfully');
+        if (showAlert) showAlert('success', 'Payment approved successfully');
       }
       
       setTimeout(() => {
@@ -149,7 +149,7 @@ export const usePaymentActions = (payment, organization, paymentId, showAlert, n
       }, 3000);
     } catch (error) {
       console.error('Error approving payment:', error);
-      showAlert('error', error.message || 'Failed to approve payment');
+      if (showAlert) showAlert('error', error.message || 'Failed to approve payment');
     } finally {
       setProcessing(false);
     }
@@ -249,7 +249,7 @@ Please contact our support team for assistance or to resolve any issues with you
         }
       }
 
-      showAlert('success', 'Payment rejected successfully');
+      if (showAlert) showAlert('success', 'Payment rejected successfully');
       setRejectDialogOpen(false);
       setRejectReason('');
       setSendRejectionEmail(false);
@@ -259,7 +259,7 @@ Please contact our support team for assistance or to resolve any issues with you
       }, 3000);
     } catch (error) {
       console.error('Error rejecting payment:', error);
-      showAlert('error', error.message || 'Failed to reject payment');
+      if (showAlert) showAlert('error', error.message || 'Failed to reject payment');
     } finally {
       setProcessing(false);
     }

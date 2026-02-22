@@ -22,13 +22,7 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControlLabel,
-  Switch,
+ 
   Tooltip,
   LinearProgress
 } from '@mui/material';
@@ -53,7 +47,7 @@ import AdminSidebar from './AdminSidebar';
 import DocumentStatusDialog from './DocumentStatusDialog';
 import RejectPaymentDialog from './RejectPaymentDialog';
 import ReceiptViewerDialog from './ReceiptViewerDialog';
-import { usePaymentActions } from '../hooks/usePaymentActions'
+import { usePaymentActions } from '../hooks/usePaymentActions';
 import { useDocumentStatus } from '../hooks/useDocumentStatus';
 import { StyledCard } from './PaymentDetailStyles';
 import { getStatusChip, documentFields } from './PaymentDetailUtils';
@@ -69,6 +63,15 @@ const AdminPaymentDetail = () => {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptUrl, setReceiptUrl] = useState(null);
   const [documentCheckDialog, setDocumentCheckDialog] = useState(false);
+
+  // Define showAlert BEFORE using it in hooks
+  const showAlert = (type, message) => {
+    setAlert({ open: true, type, message });
+  };
+
+  const handleCloseAlert = () => {
+    setAlert({ ...alert, open: false });
+  };
 
   const { 
     documentStatus, 
@@ -99,14 +102,6 @@ const AdminPaymentDetail = () => {
       setLoading(false);
     }
   }, [id]);
-
-  const showAlert = (type, message) => {
-    setAlert({ open: true, type, message });
-  };
-
-  const handleCloseAlert = () => {
-    setAlert({ ...alert, open: false });
-  };
 
   const fetchPaymentDetails = async () => {
     setLoading(true);
