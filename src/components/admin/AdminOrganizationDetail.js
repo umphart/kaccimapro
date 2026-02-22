@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import { 
-  sendDocumentApproved, 
-  sendDocumentRejected,
   sendOrganizationApproved,
   sendOrganizationRejected 
 } from '../../utils/emailService';
@@ -108,6 +106,7 @@ const AdminOrganizationDetail = () => {
   const [documentStatus, setDocumentStatus] = useState({});
   const [rejectionReasons, setRejectionReasons] = useState({});
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
+  const [processing, setProcessing] = useState(false);
   
   // Dialogs
   const [rejectDialog, setRejectDialog] = useState({ open: false, doc: null });
@@ -250,196 +249,202 @@ const AdminOrganizationDetail = () => {
     }
   };
 
-const handleApproveDocument = async (doc) => {
-  try {
-    // Create approval notification in Supabase
-    const { error: notifError } = await supabase
-      .from('organization_notifications')
-      .insert([{
-        organization_id: id,
-        type: 'document_approved',
-        title: `${doc.name} Approved`,
-        message: `Your ${doc.name} has been approved.`,
-        category: 'document',
-        action_url: '/documents',
-        read: false
-      }]);
+  const handleApproveDocument = async (doc) => {
+    if (processing) return;
+    
+    try {
+      setProcessing(true);
+      
+      // Create approval notification in Supabase
+      const { error: notifError } = await supabase
+        .from('organization_notifications')
+        .insert([{
+          organization_id: id,
+          type: 'document_approved',
+          title: `${doc.name} Approved`,
+          message: `Your ${doc.name} has been approved.`,
+          category: 'document',
+          action_url: '/documents',
+          read: false
+        }]);
 
-    if (notifError) throw notifError;
+      if (notifError) throw notifError;
 
-    // Send email notification via EmailJS
-    const emailResult = await sendDocumentApproved(
-      organization.email,
-      organization.company_name,
-      doc.name
-    );
+      // NO EMAIL SENT FOR DOCUMENT APPROVAL - removed intentionally
 
-    if (!emailResult.success) {
-      console.warn('Email notification failed but document was approved:', emailResult.error);
-      // Continue anyway - don't block the approval if email fails
+      // Update local state
+      setDocumentStatus(prev => ({ ...prev, [doc.key]: 'approved' }));
+      
+      showAlert('success', `${doc.name} approved successfully`);
+    } catch (error) {
+      console.error('Error approving document:', error);
+      showAlert('error', 'Failed to approve document');
+    } finally {
+      setProcessing(false);
     }
+  };
 
-    // Update local state
-    setDocumentStatus(prev => ({ ...prev, [doc.key]: 'approved' }));
-    
-    showAlert('success', `${doc.name} approved successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
-  } catch (error) {
-    console.error('Error approving document:', error);
-    showAlert('error', 'Failed to approve document');
-  }
-};
+  const handleRejectDocument = async () => {
+    if (!rejectDialog.doc || !rejectReason.trim()) return;
+    if (processing) return;
 
-const handleRejectDocument = async () => {
-  if (!rejectDialog.doc || !rejectReason.trim()) return;
+    try {
+      setProcessing(true);
+      const doc = rejectDialog.doc;
 
-  try {
-    const doc = rejectDialog.doc;
+      // Create rejection notification in Supabase
+      const { error: notifError } = await supabase
+        .from('organization_notifications')
+        .insert([{
+          organization_id: id,
+          type: 'document_rejected',
+          title: `${doc.name} Rejected`,
+          message: `Your ${doc.name} has been rejected. Reason: ${rejectReason}`,
+          category: 'document',
+          action_url: '/documents',
+          read: false
+        }]);
 
-    // Create rejection notification in Supabase
-    const { error: notifError } = await supabase
-      .from('organization_notifications')
-      .insert([{
-        organization_id: id,
-        type: 'document_rejected',
-        title: `${doc.name} Rejected`,
-        message: `Your ${doc.name} has been rejected. Reason: ${rejectReason}`,
-        category: 'document',
-        action_url: '/documents',
-        read: false
-      }]);
+      if (notifError) throw notifError;
 
-    if (notifError) throw notifError;
+      // NO EMAIL SENT FOR DOCUMENT REJECTION - removed intentionally
 
-    // Send email notification via EmailJS
-    const emailResult = await sendDocumentRejected(
-      organization.email,
-      organization.company_name,
-      doc.name,
-      rejectReason
-    );
-
-    if (!emailResult.success) {
-      console.warn('Email notification failed but document was rejected:', emailResult.error);
-      // Continue anyway
+      // Update local state
+      setDocumentStatus(prev => ({ ...prev, [doc.key]: 'rejected' }));
+      setRejectionReasons(prev => ({ ...prev, [doc.key]: rejectReason }));
+      
+      showAlert('success', `${doc.name} rejected successfully`);
+      setRejectDialog({ open: false, doc: null });
+      setRejectReason('');
+    } catch (error) {
+      console.error('Error rejecting document:', error);
+      showAlert('error', 'Failed to reject document');
+    } finally {
+      setProcessing(false);
     }
+  };
 
-    // Update local state
-    setDocumentStatus(prev => ({ ...prev, [doc.key]: 'rejected' }));
-    setRejectionReasons(prev => ({ ...prev, [doc.key]: rejectReason }));
+  const handleApproveOrganization = async () => {
+    if (processing) return;
     
-    showAlert('success', `${doc.name} rejected successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
-    setRejectDialog({ open: false, doc: null });
-    setRejectReason('');
-  } catch (error) {
-    console.error('Error rejecting document:', error);
-    showAlert('error', 'Failed to reject document');
-  }
-};
+    try {
+      setProcessing(true);
+      
+      // Check if all documents are approved
+      const allApproved = documents.every(doc => documentStatus[doc.key] === 'approved');
+      
+      if (!allApproved) {
+        showAlert('error', 'All documents must be approved before approving the organization');
+        setApproveOrgDialog(false);
+        return;
+      }
 
-const handleApproveOrganization = async () => {
-  try {
-    // Check if all documents are approved
-    const allApproved = documents.every(doc => documentStatus[doc.key] === 'approved');
-    
-    if (!allApproved) {
-      showAlert('error', 'All documents must be approved before approving the organization');
+      // Update organization status in Supabase
+      const { error: orgError } = await supabase
+        .from('organizations')
+        .update({ 
+          status: 'approved',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+      if (orgError) throw orgError;
+
+      // Create notification in Supabase
+      await supabase
+        .from('organization_notifications')
+        .insert([{
+          organization_id: id,
+          type: 'success',
+          title: 'Organization Approved',
+          message: 'Your organization has been fully approved! You can now access all features.',
+          category: 'registration',
+          action_url: '/dashboard',
+          read: false
+        }]);
+
+      // Send email notification via EmailJS for ORGANIZATION APPROVAL ONLY
+      let emailResult = { success: true };
+      if (organization && organization.email) {
+        try {
+          emailResult = await sendOrganizationApproved(
+            organization.email,
+            organization.company_name
+          );
+        } catch (emailError) {
+          console.warn('Email notification failed but organization was approved:', emailError);
+          emailResult = { success: false, error: emailError.message };
+        }
+      }
+
+      showAlert('success', `Organization approved successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
       setApproveOrgDialog(false);
-      return;
+      fetchOrganizationDetails(); // Refresh data
+    } catch (error) {
+      console.error('Error approving organization:', error);
+      showAlert('error', 'Failed to approve organization');
+    } finally {
+      setProcessing(false);
     }
+  };
 
-    // Update organization status in Supabase
-    const { error: orgError } = await supabase
-      .from('organizations')
-      .update({ 
-        status: 'approved',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id);
+  const handleRejectOrganization = async () => {
+    if (!orgRejectReason.trim()) return;
+    if (processing) return;
 
-    if (orgError) throw orgError;
+    try {
+      setProcessing(true);
+      
+      // Update organization status in Supabase
+      const { error: orgError } = await supabase
+        .from('organizations')
+        .update({ 
+          status: 'rejected',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
 
-    // Create notification in Supabase
-    await supabase
-      .from('organization_notifications')
-      .insert([{
-        organization_id: id,
-        type: 'success',
-        title: 'Organization Approved',
-        message: 'Your organization has been fully approved! You can now access all features.',
-        category: 'registration',
-        action_url: '/dashboard',
-        read: false
-      }]);
+      if (orgError) throw orgError;
 
-    // Send email notification via EmailJS
-    const emailResult = await sendOrganizationApproved(
-      organization.email,
-      organization.company_name
-    );
+      // Create notification in Supabase
+      await supabase
+        .from('organization_notifications')
+        .insert([{
+          organization_id: id,
+          type: 'error',
+          title: 'Organization Rejected',
+          message: `Your organization registration has been rejected. Reason: ${orgRejectReason}`,
+          category: 'registration',
+          action_url: '/contact',
+          read: false
+        }]);
 
-    if (!emailResult.success) {
-      console.warn('Email notification failed but organization was approved:', emailResult.error);
+      // Send email notification via EmailJS for ORGANIZATION REJECTION ONLY
+      let emailResult = { success: true };
+      if (organization && organization.email) {
+        try {
+          emailResult = await sendOrganizationRejected(
+            organization.email,
+            organization.company_name,
+            orgRejectReason
+          );
+        } catch (emailError) {
+          console.warn('Email notification failed but organization was rejected:', emailError);
+          emailResult = { success: false, error: emailError.message };
+        }
+      }
+
+      showAlert('success', `Organization rejected successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
+      setRejectOrgDialog(false);
+      setOrgRejectReason('');
+      fetchOrganizationDetails(); // Refresh data
+    } catch (error) {
+      console.error('Error rejecting organization:', error);
+      showAlert('error', 'Failed to reject organization');
+    } finally {
+      setProcessing(false);
     }
-
-    showAlert('success', `Organization approved successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
-    setApproveOrgDialog(false);
-    fetchOrganizationDetails(); // Refresh data
-  } catch (error) {
-    console.error('Error approving organization:', error);
-    showAlert('error', 'Failed to approve organization');
-  }
-};
-
-const handleRejectOrganization = async () => {
-  if (!orgRejectReason.trim()) return;
-
-  try {
-    // Update organization status in Supabase
-    const { error: orgError } = await supabase
-      .from('organizations')
-      .update({ 
-        status: 'rejected',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id);
-
-    if (orgError) throw orgError;
-
-    // Create notification in Supabase
-    await supabase
-      .from('organization_notifications')
-      .insert([{
-        organization_id: id,
-        type: 'error',
-        title: 'Organization Rejected',
-        message: `Your organization registration has been rejected. Reason: ${orgRejectReason}`,
-        category: 'registration',
-        action_url: '/contact',
-        read: false
-      }]);
-
-    // Send email notification via EmailJS
-    const emailResult = await sendOrganizationRejected(
-      organization.email,
-      organization.company_name,
-      orgRejectReason
-    );
-
-    if (!emailResult.success) {
-      console.warn('Email notification failed but organization was rejected:', emailResult.error);
-    }
-
-    showAlert('success', `Organization rejected successfully${!emailResult.success ? ' (Email notification failed)' : ''}`);
-    setRejectOrgDialog(false);
-    setOrgRejectReason('');
-    fetchOrganizationDetails(); // Refresh data
-  } catch (error) {
-    console.error('Error rejecting organization:', error);
-    showAlert('error', 'Failed to reject organization');
-  }
-};
-
-// Optional: Add payment-related functions for completeness
+  };
 
   const checkAllDocumentsApproved = () => {
     return documents.every(doc => documentStatus[doc.key] === 'approved');
@@ -546,7 +551,6 @@ const handleRejectOrganization = async () => {
             </Box>
             {documentUrl ? (
               viewDocument?.key === 'company_logo_path' ? (
-                // For images (like company logo)
                 <Box sx={{ 
                   display: 'flex', 
                   justifyContent: 'center', 
@@ -566,7 +570,6 @@ const handleRejectOrganization = async () => {
                   />
                 </Box>
               ) : (
-                // For PDFs and other documents
                 <iframe
                   src={documentUrl}
                   title={viewDocument.name}
@@ -600,13 +603,13 @@ const handleRejectOrganization = async () => {
       </Dialog>
 
       {/* Document Reject Dialog */}
-      <Dialog open={rejectDialog.open} onClose={() => setRejectDialog({ open: false, doc: null })} maxWidth="sm" fullWidth>
+      <Dialog open={rejectDialog.open} onClose={() => !processing && setRejectDialog({ open: false, doc: null })} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif' }}>
           Reject {rejectDialog.doc?.name}
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2, color: '#666' }}>
-            Please provide a reason for rejecting this document:
+            Please provide a reason for rejecting this document (no email will be sent):
           </Typography>
           <TextField
             autoFocus
@@ -617,29 +620,30 @@ const handleRejectOrganization = async () => {
             onChange={(e) => setRejectReason(e.target.value)}
             placeholder="Enter rejection reason..."
             variant="outlined"
+            disabled={processing}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRejectDialog({ open: false, doc: null })}>Cancel</Button>
+          <Button onClick={() => setRejectDialog({ open: false, doc: null })} disabled={processing}>Cancel</Button>
           <Button 
             onClick={handleRejectDocument} 
             color="error" 
             variant="contained"
-            disabled={!rejectReason.trim()}
+            disabled={!rejectReason.trim() || processing}
           >
-            Reject Document
+            {processing ? 'Processing...' : 'Reject Document'}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Organization Reject Dialog */}
-      <Dialog open={rejectOrgDialog} onClose={() => setRejectOrgDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog open={rejectOrgDialog} onClose={() => !processing && setRejectOrgDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif' }}>
           Reject Organization
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2, color: '#666' }}>
-            Please provide a reason for rejecting this organization:
+            This will send an email notification to {organization?.email}
           </Typography>
           <TextField
             autoFocus
@@ -650,23 +654,24 @@ const handleRejectOrganization = async () => {
             onChange={(e) => setOrgRejectReason(e.target.value)}
             placeholder="Enter rejection reason..."
             variant="outlined"
+            disabled={processing}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRejectOrgDialog(false)}>Cancel</Button>
+          <Button onClick={() => setRejectOrgDialog(false)} disabled={processing}>Cancel</Button>
           <Button 
             onClick={handleRejectOrganization} 
             color="error" 
             variant="contained"
-            disabled={!orgRejectReason.trim()}
+            disabled={!orgRejectReason.trim() || processing}
           >
-            Reject Organization
+            {processing ? 'Processing...' : 'Reject Organization & Send Email'}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Organization Approve Confirmation Dialog */}
-      <Dialog open={approveOrgDialog} onClose={() => setApproveOrgDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog open={approveOrgDialog} onClose={() => !processing && setApproveOrgDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif' }}>
           Approve Organization
         </DialogTitle>
@@ -681,18 +686,18 @@ const handleRejectOrganization = async () => {
             </Alert>
           )}
           <Typography variant="body2" sx={{ color: '#666' }}>
-            Are you sure you want to approve {organization.company_name}?
+            This will send an approval email to {organization?.email}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setApproveOrgDialog(false)}>Cancel</Button>
+          <Button onClick={() => setApproveOrgDialog(false)} disabled={processing}>Cancel</Button>
           <Button 
             onClick={handleApproveOrganization} 
             color="success" 
             variant="contained"
-            disabled={!allDocumentsApproved}
+            disabled={!allDocumentsApproved || processing}
           >
-            Approve Organization
+            {processing ? 'Processing...' : 'Approve Organization & Send Email'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -931,7 +936,7 @@ const handleRejectOrganization = async () => {
                                       size="small" 
                                       onClick={() => setRejectDialog({ open: true, doc })}
                                       sx={{ color: '#dc3545' }}
-                                      title="Reject Document"
+                                      title="Reject Document (No Email)"
                                     >
                                       <CancelIcon />
                                     </IconButton>
@@ -940,7 +945,7 @@ const handleRejectOrganization = async () => {
                                     size="small" 
                                     onClick={() => handleApproveDocument(doc)}
                                     sx={{ color: '#28a745' }}
-                                    title="Approve Document"
+                                    title="Approve Document (No Email)"
                                   >
                                     <CheckCircleIcon />
                                   </IconButton>
@@ -971,6 +976,7 @@ const handleRejectOrganization = async () => {
                         color="error"
                         startIcon={<CancelIcon />}
                         onClick={() => setRejectOrgDialog(true)}
+                        disabled={processing}
                       >
                         Reject Organization
                       </Button>
@@ -978,13 +984,13 @@ const handleRejectOrganization = async () => {
                         variant="contained"
                         startIcon={<CheckCircleIcon />}
                         onClick={() => setApproveOrgDialog(true)}
-                        disabled={!allDocumentsApproved}
+                        disabled={!allDocumentsApproved || processing}
                         sx={{ 
                           bgcolor: allDocumentsApproved ? '#15e420' : '#ccc',
                           '&:hover': { bgcolor: allDocumentsApproved ? '#12c21e' : '#ccc' }
                         }}
                       >
-                        {allDocumentsApproved ? 'Approve Organization' : 'Documents Pending'}
+                        {processing ? 'Processing...' : (allDocumentsApproved ? 'Approve Organization' : 'Documents Pending')}
                       </Button>
                     </Box>
                   </Paper>
