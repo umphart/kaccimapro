@@ -4,8 +4,8 @@ import emailjs from '@emailjs/browser';
 const EMAILJS_CONFIG = {
   publicKey: process.env.REACT_APP_EMAILJS_PUBLIC_KEY || 'vEb1fxTEwxzpmcNmm',
   serviceId: process.env.REACT_APP_EMAILJS_SERVICE_ID || 'service_hoj7fzf',
-  // Template for admin notifications (registrations/payments)
-  templateId: 'template_orimz2f'  // Using the simpler template
+  // Template for admin notifications (registrations & payments)
+  templateId: 'template_kwa5fnl'
 };
 
 // Initialize EmailJS
@@ -18,9 +18,9 @@ const ADMIN_EMAIL = 'pharouq900@gmail.com';
 export const sendAdminRegistrationNotification = async (orgData) => {
   try {
     const templateParams = {
+      type: 'registration',
       to_email: ADMIN_EMAIL,
       company_name: orgData.company_name,
-      subject: '🚨 New Organization Registration',
       message: `A new organization has registered on the platform.
 
 Registration Details:
@@ -29,16 +29,14 @@ Registration Details:
 • Phone: ${orgData.phone_number || 'N/A'}
 • CAC Number: ${orgData.cac_number || 'N/A'}
 • Business Nature: ${orgData.business_nature || 'N/A'}
-• Registration Date: ${new Date().toLocaleString()}
-
-Please review the registration in the admin dashboard.`,
-      bg_color: '#fff3e0',
+• Registration Date: ${new Date().toLocaleString()}`,
+      amount: '',
       action_url: `${window.location.origin}/admin/organizations/${orgData.id}`,
-      action_text: '🔍 Review Registration',
+      action_text: 'Review Registration',
       reply_to: orgData.email
     };
 
-    console.log('📧 Sending admin registration notification:', templateParams);
+    console.log('📧 Sending admin registration notification');
 
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,
@@ -58,9 +56,9 @@ Please review the registration in the admin dashboard.`,
 export const sendAdminPaymentNotification = async (paymentData, orgData) => {
   try {
     const templateParams = {
+      type: 'payment',
       to_email: ADMIN_EMAIL,
       company_name: orgData.company_name,
-      subject: '💰 New Payment Submitted',
       message: `A new payment has been submitted and requires verification.
 
 Payment Details:
@@ -68,17 +66,14 @@ Payment Details:
 • Amount: ₦${paymentData.amount?.toLocaleString()}
 • Payment Type: ${paymentData.payment_type === 'first' ? 'First Payment' : 'Annual Renewal'}
 • Payment Year: ${paymentData.payment_year}
-• Date: ${new Date().toLocaleString()}
-
-Please verify this payment in the admin dashboard.`,
-      bg_color: '#e3f2fd',
+• Date: ${new Date().toLocaleString()}`,
+      amount: paymentData.amount?.toLocaleString(),
       action_url: `${window.location.origin}/admin/payments/${paymentData.id}`,
-      action_text: '✅ Verify Payment',
-      reply_to: orgData.email,
-      amount: paymentData.amount?.toLocaleString()
+      action_text: 'Verify Payment',
+      reply_to: orgData.email
     };
 
-    console.log('📧 Sending admin payment notification:', templateParams);
+    console.log('📧 Sending admin payment notification');
 
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,
@@ -93,5 +88,3 @@ Please verify this payment in the admin dashboard.`,
     return { success: false, error: error.message };
   }
 };
-
-// Document notification function removed - no emails for document uploads

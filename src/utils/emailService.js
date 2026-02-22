@@ -5,7 +5,7 @@ const EMAILJS_CONFIG = {
   publicKey: process.env.REACT_APP_EMAILJS_PUBLIC_KEY || 'vEb1fxTEwxzpmcNmm',
   serviceId: process.env.REACT_APP_EMAILJS_SERVICE_ID || 'service_hoj7fzf',
   // Template for organization notifications (approvals/rejections)
-  templateId: 'template_kwa5fnl'  // Using the template with type conditions
+  templateId: 'template_orimz2f'
 };
 
 // Initialize EmailJS
@@ -16,7 +16,8 @@ export const sendEmail = async (options) => {
   try {
     const {
       to_email,
-      type, // organizationApproved, organizationRejected, paymentApproved, paymentRejected
+      item_type, // 'organization' or 'payment'
+      status, // 'approved' or 'rejected'
       company_name = '',
       amount = '',
       reason = '',
@@ -24,38 +25,36 @@ export const sendEmail = async (options) => {
       action_text = 'Go to Dashboard'
     } = options;
 
-    // Set background color based on type
-    let bg_color = '#f5f5f5';
-    if (type.includes('Approved')) {
-      bg_color = '#e8f5e9';
-    } else if (type.includes('Rejected')) {
-      bg_color = '#ffebee';
-    }
+    // Set values based on status and type
+    const type = status; // 'approved' or 'rejected'
+    const header_title = status === 'approved' 
+      ? (item_type === 'organization' ? 'Organization Approved' : 'Payment Approved')
+      : (item_type === 'organization' ? 'Organization Rejected' : 'Payment Rejected');
+    
+    const main_message = status === 'approved'
+      ? `Congratulations! Your ${item_type === 'organization' ? 'organization registration' : 'payment'} has been approved.`
+      : `We regret to inform you that your ${item_type === 'organization' ? 'organization registration' : 'payment'} has been rejected.`;
+    
+    const bg_color = status === 'approved' ? '#e8f5e9' : '#ffebee';
 
     const templateParams = {
-      // Basic info
       type: type,
-      isAdmin: false, // This is for organization, not admin
-      to_email: to_email,
+      header_title: header_title,
       company_name: company_name,
-      
-      // Content
-      message: generateMessage(type, options),
+      main_message: main_message,
       bg_color: bg_color,
-      
-      // Optional fields
-      reason: reason || '',
+      item_type: item_type,
+      status: status === 'approved' ? 'APPROVED' : 'REJECTED',
       amount: amount ? (typeof amount === 'number' ? amount.toLocaleString() : amount) : '',
-      
-      // Action
+      reason: reason || '',
       action_url: action_url || '',
       action_text: action_text
     };
 
     console.log('📧 Sending email to organization:', {
       to: to_email,
-      type,
-      templateId: EMAILJS_CONFIG.templateId
+      item_type,
+      status
     });
 
     const response = await emailjs.send(
@@ -72,31 +71,12 @@ export const sendEmail = async (options) => {
   }
 };
 
-// Generate message based on email type
-const generateMessage = (type, data) => {
-  switch(type) {
-    case 'organizationApproved':
-      return `Great news! Your organization registration has been APPROVED. You can now access all features and start using our platform.`;
-      
-    case 'organizationRejected':
-      return `We have reviewed your organization registration and it was REJECTED. Please see the reason below and take necessary action.`;
-      
-    case 'paymentApproved':
-      return `Your payment of ₦${data.amount?.toLocaleString()} has been successfully processed and APPROVED. Thank you for your payment!`;
-      
-    case 'paymentRejected':
-      return `Your payment of ₦${data.amount?.toLocaleString()} could not be verified and has been REJECTED.`;
-      
-    default:
-      return 'Thank you for using our platform.';
-  }
-};
-
 // Helper functions for specific email types
 export const sendOrganizationApproved = (email, companyName) => 
   sendEmail({
     to_email: email,
-    type: 'organizationApproved',
+    item_type: 'organization',
+    status: 'approved',
     company_name: companyName,
     action_url: `${window.location.origin}/dashboard`,
     action_text: 'Go to Dashboard'
@@ -105,7 +85,8 @@ export const sendOrganizationApproved = (email, companyName) =>
 export const sendOrganizationRejected = (email, companyName, reason) => 
   sendEmail({
     to_email: email,
-    type: 'organizationRejected',
+    item_type: 'organization',
+    status: 'rejected',
     company_name: companyName,
     reason: reason,
     action_url: `${window.location.origin}/contact`,
@@ -115,7 +96,8 @@ export const sendOrganizationRejected = (email, companyName, reason) =>
 export const sendPaymentApproved = (email, companyName, amount) => 
   sendEmail({
     to_email: email,
-    type: 'paymentApproved',
+    item_type: 'payment',
+    status: 'approved',
     company_name: companyName,
     amount: amount,
     action_url: `${window.location.origin}/dashboard`,
@@ -125,12 +107,11 @@ export const sendPaymentApproved = (email, companyName, amount) =>
 export const sendPaymentRejected = (email, companyName, amount, reason) => 
   sendEmail({
     to_email: email,
-    type: 'paymentRejected',
+    item_type: 'payment',
+    status: 'rejected',
     company_name: companyName,
     amount: amount,
     reason: reason,
     action_url: `${window.location.origin}/contact`,
     action_text: 'Contact Support'
   });
-
-// Document functions removed - no emails will be sent for documents
