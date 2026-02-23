@@ -87,9 +87,9 @@ const StyledListItem = styled(ListItem)(({ active, theme }) => ({
 
 const MenuButton = styled(IconButton)(({ theme }) => ({
   position: 'fixed',
-  top: 80,
+  top: 16, // Changed from 80 to 16 to position at top
   left: 16,
-  zIndex: 1100,
+  zIndex: 1200, // Increased z-index to ensure it's above other elements
   backgroundColor: '#15e420',
   color: 'white',
   '&:hover': {
