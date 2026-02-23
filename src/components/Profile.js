@@ -95,12 +95,7 @@ const Profile = () => {
 
         if (!paymentError && paymentData) {
           setPayment(paymentData);
-          
-          // Check if certificate was already downloaded
-          const downloaded = localStorage.getItem(`certificate_${orgData.id}_downloaded`);
-          if (downloaded) {
-            setCertificateDownloaded(true);
-          }
+        
         }
       }
 
@@ -118,62 +113,7 @@ const Profile = () => {
     }
   };
 
- 
 
-  const handleDownloadCertificate = () => {
-    if (certificateDownloaded) {
-      setConfirmDialogOpen(true);
-    } else {
-      downloadCertificate();
-    }
-  };
-
-  const handleConfirmDownload = () => {
-    downloadCertificate();
-    setConfirmDialogOpen(false);
-  };
-
-  const downloadCertificate = () => {
-    // Create a simple certificate
-    const certificateContent = `
-      KANO CHAMBER OF COMMERCE, INDUSTRY, MINES & AGRICULTURE (KACCIMA)
-      
-      MEMBERSHIP CERTIFICATE
-      
-      This is to certify that
-      
-      ${organization?.company_name}
-      
-      is a registered member of KACCIMA
-      
-      Membership Status: Active
-      Registration Date: ${new Date(organization?.created_at).toLocaleDateString()}
-      Membership ID: ${organization?.id}
-      
-      This certificate is valid for the membership year.
-      
-      Signed: ____________________
-      KACCIMA Secretary
-    `;
-
-    const blob = new Blob([certificateContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `KACCIMA_Certificate_${organization?.company_name}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    // Mark as downloaded
-    if (organization?.id) {
-      localStorage.setItem(`certificate_${organization.id}_downloaded`, 'true');
-      setCertificateDownloaded(true);
-    }
-
-    showAlert('success', 'Certificate downloaded successfully!');
-  };
 
   const renderContent = () => {
     return (
@@ -259,19 +199,7 @@ const Profile = () => {
           
           </div>
 
-          {(payment?.status === 'approved' || organization?.status === 'approved') && (
-            <div className="profile-info-section">
-              <h3>Membership Certificate</h3>
-              <button 
-                onClick={handleDownloadCertificate} 
-                className="btn"
-                style={{ backgroundColor: '#15e420', color: 'white' }}
-              >
-                <DownloadIcon style={{ marginRight: '8px' }} /> 
-                {certificateDownloaded ? 'Download Certificate Again' : 'Download Certificate'}
-              </button>
-            </div>
-          )}
+        
         </div>
       </section>
     );
@@ -336,16 +264,6 @@ const Profile = () => {
             Are you sure you want to download it again? This action will be recorded.
           </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmDialogOpen(false)}>Cancel</Button>
-          <Button 
-            onClick={handleConfirmDownload} 
-            variant="contained"
-            sx={{ bgcolor: '#15e420', '&:hover': { bgcolor: '#12c21e' } }}
-          >
-            Download Again
-          </Button>
-        </DialogActions>
       </Dialog>
     </>
   );
