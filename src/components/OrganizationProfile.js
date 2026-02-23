@@ -4,7 +4,6 @@ import { supabase } from '../supabaseClient';
 import {
   Alert,
   Snackbar,
-  Button,
   IconButton,
   Dialog,
   DialogTitle,
@@ -16,7 +15,6 @@ import {
   CircularProgress
 } from '@mui/material';
 import {
-  Edit as EditIcon,
   Description as DescriptionIcon,
   Image as ImageIcon,
   Badge as BadgeIcon,
@@ -30,8 +28,6 @@ import {
 import { styled } from '@mui/material/styles';
 import Layout from './Layout';
 import './OrganizationProfile.css';
-
-// Styled components with Google Fonts
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(3),
   marginBottom: theme.spacing(3),
@@ -293,20 +289,6 @@ const OrganizationProfile = () => {
             >
               Organization Profile
             </Typography>
-            <Button
-              variant="contained"
-              startIcon={<EditIcon />}
-              onClick={() => navigate('/organization/edit')}
-              sx={{
-                bgcolor: '#15e420',
-                '&:hover': { bgcolor: '#12c21e' },
-                fontFamily: '"Inter", sans-serif',
-                textTransform: 'none',
-                fontWeight: 500
-              }}
-            >
-              Edit Profile
-            </Button>
           </Box>
 
           {/* Basic Information Section */}

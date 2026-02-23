@@ -28,8 +28,6 @@ const RegistrationForm = () => {
     setAlert
   } = useRegistration();
   const navigate = useNavigate();
-
- // In RegistrationForm.js - Update the handleSubmitRegistration function
 const handleSubmitRegistration = async () => {
   try {
     const id = await submitRegistration();

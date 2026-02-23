@@ -87,7 +87,6 @@ const Dashboard = () => {
       if (orgError && orgError.code !== 'PGRST116') {
         console.error('Error fetching organization:', orgError);
       }
-
       if (orgData) {
         setOrganization(orgData);
         setEditFormData(orgData);

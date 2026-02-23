@@ -160,8 +160,8 @@ Thank you for your continued trust in our services.`;
       action_3_text: 'View Payment History',
       reply_to: 'pharouq900@gmail.com',
       help_text: 'Having trouble downloading? Visit our support page or contact us directly.',
-      support_email: 'info@kaccima.gov.ng',
-      support_phone: '+234 XXX XXX XXXX'
+      support_email: 'info@kaccima.ng',
+      support_phone: '+2347063174462'
     };
 
     const response = await emailjs.send(

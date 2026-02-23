@@ -15,6 +15,10 @@ const DocumentsStep = ({
       <p className="form-instruction">
         Please upload all required documents in PDF format (except logo which can be JPG/PNG).
         Maximum file size: 10MB for PDFs, 5MB for images.
+        <br />
+        <span style={{ color: '#666', fontSize: '14px' }}>
+          <strong>Note:</strong> Business Premises Certificate, Memorandum & Articles, and Form C07 are optional.
+        </span>
       </p>
       
       <div className="form-row">
@@ -32,13 +36,12 @@ const DocumentsStep = ({
           )}
         </div>
         <div className="form-group">
-          <label>Memorandum & Articles *</label>
+          <label>Memorandum & Articles <span style={{ color: '#666', fontWeight: 'normal' }}>(Optional)</span></label>
           <input
             type="file"
             name="memorandum"
             accept=".pdf"
             onChange={handleFileChange}
-            required
           />
           {fileNames.memorandum && (
             <small className="file-name">Selected: {fileNames.memorandum}</small>
@@ -77,13 +80,12 @@ const DocumentsStep = ({
 
       <div className="form-row">
         <div className="form-group">
-          <label>Business Premises Certificate *</label>
+          <label>Business Premises Certificate <span style={{ color: '#666', fontWeight: 'normal' }}>(Optional)</span></label>
           <input
             type="file"
             name="premisesCert"
             accept=".pdf"
             onChange={handleFileChange}
-            required
           />
           {fileNames.premisesCert && (
             <small className="file-name">Selected: {fileNames.premisesCert}</small>
@@ -126,13 +128,12 @@ const DocumentsStep = ({
 
         <div className="form-row">
           <div className="form-group">
-            <label>Form C07 *</label>
+            <label>Form C07 <span style={{ color: '#666', fontWeight: 'normal' }}>(Optional)</span></label>
             <input
               type="file"
               name="formC07"
               accept=".pdf"
               onChange={handleFileChange}
-              required
             />
             {fileNames.formC07 && (
               <small className="file-name">Selected: {fileNames.formC07}</small>

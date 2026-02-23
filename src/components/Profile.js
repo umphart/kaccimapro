@@ -11,19 +11,9 @@ import {
   Button,
   Typography,
   Paper,
-  Avatar
 } from '@mui/material';
 import {
-  Business as BusinessIcon,
-  Email as EmailIcon,
-  Phone as PhoneIcon,
-  LocationOn as LocationIcon,
-  Badge as BadgeIcon,
   Download as DownloadIcon,
-  Edit as EditIcon,
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  Info as InfoIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import Layout from './Layout';
@@ -128,13 +118,7 @@ const Profile = () => {
     }
   };
 
-  const handleEditOrganization = () => {
-    navigate('/organization/edit');
-  };
-
-  const handleEditUserProfile = () => {
-    navigate('/profile/edit');
-  };
+ 
 
   const handleDownloadCertificate = () => {
     if (certificateDownloaded) {
@@ -251,12 +235,6 @@ const Profile = () => {
             </span>
           </div>
 
-          <button 
-            onClick={handleEditOrganization} 
-            className="btn outline"
-          >
-            <EditIcon style={{ marginRight: '8px' }} /> Edit Organization Profile
-          </button>
 
           <div className="profile-info-section">
             <h3>User Profile & Security</h3>
@@ -278,12 +256,7 @@ const Profile = () => {
               <span className="value">••••••••</span>
             </div>
 
-            <button 
-              onClick={handleEditUserProfile} 
-              className="btn outline"
-            >
-              <EditIcon style={{ marginRight: '8px' }} /> Edit User Profile
-            </button>
+          
           </div>
 
           {(payment?.status === 'approved' || organization?.status === 'approved') && (
