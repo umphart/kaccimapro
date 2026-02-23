@@ -25,11 +25,9 @@ import {
   CheckCircle as CheckCircleIcon,
   Pending as PendingIcon,
   HourglassEmpty as HourglassIcon,
-  Verified as VerifiedIcon,
   Settings as SettingsIcon,
   Logout as LogoutIcon,
   Menu as MenuIcon,
-  Close as CloseIcon,
   AdminPanelSettings as AdminIcon,
   Assessment as AssessmentIcon,
   Notifications as NotificationsIcon,
@@ -149,11 +147,19 @@ const AdminSidebar = ({ onLogout }) => {
       setPendingCounts({
         organizations: orgCount || 0,
         payments: paymentCount || 0,
-        documents: 0 // You can add document count logic here
+        documents: 0
       });
     } catch (error) {
       console.error('Error fetching counts:', error);
     }
+  };
+
+  const isActive = (path) => {
+    if (path === '/admin/organizations') {
+      return location.pathname === '/admin/organizations' || 
+             location.pathname.startsWith('/admin/organizations/filter/');
+    }
+    return location.pathname === path;
   };
 
   const getMenuItems = () => {
@@ -166,28 +172,28 @@ const AdminSidebar = ({ onLogout }) => {
         label: 'Dashboard', 
         icon: <DashboardIcon />,
         badge: null,
-        show: true
+        onClick: () => navigate('/admin/dashboard')
       },
       { 
         path: '/admin/organizations', 
-        label: 'Organizations', 
+        label: 'All Organizations', 
         icon: <PeopleIcon />,
-        badge: pendingCounts.organizations,
-        show: true
+        badge: null,
+        onClick: () => navigate('/admin/organizations')
       },
       { 
-        path: '/admin/organizations/pending', 
+        path: '/admin/organizations/filter/pending', 
         label: 'Pending Review', 
         icon: <HourglassIcon />,
         badge: pendingCounts.organizations,
-        show: true
+        onClick: () => navigate('/admin/organizations/filter/pending')
       },
       { 
-        path: '/admin/organizations/approved', 
+        path: '/admin/organizations/filter/approved', 
         label: 'Approved', 
         icon: <CheckCircleIcon />,
         badge: null,
-        show: true
+        onClick: () => navigate('/admin/organizations/filter/approved')
       }
     ];
 
@@ -199,7 +205,7 @@ const AdminSidebar = ({ onLogout }) => {
           label: 'Payments', 
           icon: <PaymentIcon />,
           badge: pendingCounts.payments,
-          show: true
+          onClick: () => navigate('/admin/payments')
         }
       );
     }
@@ -211,22 +217,9 @@ const AdminSidebar = ({ onLogout }) => {
         label: 'Documents', 
         icon: <DescriptionIcon />,
         badge: pendingCounts.documents,
-        show: true
+        onClick: () => navigate('/admin/documents')
       }
     );
-
-    // Add approver-specific items
-    if (isApprover) {
-      items.push(
-        { 
-          path: '/admin/final-approvals', 
-          label: 'Final Approvals', 
-          icon: <VerifiedIcon />,
-          badge: null,
-          show: true
-        }
-      );
-    }
 
     // Add common items for all admins
     items.push(
@@ -235,33 +228,33 @@ const AdminSidebar = ({ onLogout }) => {
         label: 'Reports', 
         icon: <AssessmentIcon />,
         badge: null,
-        show: true
+        onClick: () => navigate('/admin/reports')
       },
       { 
         path: '/admin/notifications', 
         label: 'Notifications', 
         icon: <NotificationsIcon />,
         badge: null,
-        show: true
+        onClick: () => navigate('/admin/notifications')
       },
       { 
         path: '/admin/settings', 
         label: 'Settings', 
         icon: <SettingsIcon />,
         badge: null,
-        show: true
+        onClick: () => navigate('/admin/settings')
       }
     );
 
-    return items.filter(item => item.show);
+    return items;
   };
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
-  const handleNavigation = (path) => {
-    navigate(path);
+  const handleNavigation = (onClick) => {
+    onClick();
     if (isMobile) {
       setMobileOpen(false);
     }
@@ -313,8 +306,8 @@ const AdminSidebar = ({ onLogout }) => {
         {menuItems.map((item) => (
           <StyledListItem
             key={item.path}
-            active={location.pathname === item.path ? 1 : 0}
-            onClick={() => handleNavigation(item.path)}
+            active={isActive(item.path) ? 1 : 0}
+            onClick={() => handleNavigation(item.onClick)}
           >
             <ListItemIcon>
               {item.badge ? (

@@ -19,7 +19,6 @@ import AdminDashboard from './components/admin/AdminDashboard';
 import AdminOrganizations from './components/admin/AdminOrganizations';
 import AdminPayments from './components/admin/AdminPayments';
 import AdminDocuments from './components/admin/AdminDocuments';
-import AdminFinalApprovals from './components/admin/AdminFinalApprovals';
 import AdminRoute from './components/admin/AdminRoute';
 import AdminOrganizationDetail from './components/admin/AdminOrganizationDetail';
 import AdminPaymentDetail from './components/admin/AdminPaymentDetail';
@@ -67,68 +66,64 @@ function App() {
               <AdminDashboard />
             </AdminRoute>
           } />
+          
+          {/* Organization routes with filter parameter */}
           <Route path="/admin/organizations" element={
             <AdminRoute>
               <AdminOrganizations />
             </AdminRoute>
           } />
-          <Route path="/admin/organizations/pending" element={
+          <Route path="/admin/organizations/filter/:filter" element={
             <AdminRoute>
-              <AdminOrganizations filter="pending" />
+              <AdminOrganizations />
             </AdminRoute>
           } />
-          <Route path="/admin/organizations/approved" element={
-            <AdminRoute>
-              <AdminOrganizations filter="approved" />
-            </AdminRoute>
-          } />
+          
           <Route path="/admin/organizations/:id" element={
             <AdminRoute>
               <AdminOrganizationDetail />
             </AdminRoute>
           } />
-    
+          
           <Route path="/admin/payments" element={
             <AdminRoute>
               <AdminPayments />
             </AdminRoute>
           } />
+          
           <Route path="/admin/payments/:id" element={
-  <AdminRoute>
-    <AdminPaymentDetail />
-  </AdminRoute>
-} />
-<Route path="/admin/organizations/:id/documents" element={
-  <AdminRoute>
-    <AdminOrganizationDocuments />
-  </AdminRoute>
+            <AdminRoute>
+              <AdminPaymentDetail />
+            </AdminRoute>
+          } />
+          
+          <Route path="/admin/organizations/:id/documents" element={
+            <AdminRoute>
+              <AdminOrganizationDocuments />
+            </AdminRoute>
+          } />
+          
+          <Route path="/admin/reports" element={
+            <AdminRoute>
+              <AdminReports />
+            </AdminRoute>
+          } />
 
-} />
-<Route path="/admin/reports" element={
-  <AdminRoute>
-    <AdminReports />
-  </AdminRoute>
-} />
+          <Route path="/admin/notifications" element={
+            <AdminRoute>
+              <AdminNotifications />
+            </AdminRoute>
+          } />
 
-<Route path="/admin/notifications" element={
-  <AdminRoute>
-    <AdminNotifications />
-  </AdminRoute>
-} />
-
-<Route path="/admin/settings" element={
-  <AdminRoute>
-    <AdminSettings />
-  </AdminRoute>
-} />
+          <Route path="/admin/settings" element={
+            <AdminRoute>
+              <AdminSettings />
+            </AdminRoute>
+          } />
+          
           <Route path="/admin/documents" element={
             <AdminRoute>
               <AdminDocuments />
-            </AdminRoute>
-          } />
-          <Route path="/admin/final-approvals" element={
-            <AdminRoute requiredType="approver">
-              <AdminFinalApprovals />
             </AdminRoute>
           } />
           
