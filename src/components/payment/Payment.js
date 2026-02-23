@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
-import { sendAdminPaymentNotification } from '../../utils/emailService';
 import PaymentSummary from './PaymentSummary';
 import { Box, CircularProgress, Container, Paper, Typography, Alert as MuiAlert, Snackbar } from '@mui/material';
 import Sidebar from '../Sidebar';
+import { 
+  sendAdminPaymentNotification 
+} from '../../utils/emailService';
 import './Payment.css';
 
 const Payment = () => {
@@ -17,8 +19,8 @@ const Payment = () => {
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [receiptFile, setReceiptFile] = useState(null);
   const [fileName, setFileName] = useState('');
-  const [paymentType, setPaymentType] = useState('first'); // 'first' or 'renewal'
-  const [paymentAmount, setPaymentAmount] = useState(25000); // Default to first payment
+  const [paymentType, setPaymentType] = useState('first');
+  const [paymentAmount, setPaymentAmount] = useState(25000);
   const [previousPayments, setPreviousPayments] = useState([]);
   const [lastPaymentDate, setLastPaymentDate] = useState(null);
   const [nextRenewalDate, setNextRenewalDate] = useState(null);
@@ -54,7 +56,6 @@ const Payment = () => {
 
   const loadOrganizationData = async () => {
     try {
-      // First check if organization ID was passed in state
       if (location.state?.organizationId) {
         const { data, error } = await supabase
           .from('organizations')
@@ -69,7 +70,6 @@ const Payment = () => {
         }
       }
 
-      // If no ID in state or fetch failed, try to get by user_id
       if (user) {
         const { data, error } = await supabase
           .from('organizations')
@@ -101,7 +101,6 @@ const Payment = () => {
 
   const checkPaymentHistory = async (orgId) => {
     try {
-      // Fetch all payments for this organization
       const { data, error } = await supabase
         .from('payments')
         .select('*')
@@ -112,39 +111,28 @@ const Payment = () => {
 
       setPreviousPayments(data || []);
 
-      // Find the last approved payment
       const approvedPayments = data?.filter(p => p.status === 'approved' || p.status === 'accepted') || [];
-      const lastApproved = approvedPayments[0]; // Most recent approved payment
+      const lastApproved = approvedPayments[0];
 
       if (lastApproved) {
         setLastPaymentDate(new Date(lastApproved.created_at));
         
-        // Calculate next renewal date (January 1st of the next year)
         const paymentYear = new Date(lastApproved.created_at).getFullYear();
-        const renewalDate = new Date(paymentYear + 1, 0, 1); // January 1st of next year
+        const renewalDate = new Date(paymentYear + 1, 0, 1);
         setNextRenewalDate(renewalDate);
 
-        // Check if renewal is due (current date is on or after January 1st of renewal year)
         const now = new Date();
         const isDue = now >= renewalDate;
         setIsRenewalDue(isDue);
 
         if (isDue) {
-          // Renewal is due
           setPaymentType('renewal');
           setPaymentAmount(RENEWAL_AMOUNT);
         } else {
-          // Not yet time for renewal
           setPaymentType('not_due');
           setPaymentAmount(0);
         }
-      } else if (data && data.length > 0) {
-        // Has pending/rejected payments but no approved ones
-        setPaymentType('first');
-        setPaymentAmount(FIRST_PAYMENT_AMOUNT);
-        setIsRenewalDue(false);
       } else {
-        // No payment history - first payment
         setPaymentType('first');
         setPaymentAmount(FIRST_PAYMENT_AMOUNT);
         setIsRenewalDue(false);
@@ -183,94 +171,91 @@ const Payment = () => {
     }
   };
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  if (!user) {
-    showAlert('error', 'Please login first');
-    navigate('/login');
-    return;
-  }
-
-  if (!organization) {
-    showAlert('error', 'Organization not found');
-    return;
-  }
-
-  if (!receiptFile) {
-    showAlert('error', 'Please select a receipt file');
-    return;
-  }
-
-  if (paymentType === 'not_due') {
-    showAlert('error', 'No payment is due at this time');
-    return;
-  }
-
-  setSubmitting(true);
-
-  try {
-    // Upload receipt
-    const timestamp = Date.now();
-    const cleanFileName = receiptFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
-    const fileName = `${timestamp}_${cleanFileName}`;
-    const filePath = `${user.id}/receipts/${fileName}`;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     
-    const { error: uploadError } = await supabase.storage
-      .from('documents')
-      .upload(filePath, receiptFile);
-
-    if (uploadError) {
-      throw new Error(`Upload failed: ${uploadError.message}`);
+    if (!user) {
+      showAlert('error', 'Please login first');
+      navigate('/login');
+      return;
     }
 
-    // Determine payment period (year)
-    const currentYear = new Date().getFullYear();
-    const paymentYear = paymentType === 'renewal' ? currentYear : currentYear;
-
-    // Create payment record with payment type
-    const paymentData = {
-      organization_id: organization.id,
-      user_id: user.id,
-      amount: paymentAmount,
-      payment_type: paymentType, // 'first' or 'renewal'
-      payment_method: 'Bank Transfer',
-      receipt_path: filePath,
-      status: 'pending',
-      payment_year: paymentYear, // Track which year this payment covers
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    const { error: paymentError, data: insertedPayment } = await supabase
-      .from('payments')
-      .insert([paymentData])
-      .select()
-      .single();
-
-    if (paymentError) {
-      console.error('Payment insert error:', paymentError);
-      throw new Error(paymentError.message);
+    if (!organization) {
+      showAlert('error', 'Organization not found');
+      return;
     }
 
-    // Send admin notification email
-    await sendAdminPaymentNotification(insertedPayment, organization);
+    if (!receiptFile) {
+      showAlert('error', 'Please select a receipt file');
+      return;
+    }
 
-    showAlert('success', 'Payment submitted successfully! Redirecting to dashboard...');
-    
-    setTimeout(() => {
-      navigate('/dashboard');
-    }, 2000);
+    if (paymentType === 'not_due') {
+      showAlert('error', 'No payment is due at this time');
+      return;
+    }
 
-  } catch (error) {
-    console.error('Payment process error:', error);
-    showAlert('error', error.message || 'Failed to process payment');
-  } finally {
-    setSubmitting(false);
-  }
-};
+    setSubmitting(true);
 
-  // Consistent loading state with other components
+    try {
+      // Upload receipt
+      const timestamp = Date.now();
+      const cleanFileName = receiptFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
+      const fileName = `${timestamp}_${cleanFileName}`;
+      const filePath = `${user.id}/receipts/${fileName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(filePath, receiptFile);
+
+      if (uploadError) {
+        throw new Error(`Upload failed: ${uploadError.message}`);
+      }
+
+      const currentYear = new Date().getFullYear();
+      const paymentYear = paymentType === 'renewal' ? currentYear : currentYear;
+
+      const paymentData = {
+        organization_id: organization.id,
+        user_id: user.id,
+        amount: paymentAmount,
+        payment_type: paymentType,
+        payment_method: 'Bank Transfer',
+        receipt_path: filePath,
+        status: 'pending',
+        payment_year: paymentYear,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const { error: paymentError, data: insertedPayment } = await supabase
+        .from('payments')
+        .insert([paymentData])
+        .select()
+        .single();
+
+      if (paymentError) {
+        console.error('Payment insert error:', paymentError);
+        throw new Error(paymentError.message);
+      }
+
+      // Send admin notification email about new payment
+      await sendAdminPaymentNotification(insertedPayment, organization);
+
+      showAlert('success', 'Payment submitted successfully! Redirecting to dashboard...');
+      
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 2000);
+
+    } catch (error) {
+      console.error('Payment process error:', error);
+      showAlert('error', error.message || 'Failed to process payment');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -303,10 +288,7 @@ const Payment = () => {
 
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', gap: 3 }}>
-          {/* Sidebar */}
           <Sidebar />
-
-          {/* Main Content */}
           <Box sx={{ flex: 1 }}>
             <Paper sx={{ p: 4, borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }}>
               <PaymentSummary 
