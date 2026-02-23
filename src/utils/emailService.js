@@ -118,8 +118,34 @@ export const sendPaymentApprovedEmail = async (email, companyName, amount, organ
       : `🎉 Great news ${companyName}! Your payment of ₦${amount?.toLocaleString()} has been approved. Thank you for your continued partnership.`;
     
     const detailsMessage = isFirstTimeApproval
-      ? `Your organization has been officially verified and activated. You now have complete access to all features including: document management, compliance tracking, notifications, and full dashboard functionality. We're excited to have you on board!`
-      : `Your renewal payment has been processed successfully. Your access to all platform features remains active. Thank you for your continued trust in our services.`;
+      ? `Your organization has been officially verified and activated. You now have complete access to all features including: document management, compliance tracking, notifications, and full dashboard functionality. We're excited to have you on board!
+
+📋 **Important Documents Now Available:**
+• Your Membership Certificate is now ready for download from your dashboard
+• Payment Receipt/Invoice can be accessed and printed from the Payments section
+• Organization profile documents are available for viewing and download
+
+To access these documents:
+1. Log in to your dashboard at: ${window.location.origin}/dashboard
+2. Navigate to the "Documents" section to download your Membership Certificate
+3. Go to "Payments" history to view and download your payment receipt
+4. Visit "Organization Profile" to view all your registered details
+
+These documents serve as official proof of your membership with KACCIMA.`
+      : `Your renewal payment has been processed successfully. Your access to all platform features remains active. 
+
+📋 **Updated Documents Available:**
+• Your renewed Membership Certificate is now ready for download
+• Payment receipt for this renewal is available in the Payments section
+• Your membership validity has been extended for another year
+
+To access your updated documents:
+1. Log in to your dashboard at: ${window.location.origin}/dashboard
+2. Download your renewed certificate from the "Documents" section
+3. View/print your payment receipt from "Payments" history
+4. Check your organization profile for updated membership expiry date
+
+Thank you for your continued trust in our services.`;
 
     const templateParams = {
       to_email: email,
@@ -127,8 +153,15 @@ export const sendPaymentApprovedEmail = async (email, companyName, amount, organ
       main_message: mainMessage,
       details: detailsMessage,
       action_url: `${window.location.origin}/dashboard`,
-      action_text: 'Access Your Dashboard',
-      reply_to: 'pharouq900@gmail.com'
+      action_text: 'Access Your Dashboard & Download Documents',
+      action_2_url: `${window.location.origin}/dashboard/documents`,
+      action_2_text: 'Go to Documents Section',
+      action_3_url: `${window.location.origin}/dashboard/payments`,
+      action_3_text: 'View Payment History',
+      reply_to: 'pharouq900@gmail.com',
+      help_text: 'Having trouble downloading? Visit our support page or contact us directly.',
+      support_email: 'info@kaccima.gov.ng',
+      support_phone: '+234 XXX XXX XXXX'
     };
 
     const response = await emailjs.send(
@@ -137,7 +170,7 @@ export const sendPaymentApprovedEmail = async (email, companyName, amount, organ
       templateParams
     );
 
-    console.log('✅ Payment approval email sent to organization');
+    console.log('✅ Payment approval email sent to organization with document download instructions');
     return { success: true, data: response };
   } catch (error) {
     console.error('❌ Failed to send payment approval email:', error);
