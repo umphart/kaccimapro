@@ -8,47 +8,66 @@ import {
   Typography,
   Box,
   Alert,
-  CircularProgress
+  LinearProgress,
+  Paper
 } from '@mui/material';
-import { Upload as UploadIcon } from '@mui/icons-material';
+import { CloudUpload as UploadIcon, Warning as WarningIcon } from '@mui/icons-material';
+import { styled } from '@mui/material/styles';
 import { supabase } from '../supabaseClient';
+import { documentFields } from './organizationConstants';
+
+const UploadArea = styled(Paper)(({ theme }) => ({
+  border: '2px dashed #ccc',
+  backgroundColor: '#fafafa',
+  padding: theme.spacing(3),
+  textAlign: 'center',
+  cursor: 'pointer',
+  transition: 'all 0.3s',
+  '&:hover': {
+    borderColor: '#15e420',
+    backgroundColor: '#e8f5e9'
+  }
+}));
+
+const HiddenInput = styled('input')({
+  display: 'none'
+});
 
 const ReuploadDialog = ({ open, onClose, notification, organization, onSuccess }) => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
-  // Extract document field from notification message
-  const getDocumentField = () => {
+  // Find document configuration based on notification
+  const getDocumentConfig = () => {
+    const title = notification?.title || '';
     const message = notification?.message || '';
-    const documentFields = {
-      'Cover Letter': 'cover_letter_path',
-      'Memorandum': 'memorandum_path',
-      'Registration Certificate': 'registration_cert_path',
-      'Incorporation Certificate': 'incorporation_cert_path',
-      'Premises Certificate': 'premises_cert_path',
-      'Company Logo': 'company_logo_path',
-      'Form C07': 'form_c07_path',
-      'ID Document': 'id_document_path'
-    };
-
-    for (const [docName, field] of Object.entries(documentFields)) {
-      if (message.includes(docName)) {
+    
+    for (const field of documentFields) {
+      if (title.includes(field.name) || message.includes(field.name)) {
         return field;
       }
     }
     return null;
   };
 
-  // Determine which bucket to use based on document type
-  const getBucketName = (documentField) => {
-    // Use 'logos' bucket for company logo, 'documents' bucket for everything else
-    return documentField === 'company_logo_path' ? 'logos' : 'documents';
-  };
-
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
     if (file) {
+      // Validate file size (10MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        setError('File size must be less than 10MB');
+        return;
+      }
+
+      // Validate file type
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+      if (!allowedTypes.includes(file.type)) {
+        setError('Please upload PDF or image files only');
+        return;
+      }
+
       setSelectedFile(file);
       setError('');
     }
@@ -60,84 +79,142 @@ const ReuploadDialog = ({ open, onClose, notification, organization, onSuccess }
       return;
     }
 
+    const docConfig = getDocumentConfig();
+    if (!docConfig) {
+      setError('Could not determine document type');
+      return;
+    }
+
     setUploading(true);
     setError('');
+    setUploadProgress(0);
 
     try {
-      const documentField = getDocumentField();
-      if (!documentField) {
-        throw new Error('Could not determine document type');
-      }
+      // Simulate progress
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 300);
 
-      // Get the appropriate bucket name
-      const bucketName = getBucketName(documentField);
-    
+      // Generate unique filename
+      const fileExt = selectedFile.name.split('.').pop();
+      const timestamp = Date.now();
+      const fileName = `${organization.id}/${docConfig.key}_${timestamp}.${fileExt}`;
 
       // Upload file to storage
-      const fileExt = selectedFile.name.split('.').pop();
-      const fileName = `${organization.id}/${documentField}_${Date.now()}.${fileExt}`;
-      
       const { error: uploadError } = await supabase.storage
-        .from(bucketName)
+        .from(docConfig.bucket)
         .upload(fileName, selectedFile, {
           cacheControl: '3600',
-          upsert: false
+          upsert: true
         });
 
+      clearInterval(progressInterval);
+      
       if (uploadError) {
-        console.error('Upload error details:', uploadError);
+        console.error('Upload error:', uploadError);
         throw new Error(`Upload failed: ${uploadError.message}`);
       }
 
+      setUploadProgress(100);
+
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
-        .from(bucketName)
+        .from(docConfig.bucket)
         .getPublicUrl(fileName);
 
-    
-
-      // Update organization record with new document path
+      // First, clear the rejection reason for this document
+      const rejectionField = `${docConfig.key.replace('_path', '_rejection_reason')}`;
+      
+      // Update organization record
       const { error: updateError } = await supabase
         .from('organizations')
         .update({ 
-          [documentField]: publicUrl,
-          status: 'pending' // Set back to pending for review
+          [docConfig.key]: publicUrl,
+          [rejectionField]: null, // Clear rejection reason
+          status: 'pending', // Reset to pending for re-review
+          re_upload_count: (organization?.re_upload_count || 0) + 1,
+          last_re_upload_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
         .eq('id', organization.id);
 
       if (updateError) throw updateError;
 
-      // Create notification for admin about re-upload
+      // Mark old rejection notifications as read
       await supabase
         .from('organization_notifications')
-        .insert([{
-          organization_id: organization.id,
-          type: 'document',
-          title: 'Document Re-uploaded',
-          message: `${notification.title} has been re-uploaded and is pending review.`,
-          category: 'document',
-          for_admin: true,
-          read: false
-        }]);
+        .update({ read: true })
+        .eq('organization_id', organization.id)
+        .eq('type', 'document_rejected')
+        .ilike('title', `%${docConfig.name}%`);
 
-      // Create notification for user
+      // Create notification for admin about re-upload (without for_admin field if it doesn't exist)
+      try {
+        // First try with for_admin field
+        const { error: adminNotifError } = await supabase
+          .from('organization_notifications')
+          .insert([{
+            organization_id: organization.id,
+            type: 'document_reuploaded',
+            title: `Document Re-uploaded: ${docConfig.name}`,
+            message: `${organization.company_name} has re-uploaded ${docConfig.name} for review.`,
+            category: 'document',
+            for_admin: true,
+            read: false,
+            action_url: `/admin/organizations/${organization.id}`,
+            created_at: new Date().toISOString()
+          }]);
+
+        if (adminNotifError && adminNotifError.message.includes('for_admin')) {
+          // If for_admin column doesn't exist, try without it
+          console.log('for_admin column not found, inserting without it');
+          await supabase
+            .from('organization_notifications')
+            .insert([{
+              organization_id: organization.id,
+              type: 'document_reuploaded',
+              title: `Document Re-uploaded: ${docConfig.name}`,
+              message: `${organization.company_name} has re-uploaded ${docConfig.name} for review.`,
+              category: 'document',
+              read: false,
+              action_url: `/admin/organizations/${organization.id}`,
+              created_at: new Date().toISOString()
+            }]);
+        }
+      } catch (notifError) {
+        console.error('Error creating admin notification:', notifError);
+        // Continue even if notification fails
+      }
+
+      // Create notification for user confirming re-upload
       await supabase
         .from('organization_notifications')
         .insert([{
           organization_id: organization.id,
-          type: 'document',
+          type: 'document_reuploaded',
           title: 'Document Re-uploaded Successfully',
-          message: `Your ${notification.title} has been re-uploaded and is now pending review.`,
+          message: `Your ${docConfig.name} has been re-uploaded and is pending admin review.`,
           category: 'document',
+          read: false,
           action_url: '/documents',
-          read: false
+          created_at: new Date().toISOString()
         }]);
 
-      onSuccess();
-      onClose();
+      setTimeout(() => {
+        onSuccess(docConfig.key, docConfig.name);
+        onClose();
+      }, 500);
+
     } catch (error) {
       console.error('Error uploading document:', error);
       setError(error.message);
+      setUploadProgress(0);
     } finally {
       setUploading(false);
     }
@@ -145,52 +222,97 @@ const ReuploadDialog = ({ open, onClose, notification, organization, onSuccess }
 
   if (!notification) return null;
 
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
-        Re-upload Document
-      </DialogTitle>
-      <DialogContent>
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="body1" gutterBottom>
-            <strong>Document:</strong> {notification.title}
-          </Typography>
-          <Typography variant="body2" color="textSecondary" paragraph>
-            {notification.message}
-          </Typography>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Please upload a corrected version of this document for re-review.
-          </Alert>
-        </Box>
+  const docConfig = getDocumentConfig();
 
-        <Box
-          sx={{
-            border: '2px dashed #ccc',
-            borderRadius: '8px',
-            p: 3,
-            textAlign: 'center',
-            cursor: 'pointer',
-            '&:hover': {
-              borderColor: '#15e420'
-            }
+  return (
+    <Dialog 
+      open={open} 
+      onClose={() => !uploading && onClose()} 
+      maxWidth="sm" 
+      fullWidth
+      PaperProps={{
+        sx: { borderRadius: '16px' }
+      }}
+    >
+      <DialogTitle sx={{ 
+        fontFamily: '"Poppins", sans-serif', 
+        fontWeight: 600,
+        borderBottom: '1px solid #e0e0e0',
+        pb: 2
+      }}>
+        Re-upload Rejected Document
+      </DialogTitle>
+      
+      <DialogContent sx={{ pt: 3 }}>
+        {docConfig && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="body1" gutterBottom>
+              <strong>Document:</strong> {docConfig.name}
+            </Typography>
+            <Typography variant="body2" color="textSecondary" paragraph>
+              {notification.message}
+            </Typography>
+            
+            <Alert 
+              severity="warning" 
+              icon={<WarningIcon />}
+              sx={{ mb: 3 }}
+            >
+              Please upload a corrected version of this document. 
+              The file will be reviewed again by an administrator.
+            </Alert>
+          </Box>
+        )}
+
+        <HiddenInput
+          accept=".pdf,.jpg,.jpeg,.png"
+          id="reupload-file-input"
+          type="file"
+          onChange={handleFileSelect}
+          disabled={uploading}
+        />
+        
+        <UploadArea 
+          onClick={() => !uploading && document.getElementById('reupload-file-input').click()}
+          sx={{ 
+            opacity: uploading ? 0.6 : 1,
+            cursor: uploading ? 'default' : 'pointer'
           }}
-          onClick={() => document.getElementById('file-input').click()}
         >
-          <input
-            type="file"
-            id="file-input"
-            style={{ display: 'none' }}
-            onChange={handleFileSelect}
-            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-          />
-          <UploadIcon sx={{ fontSize: 48, color: '#15e420', mb: 1 }} />
-          <Typography variant="body1">
-            {selectedFile ? selectedFile.name : 'Click to select file'}
+          <UploadIcon sx={{ fontSize: 48, color: '#15e420', mb: 2 }} />
+          <Typography variant="body1" sx={{ mb: 1 }}>
+            {selectedFile ? selectedFile.name : 'Click to select a file'}
           </Typography>
-          <Typography variant="caption" color="textSecondary">
-            Supported formats: PDF, JPG, PNG, DOC, DOCX
+          <Typography variant="caption" sx={{ color: '#666' }}>
+            Supported formats: PDF, PNG, JPG, JPEG (Max: 10MB)
           </Typography>
-        </Box>
+        </UploadArea>
+
+        {selectedFile && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="caption" color="textSecondary">
+              File size: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+            </Typography>
+          </Box>
+        )}
+
+        {uploading && (
+          <Box sx={{ width: '100%', mt: 3 }}>
+            <LinearProgress 
+              variant="determinate" 
+              value={uploadProgress} 
+              sx={{ 
+                mb: 1,
+                '& .MuiLinearProgress-bar': {
+                  backgroundColor: '#15e420'
+                }
+              }} 
+            />
+            <Typography variant="caption" sx={{ color: '#666' }}>
+              {uploadProgress}% uploaded
+            </Typography>
+          </Box>
+        )}
 
         {error && (
           <Alert severity="error" sx={{ mt: 2 }}>
@@ -198,8 +320,13 @@ const ReuploadDialog = ({ open, onClose, notification, organization, onSuccess }
           </Alert>
         )}
       </DialogContent>
-      <DialogActions sx={{ p: 3 }}>
-        <Button onClick={onClose} disabled={uploading}>
+
+      <DialogActions sx={{ p: 3, pt: 2 }}>
+        <Button 
+          onClick={onClose} 
+          disabled={uploading}
+          sx={{ color: '#666' }}
+        >
           Cancel
         </Button>
         <Button
@@ -207,13 +334,16 @@ const ReuploadDialog = ({ open, onClose, notification, organization, onSuccess }
           onClick={handleUpload}
           disabled={!selectedFile || uploading}
           sx={{
-            backgroundColor: '#15e420',
+            bgcolor: '#15e420',
             '&:hover': {
-              backgroundColor: '#12c21e'
+              bgcolor: '#12c21e'
+            },
+            '&.Mui-disabled': {
+              bgcolor: '#ccc'
             }
           }}
         >
-          {uploading ? <CircularProgress size={24} /> : 'Upload & Re-submit'}
+          {uploading ? 'Uploading...' : 'Upload & Re-submit'}
         </Button>
       </DialogActions>
     </Dialog>

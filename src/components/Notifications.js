@@ -4,58 +4,35 @@ import { supabase } from '../supabaseClient';
 import Sidebar from './Sidebar';
 import NotificationItem from './NotificationItem';
 import ReuploadDialog from './ReuploadDialog';
+import NotificationHeader from './NotificationHeader';
+import NotificationTabs, { TabPanel } from './NotificationTabs';
 import {
   Box,
   Container,
   Typography,
   Paper,
   List,
-  ListItemAvatar,
-  Avatar,
-  Chip,
-  IconButton,
-  Button,
   CircularProgress,
   Alert,
   Snackbar,
-  Tab,
-  Tabs
+  ListItemAvatar,
+  Avatar
 } from '@mui/material';
 import {
-  NotificationsActive as NotificationsActiveIcon,
-  CheckCircle as CheckCircleIcon,
-  Pending as PendingIcon,
-  Error as ErrorIcon,
-  Info as InfoIcon,
-  Delete as DeleteIcon,
-  DoneAll as DoneAllIcon,
-  AccessTime as AccessTimeIcon,
-  Payment as PaymentIcon,
   Business as BusinessIcon,
-  Verified as VerifiedIcon,
+  Payment as PaymentIcon,
   Description as DescriptionIcon,
-  Refresh as RefreshIcon,
-  Warning as WarningIcon
+  AccessTime as AccessTimeIcon,
+  NotificationsActive as NotificationsActiveIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { documentFields } from '../utils/notificationUtils';
+import { documentFields, formatTimeAgo, isRejectedDocument } from '../utils/notificationUtils';
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(3),
   borderRadius: '16px',
   boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)'
 }));
-
-const TabPanel = ({ children, value, index, ...other }) => (
-  <div
-    role="tabpanel"
-    hidden={value !== index}
-    id={`notification-tabpanel-${index}`}
-    {...other}
-  >
-    {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
-  </div>
-);
 
 const Notifications = () => {
   const navigate = useNavigate();
@@ -98,9 +75,7 @@ const Notifications = () => {
           (payload) => {
             const newNotif = {
               id: payload.new.id,
-              type: payload.new.type === 'renewal' ? 'renewal' : 
-                    payload.new.type === 'payment' ? 'payment' : 
-                    payload.new.type === 'general' ? 'info' : payload.new.type,
+              type: payload.new.type,
               title: payload.new.title,
               message: payload.new.message,
               timestamp: payload.new.created_at,
@@ -189,16 +164,16 @@ const Notifications = () => {
             
             notificationsList.push({
               id: notif.id,
-              type: notif.type === 'renewal' ? 'renewal' : 
-                     notif.type === 'payment' ? 'payment' : 
-                     notif.type === 'general' ? 'info' : notif.type,
+              type: notif.type,
               title: notif.title,
               message: notif.message,
               timestamp: notif.created_at,
               read: notif.read || false,
               category: notif.category || 'general',
               actionUrl: notif.action_url,
-              isFromAdmin: true
+              isFromAdmin: true,
+              documentField: notif.document_field,
+              documentName: notif.document_name
             });
           });
         }
@@ -320,27 +295,22 @@ const Notifications = () => {
 
       // 4. Document notifications with rejection handling
       if (orgData) {
-        // Check for rejected documents from admin notifications
-        const rejectedDocs = notificationsList.filter(
-          n => n.type === 'document_rejected' && n.category === 'document'
-        );
-
         // Add document uploaded notifications
         documentFields.forEach((field) => {
           if (orgData[field.key]) {
-            // Check if this document was previously rejected
-            const wasRejected = rejectedDocs.some(doc => 
-              doc.message?.includes(field.name)
-            );
+            const rejectionField = `${field.key.replace('_path', '_rejection_reason')}`;
+            const hasRejectionReason = orgData[rejectionField];
 
             notificationsList.push({
               id: `doc-upload-${field.key}-${Date.now()}`,
-              type: wasRejected ? 'document_rejected' : 'info',
-              title: wasRejected ? `Document Rejected: ${field.name}` : `Document Uploaded: ${field.name}`,
-              message: wasRejected 
-                ? `Your ${field.name} was rejected. Please upload a corrected version.`
+              type: hasRejectionReason ? 'document_rejected' : 'info',
+              title: hasRejectionReason 
+                ? `Document Rejected: ${field.name}` 
+                : `Document Uploaded: ${field.name}`,
+              message: hasRejectionReason
+                ? `Your ${field.name} was rejected. Reason: ${orgData[rejectionField] || 'Please upload a corrected version.'}`
                 : `Your ${field.name} has been uploaded and is pending review.`,
-              timestamp: orgData.updated_at,
+              timestamp: orgData.updated_at || new Date().toISOString(),
               read: false,
               category: 'document',
               actionUrl: '/documents',
@@ -514,10 +484,20 @@ const Notifications = () => {
     });
   };
 
-  const handleReuploadSuccess = () => {
-    showAlert('success', 'Document re-uploaded successfully');
-    fetchNotifications(); // Refresh notifications
-  };
+const handleReuploadSuccess = (documentField, documentName) => {
+  showAlert('success', 'Document re-uploaded successfully');
+  
+  // Force a refresh of the organization data
+  if (organization?.id) {
+    // You might want to navigate to the organization detail page
+    // or refresh the current page
+    window.location.reload(); // Simple solution
+    // Or navigate to the organization detail page
+    // navigate(`/admin/organizations/${organization.id}`);
+  }
+  
+  showAlert('info', `Admin has been notified about your ${documentName} re-upload`);
+};
 
   const filteredNotifications = notifications.filter(notif => {
     if (tabValue === 0) return true;
@@ -563,73 +543,16 @@ const Notifications = () => {
 
           <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '16px' }}>
             <StyledPaper>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <NotificationsActiveIcon sx={{ color: '#15e420', fontSize: 32 }} />
-                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#333' }}>
-                    Notifications
-                  </Typography>
-                  {unreadCount > 0 && (
-                    <Chip
-                      label={`${unreadCount} new`}
-                      size="small"
-                      sx={{
-                        backgroundColor: '#15e420',
-                        color: 'white',
-                        fontWeight: 600
-                      }}
-                    />
-                  )}
-                </Box>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <IconButton 
-                    onClick={handleRefresh} 
-                    disabled={refreshing}
-                    sx={{ color: '#15e420' }}
-                  >
-                    <RefreshIcon />
-                  </IconButton>
-                  <Button
-                    startIcon={<DoneAllIcon />}
-                    onClick={markAllAsRead}
-                    disabled={unreadCount === 0}
-                    size="small"
-                    sx={{ color: '#15e420' }}
-                  >
-                    Mark all read
-                  </Button>
-                  <Button
-                    startIcon={<DeleteIcon />}
-                    onClick={deleteAllRead}
-                    disabled={notifications.filter(n => n.read).length === 0}
-                    size="small"
-                    sx={{ color: '#dc3545' }}
-                  >
-                    Clear read
-                  </Button>
-                </Box>
-              </Box>
+              <NotificationHeader
+                unreadCount={unreadCount}
+                onRefresh={handleRefresh}
+                refreshing={refreshing}
+                onMarkAllRead={markAllAsRead}
+                onClearRead={deleteAllRead}
+                hasReadNotifications={notifications.filter(n => n.read).length > 0}
+              />
 
-              <Tabs 
-                value={tabValue} 
-                onChange={handleTabChange}
-                sx={{
-                  borderBottom: 1,
-                  borderColor: 'divider',
-                  '& .MuiTab-root.Mui-selected': {
-                    color: '#15e420'
-                  },
-                  '& .MuiTabs-indicator': {
-                    backgroundColor: '#15e420'
-                  }
-                }}
-              >
-                <Tab label="All" />
-                <Tab label="Registration" />
-                <Tab label="Payments" />
-                <Tab label="Documents" />
-                <Tab label="Other" />
-              </Tabs>
+              <NotificationTabs tabValue={tabValue} onTabChange={handleTabChange} />
 
               <TabPanel value={tabValue} index={0}>
                 {filteredNotifications.length === 0 ? (

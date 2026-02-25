@@ -1,31 +1,17 @@
 import { useState } from 'react';
 import { supabase } from '../../supabaseClient';
 
-export const useOrganizationActions = (organizationId, organization, documents, documentStatus, showAlert, onSuccess) => {
+export const useOrganizationActions = (organizationId, organization, documents, documentStatus, showAlert, fetchOrganizationDetails) => {
   const [processing, setProcessing] = useState(false);
   const [approveOrgDialog, setApproveOrgDialog] = useState(false);
   const [rejectOrgDialog, setRejectOrgDialog] = useState(false);
   const [orgRejectReason, setOrgRejectReason] = useState('');
 
-  const checkAllDocumentsApproved = () => {
-    return documents.every(doc => documentStatus[doc.key] === 'approved');
-  };
-
   const handleApproveOrganization = async () => {
-    if (processing) return;
-    
+    setProcessing(true);
     try {
-      setProcessing(true);
-      
-      const allApproved = checkAllDocumentsApproved();
-      
-      if (!allApproved) {
-        showAlert('error', 'All documents must be approved before approving the organization');
-        setApproveOrgDialog(false);
-        return;
-      }
-
-      const { error: orgError } = await supabase
+      // Update organization status
+      const { error: updateError } = await supabase
         .from('organizations')
         .update({ 
           status: 'approved',
@@ -33,23 +19,46 @@ export const useOrganizationActions = (organizationId, organization, documents, 
         })
         .eq('id', organizationId);
 
-      if (orgError) throw orgError;
+      if (updateError) throw updateError;
 
+      // Mark all pending notifications as read
+      await supabase
+        .from('organization_notifications')
+        .update({ read: true })
+        .eq('organization_id', organizationId)
+        .eq('type', 'pending');
+
+      // Create approval notification
       await supabase
         .from('organization_notifications')
         .insert([{
           organization_id: organizationId,
           type: 'success',
           title: 'Organization Approved',
-          message: 'Your organization has been fully approved! You can now access all features.',
+          message: 'Your organization has been approved. You can now proceed with payment.',
           category: 'registration',
-          action_url: '/dashboard',
-          read: false
+          action_url: '/payment',
+          read: false,
+          created_at: new Date().toISOString()
+        }]);
+
+      // Create notification for admin
+      await supabase
+        .from('organization_notifications')
+        .insert([{
+          organization_id: organizationId,
+          type: 'info',
+          title: 'Organization Approved',
+          message: `${organization?.company_name} has been approved.`,
+          category: 'registration',
+          for_admin: true,
+          read: false,
+          created_at: new Date().toISOString()
         }]);
 
       showAlert('success', 'Organization approved successfully');
       setApproveOrgDialog(false);
-      if (onSuccess) onSuccess();
+      fetchOrganizationDetails();
     } catch (error) {
       console.error('Error approving organization:', error);
       showAlert('error', 'Failed to approve organization');
@@ -59,38 +68,54 @@ export const useOrganizationActions = (organizationId, organization, documents, 
   };
 
   const handleRejectOrganization = async () => {
-    if (!orgRejectReason.trim()) return;
-    if (processing) return;
+    if (!orgRejectReason) return;
 
+    setProcessing(true);
     try {
-      setProcessing(true);
-      
-      const { error: orgError } = await supabase
+      // Update organization status
+      const { error: updateError } = await supabase
         .from('organizations')
         .update({ 
           status: 'rejected',
+          rejection_reason: orgRejectReason,
           updated_at: new Date().toISOString()
         })
         .eq('id', organizationId);
 
-      if (orgError) throw orgError;
+      if (updateError) throw updateError;
 
+      // Create rejection notification
       await supabase
         .from('organization_notifications')
         .insert([{
           organization_id: organizationId,
           type: 'error',
           title: 'Organization Rejected',
-          message: `Your organization registration has been rejected. Reason: ${orgRejectReason}`,
+          message: `Your organization has been rejected. Reason: ${orgRejectReason}`,
           category: 'registration',
-          action_url: '/contact',
-          read: false
+          action_url: '/organization',
+          read: false,
+          created_at: new Date().toISOString()
+        }]);
+
+      // Create notification for admin
+      await supabase
+        .from('organization_notifications')
+        .insert([{
+          organization_id: organizationId,
+          type: 'info',
+          title: 'Organization Rejected',
+          message: `${organization?.company_name} has been rejected. Reason: ${orgRejectReason}`,
+          category: 'registration',
+          for_admin: true,
+          read: false,
+          created_at: new Date().toISOString()
         }]);
 
       showAlert('success', 'Organization rejected successfully');
       setRejectOrgDialog(false);
       setOrgRejectReason('');
-      if (onSuccess) onSuccess();
+      fetchOrganizationDetails();
     } catch (error) {
       console.error('Error rejecting organization:', error);
       showAlert('error', 'Failed to reject organization');

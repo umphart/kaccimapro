@@ -32,14 +32,15 @@ import {
   Email as EmailIcon,
   Phone as PhoneIcon,
   LocationOn as LocationIcon,
-  Pending as PendingIcon
+  Pending as PendingIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 
 import AdminSidebar from './AdminSidebar';
 import DocumentViewerDialog from './DocumentViewerDialog';
 import DocumentRejectDialog from './DocumentRejectDialog';
 import OrganizationActionDialogs from './OrganizationActionDialogs';
-import DocumentCard from './DocumentCard';
+import DocumentCard from './DocumentCard'; // Your existing DocumentCard
 import { StyledCard, documentFields } from './OrganizationDetailUtils';
 import { useDocumentManagement } from '../hooks/useDocumentManagement';
 import { useOrganizationActions } from '../hooks/useOrganizationActions';
@@ -52,6 +53,7 @@ const AdminOrganizationDetail = () => {
   const [payments, setPayments] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
+  const [reuploadHistory, setReuploadHistory] = useState([]);
 
   const showAlert = (type, message) => {
     setAlert({ open: true, type, message });
@@ -97,84 +99,148 @@ const AdminOrganizationDetail = () => {
     fetchOrganizationDetails();
   }, [id]);
 
-  async function fetchOrganizationDetails() {
-    setLoading(true);
-    try {
-      // Fetch organization data
-      const { data: orgData, error: orgError } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('id', id)
-        .single();
+async function fetchOrganizationDetails() {
+  setLoading(true);
+  try {
+    // Fetch organization data
+    const { data: orgData, error: orgError } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', id)
+      .single();
 
-      if (orgError) throw orgError;
-      setOrganization(orgData);
+    if (orgError) throw orgError;
+    setOrganization(orgData);
 
-      // Fetch payments
-      const { data: paymentData, error: paymentError } = await supabase
-        .from('payments')
-        .select('*')
-        .eq('organization_id', id)
-        .order('created_at', { ascending: false });
+    // Fetch payments
+    const { data: paymentData, error: paymentError } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('organization_id', id)
+      .order('created_at', { ascending: false });
 
-      if (paymentError) throw paymentError;
-      setPayments(paymentData || []);
+    if (paymentError) throw paymentError;
+    setPayments(paymentData || []);
 
-      // Fetch document status from notifications
-      const { data: notifications, error: notifError } = await supabase
-        .from('organization_notifications')
-        .select('*')
-        .eq('organization_id', id)
-        .in('type', ['document_approved', 'document_rejected'])
-        .order('created_at', { ascending: false });
+    // Fetch document status from notifications
+    const { data: notifications, error: notifError } = await supabase
+      .from('organization_notifications')
+      .select('*')
+      .eq('organization_id', id)
+      .in('type', ['document_approved', 'document_rejected', 'document_reuploaded'])
+      .order('created_at', { ascending: false });
 
-      if (notifError) throw notifError;
+    if (notifError) throw notifError;
 
-      // Build documents list with status
-      const docs = [];
-      const status = {};
-      const reasons = {};
+    // Fetch re-upload history
+    const { data: history } = await supabase
+      .from('organization_notifications')
+      .select('*')
+      .eq('organization_id', id)
+      .eq('type', 'document_reuploaded')
+      .order('created_at', { ascending: false });
 
-      documentFields.forEach(field => {
-        if (orgData[field.key]) {
-          docs.push({
-            key: field.key,
-            name: field.name,
-            path: orgData[field.key]
-          });
+    setReuploadHistory(history || []);
 
-          // Check latest notification for this document
-          const docNotifications = notifications?.filter(n => 
-            n.title?.includes(field.name)
-          );
+    // Build documents list with status
+    const docs = [];
+    const status = {};
+    const reasons = {};
 
-          if (docNotifications && docNotifications.length > 0) {
-            const latest = docNotifications[0];
-            if (latest.type === 'document_approved') {
-              status[field.key] = 'approved';
-            } else if (latest.type === 'document_rejected') {
-              status[field.key] = 'rejected';
-              // Extract rejection reason from message
-              const reason = latest.message.split('Reason: ')[1] || 'No reason provided';
-              reasons[field.key] = reason;
+    // Create a map of latest notification for each document
+    const latestNotifications = {};
+    
+    notifications?.forEach(notif => {
+      const docField = documentFields.find(field => 
+        notif.title?.includes(field.name) || notif.message?.includes(field.name)
+      );
+
+      if (docField) {
+        const key = docField.key;
+        if (!latestNotifications[key] || 
+            new Date(notif.created_at) > new Date(latestNotifications[key].created_at)) {
+          latestNotifications[key] = notif;
+        }
+      }
+    });
+
+    documentFields.forEach(field => {
+      if (orgData[field.key]) {
+        // Parse the URL to extract bucket and path
+        let bucket = field.bucket; // Default from documentFields
+        let path = orgData[field.key];
+        
+        // If it's a full Supabase URL, parse it
+        if (path && path.includes('supabase.co/storage/v1/object/public/')) {
+          // Example: https://pmsqenjyqdjdozabvirj.supabase.co/storage/v1/object/public/documents/d9933011-e019-4bb9-b3f8-f932dd39fd09/registration_cert_path_1771985170250.jpg
+          
+          // Extract the part after '/object/public/'
+          const urlParts = path.split('/object/public/');
+          if (urlParts.length > 1) {
+            const bucketAndPath = urlParts[1];
+            // First part is bucket name, rest is path
+            const bucketEndIndex = bucketAndPath.indexOf('/');
+            if (bucketEndIndex > -1) {
+              bucket = bucketAndPath.substring(0, bucketEndIndex);
+              path = bucketAndPath.substring(bucketEndIndex + 1);
             }
-          } else {
-            status[field.key] = 'pending';
           }
         }
-      });
 
-      setDocuments(docs);
-      setDocumentStatus(status);
-      setRejectionReasons(reasons);
-    } catch (error) {
-      console.error('Error fetching organization:', error);
-      showAlert('error', 'Failed to load organization details');
-    } finally {
-      setLoading(false);
-    }
+        console.log(`Document ${field.name}:`, {
+          originalPath: orgData[field.key],
+          extractedBucket: bucket,
+          extractedPath: path,
+          fieldBucket: field.bucket
+        });
+
+        docs.push({
+          key: field.key,
+          name: field.name,
+          path: path, // Clean path without bucket
+          fullUrl: orgData[field.key], // Keep full URL as fallback
+          required: field.required,
+          bucket: bucket // Use extracted bucket
+        });
+
+        const latestNotif = latestNotifications[field.key];
+        
+        if (latestNotif) {
+          if (latestNotif.type === 'document_approved') {
+            status[field.key] = 'approved';
+          } else if (latestNotif.type === 'document_rejected') {
+            status[field.key] = 'rejected';
+            const reason = latestNotif.message.split('Reason: ')[1] || 'No reason provided';
+            reasons[field.key] = reason;
+          } else if (latestNotif.type === 'document_reuploaded') {
+            status[field.key] = 'pending';
+            reasons[field.key] = null;
+          }
+        } else {
+          status[field.key] = 'pending';
+        }
+
+        // Check rejection reason in organization table
+        const rejectionField = `${field.key.replace('_path', '_rejection_reason')}`;
+        if (orgData[rejectionField] && status[field.key] === 'rejected') {
+          reasons[field.key] = orgData[rejectionField];
+        }
+      }
+    });
+
+    setDocuments(docs);
+    setDocumentStatus(status);
+    setRejectionReasons(reasons);
+    
+    console.log('Final documents with buckets:', docs);
+    
+  } catch (error) {
+    console.error('Error fetching organization:', error);
+    showAlert('error', 'Failed to load organization details');
+  } finally {
+    setLoading(false);
   }
-
+}
   const checkAllDocumentsApproved = () => {
     return documents.every(doc => documentStatus[doc.key] === 'approved');
   };
@@ -215,6 +281,17 @@ const AdminOrganizationDetail = () => {
 
   const allDocumentsApproved = checkAllDocumentsApproved();
   const processing = docProcessing || orgProcessing;
+
+  // Count documents by status for summary
+  const documentSummary = {
+    approved: Object.values(documentStatus).filter(s => s === 'approved').length,
+    pending: Object.values(documentStatus).filter(s => s === 'pending').length,
+    rejected: Object.values(documentStatus).filter(s => s === 'rejected').length,
+    total: documents.length
+  };
+
+  // Check if any document was re-uploaded
+  const hasReuploaded = reuploadHistory.length > 0;
 
   return (
     <>
@@ -284,7 +361,37 @@ const AdminOrganizationDetail = () => {
               >
                 Organization Details
               </Typography>
-              <Box sx={{ ml: 'auto' }}>
+              <Box sx={{ ml: 'auto', display: 'flex', gap: 2, alignItems: 'center' }}>
+                {/* Document Summary */}
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  {documentSummary.rejected > 0 && (
+                    <Chip
+                      size="small"
+                      icon={<CancelIcon />}
+                      label={`${documentSummary.rejected} Rejected`}
+                      color="error"
+                      variant="outlined"
+                    />
+                  )}
+                  {documentSummary.pending > 0 && (
+                    <Chip
+                      size="small"
+                      icon={<PendingIcon />}
+                      label={`${documentSummary.pending} Pending`}
+                      color="warning"
+                      variant="outlined"
+                    />
+                  )}
+                  {documentSummary.approved > 0 && (
+                    <Chip
+                      size="small"
+                      icon={<CheckCircleIcon />}
+                      label={`${documentSummary.approved} Approved`}
+                      color="success"
+                      variant="outlined"
+                    />
+                  )}
+                </Box>
                 {getStatusChip(organization.status)}
               </Box>
             </Box>
@@ -348,6 +455,20 @@ const AdminOrganizationDetail = () => {
                         />
                       </ListItem>
                     </List>
+
+                    {/* Re-upload Info */}
+                    {hasReuploaded && (
+                      <Box sx={{ mt: 2 }}>
+                        <Divider sx={{ my: 2 }} />
+                        <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <RefreshIcon fontSize="small" sx={{ color: '#15e420' }} />
+                          Last Re-upload: {new Date(organization.last_re_upload_at || reuploadHistory[0]?.created_at).toLocaleDateString()}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Total re-uploads: {organization.re_upload_count || reuploadHistory.length}
+                        </Typography>
+                      </Box>
+                    )}
                   </CardContent>
                 </StyledCard>
               </Grid>
@@ -431,7 +552,9 @@ const AdminOrganizationDetail = () => {
                         </Typography>
                         {!allDocumentsApproved && organization.status === 'pending' && (
                           <Typography variant="caption" color="warning.main">
-                            Approve all documents before approving organization
+                            {documentSummary.rejected > 0 
+                              ? `${documentSummary.rejected} document(s) need re-upload` 
+                              : 'Approve all documents before approving organization'}
                           </Typography>
                         )}
                       </Box>
@@ -440,21 +563,29 @@ const AdminOrganizationDetail = () => {
                     <Divider sx={{ mb: 3 }} />
 
                     <Grid container spacing={3}>
-                      {documents.map((doc) => (
-                        <Grid item xs={12} sm={6} md={4} key={doc.key}>
-                          <DocumentCard
-                            document={doc}
-                            status={documentStatus[doc.key]}
-                            rejectionReason={rejectionReasons[doc.key]}
-                            organizationStatus={organization.status}
-                            processing={processing}
-                            onView={handleViewDocument}
-                            onDownload={handleDownloadDocument}
-                            onApprove={handleApproveDocument}
-                            onReject={(doc) => setRejectDialog({ open: true, doc })}
-                          />
-                        </Grid>
-                      ))}
+                      {documents.map((doc) => {
+                        // Check if this document was re-uploaded
+                        const wasReuploaded = reuploadHistory.some(
+                          h => h.title?.includes(doc.name) || h.message?.includes(doc.name)
+                        );
+                        
+                        return (
+                          <Grid item xs={12} sm={6} md={4} key={doc.key}>
+                            <DocumentCard
+                              document={doc}
+                              status={documentStatus[doc.key]}
+                              rejectionReason={rejectionReasons[doc.key]}
+                              isReuploaded={wasReuploaded && documentStatus[doc.key] === 'pending'}
+                              organizationStatus={organization.status}
+                              processing={processing}
+                              onView={handleViewDocument}
+                              onDownload={handleDownloadDocument}
+                              onApprove={handleApproveDocument}
+                              onReject={(doc) => setRejectDialog({ open: true, doc })}
+                            />
+                          </Grid>
+                        );
+                      })}
                     </Grid>
 
                     {documents.length === 0 && (
@@ -484,13 +615,21 @@ const AdminOrganizationDetail = () => {
                         variant="contained"
                         startIcon={<CheckCircleIcon />}
                         onClick={() => setApproveOrgDialog(true)}
-                        disabled={!allDocumentsApproved || processing}
+                        disabled={!allDocumentsApproved || processing || documentSummary.rejected > 0}
                         sx={{ 
-                          bgcolor: allDocumentsApproved ? '#15e420' : '#ccc',
-                          '&:hover': { bgcolor: allDocumentsApproved ? '#12c21e' : '#ccc' }
+                          bgcolor: allDocumentsApproved && documentSummary.rejected === 0 ? '#15e420' : '#ccc',
+                          '&:hover': { 
+                            bgcolor: allDocumentsApproved && documentSummary.rejected === 0 ? '#12c21e' : '#ccc' 
+                          }
                         }}
                       >
-                        {processing ? 'Processing...' : (allDocumentsApproved ? 'Approve Organization' : 'Documents Pending')}
+                        {processing 
+                          ? 'Processing...' 
+                          : documentSummary.rejected > 0 
+                            ? `${documentSummary.rejected} Document(s) Need Re-upload` 
+                            : allDocumentsApproved 
+                              ? 'Approve Organization' 
+                              : `${documentSummary.pending} Document(s) Pending`}
                       </Button>
                     </Box>
                   </Paper>

@@ -1,45 +1,52 @@
 import React from 'react';
 import {
-  Box,
-  Paper,
+  Card,
+  CardContent,
+  CardActions,
   Typography,
-  Chip,
+  Box,
   IconButton,
+  Chip,
   Tooltip,
   Divider,
-  CardActions,
-  CardContent,
-  useMediaQuery,
-  useTheme
+  Alert,
+  Badge,
+  Fade
 } from '@mui/material';
 import {
+  Visibility as VisibilityIcon,
+  Download as DownloadIcon,
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
   Pending as PendingIcon,
-  Visibility as VisibilityIcon,
-  Download as DownloadIcon,
+  Warning as WarningIcon,
+  Refresh as RefreshIcon,
   PictureAsPdf as PdfIcon,
   Image as ImageIcon,
   Description as DescriptionIcon,
-  Info as InfoIcon,
-  Warning as WarningIcon,
-  Verified as VerifiedIcon
+  History as HistoryIcon,
+  Error as ErrorIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
-// Styled Components with responsive design
-const StyledCard = styled(Paper)(({ theme, status }) => ({
-  height: '100%',
-  borderRadius: '16px',
-  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)',
-  transition: 'all 0.3s ease',
-  display: 'flex',
-  flexDirection: 'column',
+const StyledDocumentCard = styled(Card)(({ theme, status, isReuploaded, hasRejection }) => ({
+  height: '220px', // Reduced height
+  borderRadius: '12px',
+  boxShadow: '0 5px 15px rgba(0, 0, 0, 0.08)',
+  transition: 'all 0.3s',
   position: 'relative',
   overflow: 'visible',
+  display: 'flex',
+  flexDirection: 'column',
   '&:hover': {
     transform: 'translateY(-4px)',
-    boxShadow: '0 15px 35px rgba(21, 228, 32, 0.15)'
+    boxShadow: hasRejection 
+      ? '0 15px 30px rgba(220, 53, 69, 0.15)'
+      : isReuploaded
+        ? '0 15px 30px rgba(23, 162, 184, 0.15)'
+        : status === 'approved'
+          ? '0 15px 30px rgba(40, 167, 69, 0.15)'
+          : '0 15px 30px rgba(21, 228, 32, 0.15)'
   },
   '&::before': {
     content: '""',
@@ -50,338 +57,392 @@ const StyledCard = styled(Paper)(({ theme, status }) => ({
     height: '4px',
     background: status === 'approved' ? '#28a745' : 
                 status === 'rejected' ? '#dc3545' : 
-                '#ffc107',
-    borderTopLeftRadius: '16px',
-    borderTopRightRadius: '16px'
+                isReuploaded ? '#17a2b8' : '#ffc107',
+    borderTopLeftRadius: '12px',
+    borderTopRightRadius: '12px'
   },
-  [theme.breakpoints.down('sm')]: {
-    borderRadius: '12px',
-    '&:hover': {
-      transform: 'translateY(-2px)'
+  ...(isReuploaded && {
+    animation: 'pulse 2s infinite',
+    '@keyframes pulse': {
+      '0%': {
+        boxShadow: '0 0 0 0 rgba(23, 162, 184, 0.4)'
+      },
+      '70%': {
+        boxShadow: '0 0 0 6px rgba(23, 162, 184, 0)'
+      },
+      '100%': {
+        boxShadow: '0 0 0 0 rgba(23, 162, 184, 0)'
+      }
     }
-  }
+  })
 }));
 
-const DocumentIconWrapper = styled(Box)(({ theme, status }) => ({
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  width: '70px',
-  height: '70px',
-  borderRadius: '50%',
-  margin: '0 auto 12px auto',
-  background: status === 'approved' ? 'rgba(40, 167, 69, 0.1)' : 
-              status === 'rejected' ? 'rgba(220, 53, 69, 0.1)' : 
-              'rgba(255, 193, 7, 0.1)',
-  border: `2px solid ${status === 'approved' ? '#28a745' : 
-                      status === 'rejected' ? '#dc3545' : 
-                      '#ffc107'}`,
-  transition: 'all 0.3s ease',
-  [theme.breakpoints.down('sm')]: {
-    width: '60px',
-    height: '60px',
-    margin: '0 auto 8px auto',
-    '& svg': {
-      fontSize: '32px'
-    }
-  },
-  [theme.breakpoints.down('md')]: {
-    width: '65px',
-    height: '65px',
-  },
-  '& svg': {
-    fontSize: '36px',
-    [theme.breakpoints.down('sm')]: {
-      fontSize: '30px'
-    }
-  }
-}));
-
-const StatusBadge = styled(Box)(({ theme }) => ({
+const StatusChip = styled(Chip)(({ status, isReuploaded }) => ({
   position: 'absolute',
   top: '12px',
   right: '12px',
-  zIndex: 1,
-  [theme.breakpoints.down('sm')]: {
-    top: '8px',
-    right: '8px'
-  }
-}));
-
-const DocumentStats = styled(Box)(({ theme }) => ({
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  padding: theme.spacing(0.75, 1.5),
-  backgroundColor: '#f8f9fa',
-  borderRadius: '8px',
-  marginTop: theme.spacing(1),
-  [theme.breakpoints.down('sm')]: {
-    padding: theme.spacing(0.5, 1),
-    marginTop: theme.spacing(0.75)
-  }
-}));
-
-const DocumentMeta = styled(Typography)(({ theme }) => ({
-  fontSize: '0.7rem',
-  color: '#666',
-  display: 'flex',
-  alignItems: 'center',
-  gap: theme.spacing(0.5),
-  marginTop: theme.spacing(0.5),
-  [theme.breakpoints.down('sm')]: {
-    fontSize: '0.65rem',
-    marginTop: theme.spacing(0.25)
-  }
-}));
-
-const ActionButton = styled(IconButton)(({ theme, actioncolor }) => ({
-  backgroundColor: '#fff',
-  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-  margin: theme.spacing(0, 0.25),
-  transition: 'all 0.2s ease',
-  padding: theme.spacing(0.75),
-  [theme.breakpoints.down('sm')]: {
-    padding: theme.spacing(0.5),
-    margin: theme.spacing(0, 0.15),
-    '& svg': {
-      fontSize: '1rem'
-    }
-  },
-  [theme.breakpoints.down('md')]: {
-    padding: theme.spacing(0.6),
-  },
-  '&:hover': {
-    backgroundColor: actioncolor === 'approve' ? '#28a745' :
-                     actioncolor === 'reject' ? '#dc3545' :
-                     '#15e420',
-    transform: 'scale(1.1)',
-    '& svg': {
-      color: '#fff'
-    }
-  },
-  '& svg': {
-    fontSize: '1.1rem',
-    color: actioncolor === 'approve' ? '#28a745' :
-           actioncolor === 'reject' ? '#dc3545' :
-           '#15e420'
-  }
-}));
-
-const DocumentName = styled(Typography)(({ theme }) => ({
-  fontWeight: 600,
-  fontSize: '0.95rem',
-  marginBottom: theme.spacing(1),
-  minHeight: '42px',
-  display: '-webkit-box',
-  WebkitLineClamp: 2,
-  WebkitBoxOrient: 'vertical',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  textAlign: 'center',
-  [theme.breakpoints.down('sm')]: {
-    fontSize: '0.85rem',
-    minHeight: '38px',
-    marginBottom: theme.spacing(0.75)
-  },
-  [theme.breakpoints.down('md')]: {
-    fontSize: '0.9rem',
-    minHeight: '40px',
-  }
-}));
-
-const CompactChip = styled(Chip)(({ theme }) => ({
   height: '22px',
   fontSize: '0.65rem',
-  '& .MuiChip-icon': {
-    fontSize: '0.75rem',
-    marginLeft: '4px'
-  },
-  [theme.breakpoints.down('sm')]: {
-    height: '20px',
+  fontWeight: 600,
+  zIndex: 3,
+  backgroundColor: status === 'approved' ? 'rgba(40, 167, 69, 0.1)' :
+                  status === 'rejected' ? 'rgba(220, 53, 69, 0.1)' :
+                  isReuploaded ? 'rgba(23, 162, 184, 0.1)' :
+                  'rgba(255, 193, 7, 0.1)',
+  color: status === 'approved' ? '#28a745' :
+         status === 'rejected' ? '#dc3545' :
+         isReuploaded ? '#17a2b8' :
+         '#ffc107',
+  border: `1px solid ${status === 'approved' ? '#28a745' :
+                     status === 'rejected' ? '#dc3545' :
+                     isReuploaded ? '#17a2b8' :
+                     '#ffc107'}`
+}));
+
+const ReuploadBadge = styled(Box)(({ theme }) => ({
+  position: 'absolute',
+  top: '12px',
+  left: '12px',
+  zIndex: 3,
+  '& .MuiBadge-badge': {
+    backgroundColor: '#17a2b8',
+    color: 'white',
     fontSize: '0.6rem',
+    padding: '0 4px',
+    animation: 'pulse 2s infinite',
+    '@keyframes pulse': {
+      '0%': {
+        transform: 'scale(1)',
+      },
+      '50%': {
+        transform: 'scale(1.05)',
+      },
+      '100%': {
+        transform: 'scale(1)',
+      }
+    }
   }
 }));
+
+const ReuploadCountBadge = styled(Box)(({ theme }) => ({
+  position: 'absolute',
+  bottom: '8px',
+  right: '8px',
+  zIndex: 2,
+  '& .MuiBadge-badge': {
+    backgroundColor: '#17a2b8',
+    color: 'white',
+    fontSize: '0.55rem',
+    padding: '0 4px'
+  }
+}));
+
+const DocumentTypeIcon = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  width: '40px',
+  height: '40px',
+  borderRadius: '50%',
+  margin: '0 auto 8px',
+  backgroundColor: '#f5f5f5',
+  transition: 'all 0.3s',
+  '&:hover': {
+    transform: 'scale(1.1)',
+    backgroundColor: '#e8f5e9'
+  }
+}));
+
+const getFileIcon = (fileName, status) => {
+  if (status === 'rejected') {
+    return <ErrorIcon sx={{ fontSize: 24, color: '#dc3545' }} />;
+  }
+  
+  const ext = fileName?.split('.').pop()?.toLowerCase();
+  if (ext === 'pdf') return <PdfIcon sx={{ fontSize: 24, color: '#dc3545' }} />;
+  if (['jpg', 'jpeg', 'png', 'gif', 'svg'].includes(ext)) return <ImageIcon sx={{ fontSize: 24, color: '#15e420' }} />;
+  return <DescriptionIcon sx={{ fontSize: 24, color: '#17a2b8' }} />;
+};
+
+const getFileNameFromPath = (path) => {
+  if (!path) return '';
+  if (path.includes('/')) {
+    const parts = path.split('/');
+    return parts[parts.length - 1];
+  }
+  return path;
+};
 
 const DocumentCard = ({ 
   document, 
   status, 
-  rejectionReason, 
-  organizationStatus, 
+  rejectionReason,
+  isReuploaded = false,
+  reuploadCount = 0,
+  organizationStatus,
   processing,
   onView,
   onDownload,
   onApprove,
   onReject,
-  uploadedAt = new Date().toISOString(),
-  fileType 
+  showHistory = false,
+  onHistoryClick
 }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
-  
-  const getFileIcon = (fileName, status) => {
-    const iconColor = status === 'approved' ? '#28a745' : 
-                      status === 'rejected' ? '#dc3545' : 
-                      '#ffc107';
-    
-    const ext = fileName?.split('.').pop()?.toLowerCase();
-    if (ext === 'pdf') return <PdfIcon sx={{ fontSize: 'inherit', color: iconColor }} />;
-    if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) return <ImageIcon sx={{ fontSize: 'inherit', color: iconColor }} />;
-    return <DescriptionIcon sx={{ fontSize: 'inherit', color: iconColor }} />;
+  const getStatusIcon = () => {
+    if (isReuploaded) return <RefreshIcon sx={{ fontSize: 14, color: '#17a2b8' }} />;
+    switch (status) {
+      case 'approved':
+        return <CheckCircleIcon sx={{ fontSize: 14, color: '#28a745' }} />;
+      case 'rejected':
+        return <CancelIcon sx={{ fontSize: 14, color: '#dc3545' }} />;
+      default:
+        return <PendingIcon sx={{ fontSize: 14, color: '#ffc107' }} />;
+    }
   };
 
-  const getStatusChip = (status) => {
-    const config = {
-      approved: { color: 'success', icon: <CheckCircleIcon />, label: 'Approved' },
-      rejected: { color: 'error', icon: <CancelIcon />, label: 'Rejected' },
-      pending: { color: 'warning', icon: <PendingIcon />, label: 'Pending' }
-    };
-    
-    const chipConfig = config[status] || config.pending;
-    
-    return (
-      <CompactChip
-        size="small"
-        icon={chipConfig.icon}
-        label={isMobile ? '' : chipConfig.label}
-        color={chipConfig.color}
-        sx={{ 
-          '& .MuiChip-icon': { 
-            fontSize: isMobile ? '0.9rem' : '0.75rem',
-            margin: isMobile ? '0' : '0 0 0 4px'
-          },
-          minWidth: isMobile ? '24px' : 'auto',
-          justifyContent: 'center'
-        }}
-      />
-    );
+  const getStatusLabel = () => {
+    if (isReuploaded) return 'RE-UPLOADED';
+    return status?.toUpperCase() || 'PENDING';
+  };
+
+  const fileName = getFileNameFromPath(document.path);
+  const hasRejection = !!rejectionReason && !isReuploaded;
+
+  const handleViewClick = () => {
+    onView(document);
+  };
+
+  const handleDownloadClick = () => {
+    onDownload(document);
   };
 
   return (
-    <StyledCard status={status}>
-      <StatusBadge>
-        {getStatusChip(status)}
-      </StatusBadge>
-      
-      <CardContent sx={{ 
-        flex: 1, 
-        display: 'flex', 
-        flexDirection: 'column', 
-        pt: isMobile ? 2 : 3,
-        p: isMobile ? 1.5 : 2
-      }}>
-        <DocumentIconWrapper status={status}>
-          {getFileIcon(document.path, status)}
-        </DocumentIconWrapper>
-        
-        <DocumentName>
-          {document.name}
-        </DocumentName>
-
-        {!isMobile && (
-          <>
-            <DocumentMeta>
-              <InfoIcon sx={{ fontSize: '0.7rem', color: '#999' }} />
-              {new Date(uploadedAt).toLocaleDateString()}
-            </DocumentMeta>
-
-            {fileType && (
-              <DocumentMeta>
-                <DescriptionIcon sx={{ fontSize: '0.7rem', color: '#999' }} />
-                {fileType.toUpperCase()}
-              </DocumentMeta>
-            )}
-          </>
+    <Fade in timeout={500}>
+      <StyledDocumentCard 
+        status={status} 
+        isReuploaded={isReuploaded}
+        hasRejection={hasRejection}
+      >
+        {/* Re-upload badge */}
+        {isReuploaded && (
+          <ReuploadBadge>
+            <Badge badgeContent="NEW" color="info">
+              <RefreshIcon sx={{ opacity: 0 }} />
+            </Badge>
+          </ReuploadBadge>
         )}
 
-        {rejectionReason && (
-          <Tooltip title={rejectionReason} arrow>
-            <DocumentStats>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <WarningIcon sx={{ fontSize: isMobile ? '0.75rem' : '0.875rem', color: '#dc3545' }} />
-                {!isMobile && (
-                  <Typography variant="caption" sx={{ color: '#dc3545', fontWeight: 500, fontSize: '0.65rem' }}>
-                    Rejected
-                  </Typography>
-                )}
-              </Box>
-            </DocumentStats>
-          </Tooltip>
-        )}
-      </CardContent>
-
-      <Divider />
-
-      <CardActions sx={{ 
-        justifyContent: 'space-between', 
-        p: isMobile ? 1 : 2,
-        gap: isMobile ? 0.5 : 1
-      }}>
-        <Box sx={{ display: 'flex', gap: isMobile ? 0.25 : 0.5 }}>
-          <Tooltip title="View Document" arrow>
-            <ActionButton 
-              onClick={() => onView(document)} 
-              size="small"
-            >
-              <VisibilityIcon />
-            </ActionButton>
-          </Tooltip>
-          <Tooltip title="Download Document" arrow>
-            <ActionButton 
-              onClick={() => onDownload(document)} 
-              size="small"
-            >
-              <DownloadIcon />
-            </ActionButton>
-          </Tooltip>
-        </Box>
-        
-        {organizationStatus === 'pending' && status !== 'approved' && (
-          <Box sx={{ display: 'flex', gap: isMobile ? 0.25 : 0.5 }}>
-            {status !== 'rejected' && (
-              <Tooltip title="Reject Document" arrow>
-                <ActionButton 
-                  onClick={() => onReject(document)} 
-                  size="small"
-                  actioncolor="reject"
-                >
-                  <CancelIcon />
-                </ActionButton>
-              </Tooltip>
-            )}
-            <Tooltip title="Approve Document" arrow>
-              <ActionButton 
-                onClick={() => onApprove(document)} 
-                size="small"
-                actioncolor="approve"
-              >
-                <CheckCircleIcon />
-              </ActionButton>
-            </Tooltip>
-          </Box>
+        {/* Re-upload count badge */}
+        {reuploadCount > 0 && (
+          <ReuploadCountBadge>
+            <Badge badgeContent={`${reuploadCount}x`} color="info">
+              <HistoryIcon sx={{ opacity: 0 }} />
+            </Badge>
+          </ReuploadCountBadge>
         )}
         
-        {status === 'approved' && (
-          <Tooltip title="Document Approved" arrow>
-            <CompactChip
-              icon={<VerifiedIcon />}
-              label={isMobile ? '' : "Approved"}
-              size="small"
-              color="success"
-              variant="outlined"
+        <StatusChip
+          status={status}
+          isReuploaded={isReuploaded}
+          icon={getStatusIcon()}
+          label={getStatusLabel()}
+          size="small"
+        />
+
+        <CardContent sx={{ pt: 4, pb: 0.5, flex: 1 }}>
+          <DocumentTypeIcon>
+            {getFileIcon(document.path, status)}
+          </DocumentTypeIcon>
+
+          <Typography 
+            variant="subtitle2" 
+            align="center"
+            sx={{ 
+              fontWeight: 600,
+              mb: 0.5,
+              fontSize: '0.85rem',
+              lineHeight: 1.2,
+              height: '32px',
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical'
+            }}
+          >
+            {document.name}
+          </Typography>
+          {/* Re-uploaded alert */}
+          {isReuploaded && (
+            <Alert 
+              severity="info" 
+              icon={<RefreshIcon sx={{ fontSize: 14 }} />}
               sx={{ 
-                height: '22px',
-                '& .MuiChip-icon': { 
-                  fontSize: isMobile ? '0.9rem' : '0.75rem',
-                  margin: isMobile ? '0' : '0 0 0 4px'
+                py: 0, 
+                px: 0.5, 
+                mt: 0.5,
+                bgcolor: 'rgba(23, 162, 184, 0.1)',
+                border: '1px solid rgba(23, 162, 184, 0.2)',
+                '& .MuiAlert-message': { 
+                  fontSize: '0.6rem',
+                  fontWeight: 600,
+                  padding: '4px 0'
+                },
+                '& .MuiAlert-icon': {
+                  mr: 0.5,
+                  py: 0.5
                 }
               }}
-            />
-          </Tooltip>
-        )}
-      </CardActions>
-    </StyledCard>
+            >
+              Pending review
+            </Alert>
+          )}
+
+          {/* Rejection reason alert */}
+          {rejectionReason && !isReuploaded && (
+            <Tooltip 
+              title={
+                <Box sx={{ p: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Rejection Reason:
+                  </Typography>
+                  <Typography variant="body2">
+                    {rejectionReason}
+                  </Typography>
+                </Box>
+              } 
+              arrow
+              placement="top"
+            >
+              <Alert 
+                severity="error" 
+                icon={<WarningIcon sx={{ fontSize: 14 }} />}
+                sx={{ 
+                  py: 0, 
+                  px: 0.5, 
+                  mt: 0.5,
+                  cursor: 'help',
+                  border: '1px solid rgba(220, 53, 69, 0.2)',
+                  '& .MuiAlert-message': { 
+                    fontSize: '0.6rem',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    padding: '4px 0'
+                  },
+                  '& .MuiAlert-icon': {
+                    mr: 0.5,
+                    py: 0.5
+                  }
+                }}
+              >
+                {rejectionReason.length > 20 
+                  ? rejectionReason.substring(0, 20) + '...' 
+                  : rejectionReason}
+              </Alert>
+            </Tooltip>
+          )}
+        </CardContent>
+
+        <Divider sx={{ my: 0.5 }} />
+
+        <CardActions sx={{ justifyContent: 'space-between', p: 0.5 }}>
+          <Box>
+            <Tooltip title="View Document" arrow>
+              <IconButton 
+                size="small" 
+                onClick={handleViewClick}
+                sx={{ 
+                  color: '#15e420',
+                  p: 0.5,
+                  '&:hover': {
+                    bgcolor: 'rgba(21, 228, 32, 0.1)'
+                  }
+                }}
+                disabled={status === 'rejected' && !isReuploaded}
+              >
+                <VisibilityIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Download" arrow>
+              <IconButton 
+                size="small" 
+                onClick={handleDownloadClick}
+                sx={{ 
+                  color: '#15e420',
+                  p: 0.5,
+                  '&:hover': {
+                    bgcolor: 'rgba(21, 228, 32, 0.1)'
+                  }
+                }}
+                disabled={status === 'rejected' && !isReuploaded}
+              >
+                <DownloadIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          <Box>
+            {/* History button */}
+            {showHistory && onHistoryClick && (
+              <Tooltip title="View History" arrow>
+                <IconButton
+                  size="small"
+                  onClick={() => onHistoryClick(document)}
+                  sx={{ 
+                    color: '#17a2b8',
+                    p: 0.5,
+                    mr: 0.5,
+                    '&:hover': {
+                      bgcolor: 'rgba(23, 162, 184, 0.1)'
+                    }
+                  }}
+                >
+                  <HistoryIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+
+            {/* Approve/Reject buttons */}
+            {(status === 'pending' || isReuploaded) && organizationStatus === 'pending' && (
+              <>
+                <Tooltip title="Reject Document" arrow>
+                  <IconButton
+                    size="small"
+                    onClick={() => onReject(document)}
+                    disabled={processing}
+                    sx={{ 
+                      color: '#dc3545',
+                      p: 0.5,
+                      '&:hover': {
+                        bgcolor: 'rgba(220, 53, 69, 0.1)'
+                      }
+                    }}
+                  >
+                    <CancelIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Approve Document" arrow>
+                  <IconButton
+                    size="small"
+                    onClick={() => onApprove(document)}
+                    disabled={processing}
+                    sx={{ 
+                      color: '#28a745',
+                      p: 0.5,
+                      '&:hover': {
+                        bgcolor: 'rgba(40, 167, 69, 0.1)'
+                      }
+                    }}
+                  >
+                    <CheckCircleIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+          </Box>
+        </CardActions>
+      </StyledDocumentCard>
+    </Fade>
   );
 };
 

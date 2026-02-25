@@ -5,10 +5,16 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  TextField,
   Typography,
+  TextField,
+  Box,
   Alert
 } from '@mui/material';
+import {
+  CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon,
+  Warning as WarningIcon
+} from '@mui/icons-material';
 
 const OrganizationActionDialogs = ({
   approveOpen,
@@ -24,61 +30,114 @@ const OrganizationActionDialogs = ({
 }) => {
   return (
     <>
-      {/* Organization Approve Confirmation Dialog */}
-      <Dialog open={approveOpen} onClose={() => !processing && onApproveClose()} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif' }}>
-          Approve Organization
+      {/* Approve Organization Dialog */}
+      <Dialog 
+        open={approveOpen} 
+        onClose={onApproveClose} 
+        maxWidth="sm" 
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: '16px' }
+        }}
+      >
+        <DialogTitle sx={{ 
+          fontFamily: '"Poppins", sans-serif',
+          borderBottom: '1px solid #e0e0e0',
+          pb: 2
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CheckCircleIcon sx={{ color: '#28a745' }} />
+            <Typography variant="h6">Approve Organization</Typography>
+          </Box>
         </DialogTitle>
-        <DialogContent>
-          {allDocumentsApproved ? (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              All documents are approved. Ready to approve organization.
-            </Alert>
-          ) : (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              Not all documents are approved yet. Please approve all documents first.
+
+        <DialogContent sx={{ pt: 3 }}>
+          {!allDocumentsApproved && (
+            <Alert severity="warning" icon={<WarningIcon />} sx={{ mb: 2 }}>
+              Not all documents have been approved. Please review all documents before approving.
             </Alert>
           )}
+          <Typography variant="body2" sx={{ color: '#666' }}>
+            Are you sure you want to approve this organization? 
+            {allDocumentsApproved && ' All documents have been reviewed and approved.'}
+          </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={onApproveClose} disabled={processing}>Cancel</Button>
-          <Button 
-            onClick={onApproveConfirm} 
-            color="success" 
+
+        <DialogActions sx={{ p: 3 }}>
+          <Button onClick={onApproveClose} disabled={processing}>
+            Cancel
+          </Button>
+          <Button
+            onClick={onApproveConfirm}
             variant="contained"
             disabled={!allDocumentsApproved || processing}
+            sx={{
+              bgcolor: '#28a745',
+              '&:hover': {
+                bgcolor: '#218838'
+              },
+              '&.Mui-disabled': {
+                bgcolor: '#ccc'
+              }
+            }}
           >
             {processing ? 'Processing...' : 'Approve Organization'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Organization Reject Dialog */}
-      <Dialog open={rejectOpen} onClose={() => !processing && onRejectClose()} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif' }}>
-          Reject Organization
+      {/* Reject Organization Dialog */}
+      <Dialog 
+        open={rejectOpen} 
+        onClose={onRejectClose} 
+        maxWidth="sm" 
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: '16px' }
+        }}
+      >
+        <DialogTitle sx={{ 
+          fontFamily: '"Poppins", sans-serif',
+          borderBottom: '1px solid #e0e0e0',
+          pb: 2
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CancelIcon sx={{ color: '#dc3545' }} />
+            <Typography variant="h6">Reject Organization</Typography>
+          </Box>
         </DialogTitle>
-        <DialogContent>
+
+        <DialogContent sx={{ pt: 3 }}>
           <Typography variant="body2" sx={{ mb: 2, color: '#666' }}>
-            Please provide a reason for rejecting this organization:
+            Please provide a reason for rejecting this organization.
           </Typography>
           <TextField
             autoFocus
+            margin="dense"
+            label="Rejection Reason"
+            fullWidth
             multiline
             rows={4}
-            fullWidth
             value={orgRejectReason}
             onChange={(e) => setOrgRejectReason(e.target.value)}
-            placeholder="Enter rejection reason..."
             variant="outlined"
+            placeholder="Enter detailed reason for rejection..."
             disabled={processing}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: '8px'
+              }
+            }}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={onRejectClose} disabled={processing}>Cancel</Button>
-          <Button 
-            onClick={onRejectConfirm} 
-            color="error" 
+
+        <DialogActions sx={{ p: 3, pt: 0 }}>
+          <Button onClick={onRejectClose} disabled={processing}>
+            Cancel
+          </Button>
+          <Button
+            onClick={onRejectConfirm}
+            color="error"
             variant="contained"
             disabled={!orgRejectReason.trim() || processing}
           >
@@ -90,4 +149,4 @@ const OrganizationActionDialogs = ({
   );
 };
 
-export default OrganizationActionDialogs
+export default OrganizationActionDialogs;

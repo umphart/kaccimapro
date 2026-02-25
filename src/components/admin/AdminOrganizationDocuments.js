@@ -21,7 +21,6 @@ import {
   DialogContent,
   DialogActions,
   Avatar,
-  TextField,
   Divider,
   LinearProgress,
   Tooltip,
@@ -138,7 +137,7 @@ const DocumentMeta = styled(Typography)(({ theme }) => ({
   marginTop: theme.spacing(0.5)
 }));
 
-const ActionButton = styled(IconButton)(({ theme, actioncolor }) => ({
+const ActionButton = styled(IconButton)(({ theme }) => ({
   backgroundColor: '#fff',
   boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
   margin: theme.spacing(0, 0.25),
@@ -151,9 +150,7 @@ const ActionButton = styled(IconButton)(({ theme, actioncolor }) => ({
     }
   },
   '&:hover': {
-    backgroundColor: actioncolor === 'approve' ? '#28a745' :
-                     actioncolor === 'reject' ? '#dc3545' :
-                     '#15e420',
+    backgroundColor: '#15e420',
     transform: 'scale(1.1)',
     '& svg': {
       color: '#fff'
@@ -161,9 +158,7 @@ const ActionButton = styled(IconButton)(({ theme, actioncolor }) => ({
   },
   '& svg': {
     fontSize: '1.1rem',
-    color: actioncolor === 'approve' ? '#28a745' :
-           actioncolor === 'reject' ? '#dc3545' :
-           '#15e420'
+    color: '#15e420'
   }
 }));
 
@@ -187,7 +182,7 @@ const getFileIcon = (type, status) => {
 };
 
 // List View Component
-const DocumentListItem = ({ doc, onView, onDownload, onApprove, onReject, openRejectDialog, getStatusChip }) => {
+const DocumentListItem = ({ doc, onView, onDownload, getStatusChip }) => {
   return (
     <Paper sx={{ 
       p: 2, 
@@ -199,7 +194,7 @@ const DocumentListItem = ({ doc, onView, onDownload, onApprove, onReject, openRe
       }
     }}>
       <Grid container spacing={2} alignItems="center">
-        <Grid item xs={12} sm={4} md={3}>
+        <Grid item xs={12} sm={6} md={6}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Box sx={{ 
               width: 40, 
@@ -226,7 +221,7 @@ const DocumentListItem = ({ doc, onView, onDownload, onApprove, onReject, openRe
             </Box>
           </Box>
         </Grid>
-        <Grid item xs={6} sm={2}>
+        <Grid item xs={6} sm={3}>
           {getStatusChip(doc.status)}
         </Grid>
         <Grid item xs={6} sm={3}>
@@ -251,20 +246,6 @@ const DocumentListItem = ({ doc, onView, onDownload, onApprove, onReject, openRe
                 <DownloadIcon />
               </IconButton>
             </Tooltip>
-            {doc.status === 'pending' && (
-              <>
-                <Tooltip title="Reject">
-                  <IconButton size="small" onClick={() => openRejectDialog(doc)} sx={{ color: '#dc3545' }}>
-                    <CancelIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Approve">
-                  <IconButton size="small" onClick={() => onApprove(doc)} sx={{ color: '#28a745' }}>
-                    <CheckCircleIcon />
-                  </IconButton>
-                </Tooltip>
-              </>
-            )}
           </Box>
         </Grid>
       </Grid>
@@ -285,10 +266,7 @@ const AdminOrganizationDocuments = () => {
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-  const [currentDoc, setCurrentDoc] = useState(null);
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
+  const [viewMode, setViewMode] = useState('grid');
   const [stats, setStats] = useState({
     total: 0,
     approved: 0,
@@ -432,127 +410,6 @@ const AdminOrganizationDocuments = () => {
       console.error('Error downloading document:', error);
       showAlert('error', 'Failed to download document');
     }
-  };
-
-  const handleApproveDocument = async (doc) => {
-    try {
-      // Update local state
-      setDocuments(prev => prev.map(d => 
-        d.id === doc.id ? { ...d, status: 'approved' } : d
-      ));
-
-      // Update stats
-      setStats(prev => ({
-        ...prev,
-        approved: prev.approved + 1,
-        pending: prev.pending - 1
-      }));
-
-      // Create a notification for the organization
-      const { error: notificationError } = await supabase
-        .from('organization_notifications')
-        .insert([{
-          organization_id: id,
-          type: 'document_approved',
-          title: `${doc.name} Approved`,
-          message: `Your ${doc.name} has been approved.`,
-          category: 'document',
-          action_url: '/documents',
-          read: false
-        }]);
-
-      if (notificationError) {
-        console.error('Error creating notification:', notificationError);
-      }
-
-      showAlert('success', `${doc.name} approved successfully`);
-    } catch (error) {
-      console.error('Error approving document:', error);
-      showAlert('error', 'Failed to approve document');
-    }
-  };
-
-  const handleRejectDocument = async () => {
-    if (!currentDoc || !rejectReason) return;
-
-    try {
-      const docFieldMap = {
-        'Cover Letter': 'cover_letter_path',
-        'Memorandum': 'memorandum_path',
-        'Registration Certificate': 'registration_cert_path',
-        'Incorporation Certificate': 'incorporation_cert_path',
-        'Premises Certificate': 'premises_cert_path',
-        'Company Logo': 'company_logo_path',
-        'Form C07': 'form_c07_path',
-        'ID Document': 'id_document_path'
-      };
-
-      const rejectionFieldMap = {
-        'Cover Letter': 'cover_letter_rejection_reason',
-        'Memorandum': 'memorandum_rejection_reason',
-        'Registration Certificate': 'registration_cert_rejection_reason',
-        'Incorporation Certificate': 'incorporation_cert_rejection_reason',
-        'Premises Certificate': 'premises_cert_rejection_reason',
-        'Company Logo': 'company_logo_rejection_reason',
-        'Form C07': 'form_c07_rejection_reason',
-        'ID Document': 'id_document_rejection_reason'
-      };
-
-      const documentField = docFieldMap[currentDoc.name];
-      const rejectionField = rejectionFieldMap[currentDoc.name];
-
-      // Update the organization with rejection reason
-      const updateData = {
-        [rejectionField]: rejectReason
-      };
-
-      const { error: updateError } = await supabase
-        .from('organizations')
-        .update(updateData)
-        .eq('id', id);
-
-      if (updateError) throw updateError;
-
-      // Create notification for the organization
-      const { error: notificationError } = await supabase
-        .from('organization_notifications')
-        .insert([{
-          organization_id: id,
-          type: 'document_rejected',
-          title: `${currentDoc.name} Rejected`,
-          message: `Your ${currentDoc.name} has been rejected. Reason: ${rejectReason}`,
-          category: 'document',
-          action_url: '/documents',
-          read: false
-        }]);
-
-      if (notificationError) throw notificationError;
-
-      // Update local state
-      setDocuments(prev => prev.map(d => 
-        d.id === currentDoc.id ? { ...d, status: 'rejected', rejectionReason: rejectReason } : d
-      ));
-      
-      // Update stats
-      setStats(prev => ({
-        ...prev,
-        rejected: prev.rejected + 1,
-        pending: prev.pending - 1
-      }));
-      
-      showAlert('success', `${currentDoc.name} rejected successfully`);
-      setRejectDialogOpen(false);
-      setRejectReason('');
-      setCurrentDoc(null);
-    } catch (error) {
-      console.error('Error rejecting document:', error);
-      showAlert('error', 'Failed to reject document: ' + error.message);
-    }
-  };
-
-  const openRejectDialog = (doc) => {
-    setCurrentDoc(doc);
-    setRejectDialogOpen(true);
   };
 
   const getStatusChip = (status) => {
@@ -892,61 +749,23 @@ const AdminOrganizationDocuments = () => {
 
                       <Divider />
 
-                      <CardActions sx={{ justifyContent: 'space-between', p: { xs: 1, sm: 2 } }}>
-                        <Box>
-                          <Tooltip title="View Document" arrow>
-                            <ActionButton 
-                              onClick={() => handleViewDocument(doc)} 
-                              size="small"
-                            >
-                              <VisibilityIcon />
-                            </ActionButton>
-                          </Tooltip>
-                          <Tooltip title="Download Document" arrow>
-                            <ActionButton 
-                              onClick={() => handleDownloadDocument(doc)} 
-                              size="small"
-                            >
-                              <DownloadIcon />
-                            </ActionButton>
-                          </Tooltip>
-                        </Box>
-                        
-                        {doc.status === 'pending' && (
-                          <Box>
-                            <Tooltip title="Reject Document" arrow>
-                              <ActionButton 
-                                onClick={() => openRejectDialog(doc)} 
-                                size="small"
-                                actioncolor="reject"
-                              >
-                                <CancelIcon />
-                              </ActionButton>
-                            </Tooltip>
-                            <Tooltip title="Approve Document" arrow>
-                              <ActionButton 
-                                onClick={() => handleApproveDocument(doc)} 
-                                size="small"
-                                actioncolor="approve"
-                              >
-                                <CheckCircleIcon />
-                              </ActionButton>
-                            </Tooltip>
-                          </Box>
-                        )}
-                        
-                        {doc.status === 'approved' && (
-                          <Tooltip title="Document Approved" arrow>
-                            <Chip
-                              icon={<VerifiedIcon />}
-                              label="Approved"
-                              size="small"
-                              color="success"
-                              variant="outlined"
-                              sx={{ height: '24px', fontSize: '0.7rem' }}
-                            />
-                          </Tooltip>
-                        )}
+                      <CardActions sx={{ justifyContent: 'center', p: { xs: 1, sm: 2 } }}>
+                        <Tooltip title="View Document" arrow>
+                          <ActionButton 
+                            onClick={() => handleViewDocument(doc)} 
+                            size="small"
+                          >
+                            <VisibilityIcon />
+                          </ActionButton>
+                        </Tooltip>
+                        <Tooltip title="Download Document" arrow>
+                          <ActionButton 
+                            onClick={() => handleDownloadDocument(doc)} 
+                            size="small"
+                          >
+                            <DownloadIcon />
+                          </ActionButton>
+                        </Tooltip>
                       </CardActions>
                     </StyledCard>
                   </Grid>
@@ -961,9 +780,6 @@ const AdminOrganizationDocuments = () => {
                     doc={doc}
                     onView={handleViewDocument}
                     onDownload={handleDownloadDocument}
-                    onApprove={handleApproveDocument}
-                    onReject={handleRejectDocument}
-                    openRejectDialog={openRejectDialog}
                     getStatusChip={getStatusChip}
                   />
                 ))}
@@ -1094,75 +910,6 @@ const AdminOrganizationDocuments = () => {
           </Button>
           <Button onClick={() => setModalOpen(false)} variant="outlined">
             Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Reject Dialog */}
-      <Dialog 
-        open={rejectDialogOpen} 
-        onClose={() => setRejectDialogOpen(false)} 
-        maxWidth="sm" 
-        fullWidth
-        fullScreen={isMobile}
-        PaperProps={{
-          sx: { 
-            borderRadius: { xs: 0, sm: '16px' },
-            m: { xs: 0, sm: 2 }
-          }
-        }}
-      >
-        <DialogTitle sx={{ 
-          fontFamily: '"Poppins", sans-serif',
-          borderBottom: '1px solid #e0e0e0',
-          pb: 2,
-          p: { xs: 2, sm: 3 }
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CancelIcon sx={{ color: '#dc3545' }} />
-            <Typography variant="h6">Reject Document</Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 3, p: { xs: 2, sm: 3 } }}>
-          <Typography variant="body2" sx={{ mb: 2, color: '#666' }}>
-            Please provide a reason for rejecting <strong>{currentDoc?.name}</strong>
-          </Typography>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Rejection Reason"
-            fullWidth
-            multiline
-            rows={4}
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            variant="outlined"
-            placeholder="Enter detailed reason for rejection..."
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                borderRadius: '8px'
-              }
-            }}
-          />
-        </DialogContent>
-        <DialogActions sx={{ p: { xs: 2, sm: 3 }, pt: 0 }}>
-          <Button 
-            onClick={() => setRejectDialogOpen(false)}
-            sx={{ color: '#666' }}
-          >
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleRejectDocument} 
-            color="error" 
-            variant="contained"
-            disabled={!rejectReason.trim()}
-            sx={{
-              borderRadius: '8px',
-              px: 3
-            }}
-          >
-            Reject
           </Button>
         </DialogActions>
       </Dialog>

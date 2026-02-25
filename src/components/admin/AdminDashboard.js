@@ -21,7 +21,9 @@ import {
   Avatar,
   Alert,
   Snackbar,
-  CircularProgress
+  CircularProgress,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -71,29 +73,60 @@ const StyledCard = styled(Card)(({ theme }) => ({
   }
 }));
 
-// Reduced size StatCard component
-const StatCard = ({ title, value, icon, color }) => (
-  <StyledCard>
-    <CardContent sx={{ p: 2.5 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        <Avatar sx={{ bgcolor: color, width: 40, height: 40 }}>
-          {icon}
-        </Avatar>
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="caption" sx={{ color: '#666', fontFamily: '"Inter", sans-serif', fontSize: '0.7rem', fontWeight: 500 }}>
-            {title}
-          </Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: '"Poppins", sans-serif', fontSize: '1.1rem', lineHeight: 1.3 }}>
-            {value}
-          </Typography>
+// Responsive StatCard component
+const StatCard = ({ title, value, icon, color }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  return (
+    <StyledCard>
+      <CardContent sx={{ p: isMobile ? 1.5 : 2.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: isMobile ? 1 : 1.5 }}>
+          <Avatar sx={{ bgcolor: color, width: isMobile ? 32 : 40, height: isMobile ? 32 : 40 }}>
+            {icon}
+          </Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                color: '#666', 
+                fontFamily: '"Inter", sans-serif', 
+                fontSize: isMobile ? '0.65rem' : '0.7rem', 
+                fontWeight: 500,
+                display: 'block',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+            >
+              {title}
+            </Typography>
+            <Typography 
+              variant={isMobile ? "body2" : "h6"} 
+              sx={{ 
+                fontWeight: 700, 
+                fontFamily: '"Poppins", sans-serif', 
+                fontSize: isMobile ? '0.9rem' : '1.1rem', 
+                lineHeight: 1.3,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+            >
+              {value}
+            </Typography>
+          </Box>
         </Box>
-      </Box>
-    </CardContent>
-  </StyledCard>
-);
+      </CardContent>
+    </StyledCard>
+  );
+};
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
   const [loading, setLoading] = useState(true);
   const [adminData, setAdminData] = useState(null);
   const [stats, setStats] = useState({
@@ -164,8 +197,6 @@ const AdminDashboard = () => {
 
   const fetchStats = async () => {
     try {
-   
-      
       // Fetch all organizations
       const { data: allOrgs, error: orgsError } = await supabase
         .from('organizations')
@@ -294,9 +325,59 @@ const AdminDashboard = () => {
         label={statusConfig.label}
         size="small"
         color={statusConfig.color}
-        sx={{ fontFamily: '"Inter", sans-serif', height: '24px' }}
+        sx={{ fontFamily: '"Inter", sans-serif', height: isMobile ? '20px' : '24px', fontSize: isMobile ? '0.65rem' : '0.75rem' }}
       />
     );
+  };
+
+  // Responsive chart options
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: {
+          font: {
+            family: '"Inter", sans-serif',
+            size: isMobile ? 8 : 10
+          },
+          boxWidth: isMobile ? 8 : 10,
+          padding: isMobile ? 4 : 8
+        }
+      },
+      tooltip: {
+        enabled: true,
+        titleFont: { size: isMobile ? 10 : 12 },
+        bodyFont: { size: isMobile ? 9 : 11 }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        grid: {
+          color: 'rgba(0, 0, 0, 0.05)'
+        },
+        ticks: {
+          font: {
+            size: isMobile ? 8 : 9
+          },
+          stepSize: isMobile ? 1 : undefined
+        }
+      },
+      x: {
+        grid: {
+          display: false
+        },
+        ticks: {
+          font: {
+            size: isMobile ? 8 : 9
+          },
+          maxRotation: isMobile ? 45 : 0,
+          minRotation: isMobile ? 45 : 0
+        }
+      }
+    }
   };
 
   const chartData = {
@@ -308,7 +389,9 @@ const AdminDashboard = () => {
         borderColor: '#15e420',
         backgroundColor: 'rgba(21, 228, 32, 0.1)',
         tension: 0.4,
-        fill: true
+        fill: true,
+        pointRadius: isMobile ? 2 : 3,
+        pointHoverRadius: isMobile ? 4 : 5
       }
     ]
   };
@@ -329,53 +412,9 @@ const AdminDashboard = () => {
     ]
   };
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'bottom',
-        labels: {
-          font: {
-            family: '"Inter", sans-serif',
-            size: 10
-          },
-          boxWidth: 10,
-          padding: 8
-        }
-      },
-      tooltip: {
-        enabled: true
-      }
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: 'rgba(0, 0, 0, 0.05)'
-        },
-        ticks: {
-          font: {
-            size: 9
-          }
-        }
-      },
-      x: {
-        grid: {
-          display: false
-        },
-        ticks: {
-          font: {
-            size: 9
-          }
-        }
-      }
-    }
-  };
-
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
         <CircularProgress style={{ color: '#15e420' }} />
       </Box>
     );
@@ -394,20 +433,31 @@ const AdminDashboard = () => {
         </Alert>
       </Snackbar>
 
-      <Container maxWidth="xl" sx={{ py: 3 }}>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+      <Container maxWidth="xl" sx={{ py: isMobile ? 1 : 3, px: isMobile ? 1 : 2 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: isMobile ? 1 : 2 
+        }}>
           <AdminSidebar />
           
-          <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 2.5, borderRadius: '12px' }}>
+          <Box sx={{ 
+            flex: 1, 
+            bgcolor: '#f8f9fa', 
+            p: isMobile ? 1.5 : 2.5, 
+            borderRadius: '12px',
+            minWidth: 0 // Prevent overflow
+          }}>
             {/* Header */}
-            <Box sx={{ mb: 3 }}>
+            <Box sx={{ mb: isMobile ? 2 : 3 }}>
               <Typography 
-                variant="h5" 
+                variant={isMobile ? "h6" : "h5"} 
                 sx={{ 
                   fontFamily: '"Poppins", sans-serif',
                   fontWeight: 600,
                   color: '#333',
-                  mb: 0.5
+                  mb: 0.5,
+                  fontSize: isMobile ? '1.1rem' : undefined
                 }}
               >
                 Welcome back, {adminData?.full_name}!
@@ -416,16 +466,17 @@ const AdminDashboard = () => {
                 variant="body2" 
                 sx={{ 
                   fontFamily: '"Inter", sans-serif',
-                  color: '#666'
+                  color: '#666',
+                  fontSize: isMobile ? '0.75rem' : '0.875rem'
                 }}
               >
                 Here's what's happening with your platform today.
               </Typography>
             </Box>
 
-            {/* Stats Cards - Reduced size */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={12} sm={6} md={3}>
+            {/* Stats Cards - Responsive grid */}
+            <Grid container spacing={isMobile ? 1 : 2} sx={{ mb: isMobile ? 1 : 3 }}>
+              <Grid item xs={6} sm={6} md={3}>
                 <StatCard
                   title="Total Organizations"
                   value={stats.totalOrganizations}
@@ -433,7 +484,7 @@ const AdminDashboard = () => {
                   color="#15e420"
                 />
               </Grid>
-              <Grid item xs={12} sm={6} md={3}>
+              <Grid item xs={6} sm={6} md={3}>
                 <StatCard
                   title="Pending Reviews"
                   value={stats.pendingOrganizations}
@@ -441,7 +492,7 @@ const AdminDashboard = () => {
                   color="#ffc107"
                 />
               </Grid>
-              <Grid item xs={12} sm={6} md={3}>
+              <Grid item xs={6} sm={6} md={3}>
                 <StatCard
                   title="Approved"
                   value={stats.approvedOrganizations}
@@ -449,7 +500,7 @@ const AdminDashboard = () => {
                   color="#28a745"
                 />
               </Grid>
-              <Grid item xs={12} sm={6} md={3}>
+              <Grid item xs={6} sm={6} md={3}>
                 <StatCard
                   title="Rejected"
                   value={stats.rejectedOrganizations}
@@ -460,8 +511,8 @@ const AdminDashboard = () => {
             </Grid>
 
             {/* Second Row of Stats - Payments */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={12} sm={6} md={3}>
+            <Grid container spacing={isMobile ? 1 : 2} sx={{ mb: isMobile ? 1 : 3 }}>
+              <Grid item xs={6} sm={6} md={3}>
                 <StatCard
                   title="Total Payments"
                   value={stats.totalPayments}
@@ -469,7 +520,7 @@ const AdminDashboard = () => {
                   color="#17a2b8"
                 />
               </Grid>
-              <Grid item xs={12} sm={6} md={3}>
+              <Grid item xs={6} sm={6} md={3}>
                 <StatCard
                   title="Pending Payments"
                   value={stats.pendingPayments}
@@ -477,7 +528,7 @@ const AdminDashboard = () => {
                   color="#ffc107"
                 />
               </Grid>
-              <Grid item xs={12} sm={6} md={3}>
+              <Grid item xs={6} sm={6} md={3}>
                 <StatCard
                   title="Approved Payments"
                   value={stats.approvedPayments}
@@ -485,7 +536,7 @@ const AdminDashboard = () => {
                   color="#28a745"
                 />
               </Grid>
-              <Grid item xs={12} sm={6} md={3}>
+              <Grid item xs={6} sm={6} md={3}>
                 <StatCard
                   title="Total Revenue"
                   value={`₦${stats.totalRevenue.toLocaleString()}`}
@@ -495,51 +546,61 @@ const AdminDashboard = () => {
               </Grid>
             </Grid>
 
-            {/* Charts */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
+            {/* Charts - Responsive layout */}
+            <Grid container spacing={isMobile ? 1 : 2} sx={{ mb: isMobile ? 1 : 3 }}>
               <Grid item xs={12} md={8}>
-                <Paper sx={{ p: 2, borderRadius: '12px', bgcolor: 'white' }}>
+                <Paper sx={{ p: isMobile ? 1.5 : 2, borderRadius: '12px', bgcolor: 'white' }}>
                   <Typography 
-                    variant="subtitle1" 
+                    variant={isMobile ? "body2" : "subtitle1"} 
                     sx={{ 
                       fontFamily: '"Poppins", sans-serif',
                       fontWeight: 600,
-                      mb: 2,
-                      fontSize: '1rem'
+                      mb: isMobile ? 1 : 2,
+                      fontSize: isMobile ? '0.9rem' : '1rem'
                     }}
                   >
                     Registration Trends (Last 6 Months)
                   </Typography>
-                  <Box sx={{ height: 220 }}>
+                  <Box sx={{ height: isMobile ? 180 : 220 }}>
                     {stats.monthlyRegistrations.length > 0 ? (
                       <Line data={chartData} options={chartOptions} />
                     ) : (
                       <Box display="flex" justifyContent="center" alignItems="center" height="100%">
-                        <Typography variant="body2" color="textSecondary">No registration data available</Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ fontSize: isMobile ? '0.75rem' : '0.875rem' }}>
+                          No registration data available
+                        </Typography>
                       </Box>
                     )}
                   </Box>
                 </Paper>
               </Grid>
               <Grid item xs={12} md={4}>
-                <Paper sx={{ p: 2, borderRadius: '12px', height: '100%', bgcolor: 'white' }}>
+                <Paper sx={{ 
+                  p: isMobile ? 1.5 : 2, 
+                  borderRadius: '12px', 
+                  height: '100%', 
+                  bgcolor: 'white',
+                  minHeight: isMobile ? 200 : 'auto'
+                }}>
                   <Typography 
-                    variant="subtitle1" 
+                    variant={isMobile ? "body2" : "subtitle1"} 
                     sx={{ 
                       fontFamily: '"Poppins", sans-serif',
                       fontWeight: 600,
-                      mb: 2,
-                      fontSize: '1rem'
+                      mb: isMobile ? 1 : 2,
+                      fontSize: isMobile ? '0.9rem' : '1rem'
                     }}
                   >
                     Organization Status
                   </Typography>
-                  <Box sx={{ height: 180 }}>
+                  <Box sx={{ height: isMobile ? 140 : 180 }}>
                     {stats.totalOrganizations > 0 ? (
                       <Doughnut data={doughnutData} options={chartOptions} />
                     ) : (
                       <Box display="flex" justifyContent="center" alignItems="center" height="100%">
-                        <Typography variant="body2" color="textSecondary">No data available</Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ fontSize: isMobile ? '0.75rem' : '0.875rem' }}>
+                          No data available
+                        </Typography>
                       </Box>
                     )}
                   </Box>
@@ -547,15 +608,22 @@ const AdminDashboard = () => {
               </Grid>
             </Grid>
 
-            {/* Recent Activities */}
-            <Paper sx={{ p: 2, borderRadius: '12px', bgcolor: 'white' }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            {/* Recent Activities - Responsive table */}
+            <Paper sx={{ p: isMobile ? 1.5 : 2, borderRadius: '12px', bgcolor: 'white', overflow: 'hidden' }}>
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: isMobile ? 'column' : 'row',
+                justifyContent: 'space-between', 
+                alignItems: isMobile ? 'flex-start' : 'center', 
+                mb: 2,
+                gap: isMobile ? 1 : 0
+              }}>
                 <Typography 
-                  variant="subtitle1" 
+                  variant={isMobile ? "body2" : "subtitle1"} 
                   sx={{ 
                     fontFamily: '"Poppins", sans-serif',
                     fontWeight: 600,
-                    fontSize: '1rem'
+                    fontSize: isMobile ? '0.9rem' : '1rem'
                   }}
                 >
                   Recent Registrations
@@ -567,9 +635,10 @@ const AdminDashboard = () => {
                   sx={{
                     borderColor: '#15e420',
                     color: '#15e420',
-                    fontSize: '0.75rem',
+                    fontSize: isMobile ? '0.7rem' : '0.75rem',
                     py: 0.5,
                     px: 1.5,
+                    alignSelf: isMobile ? 'flex-end' : 'auto',
                     '&:hover': {
                       borderColor: '#12c21e',
                       backgroundColor: '#e8f5e9'
@@ -580,38 +649,100 @@ const AdminDashboard = () => {
                 </Button>
               </Box>
 
-              <TableContainer>
-                <Table size="small">
+              <TableContainer sx={{ overflowX: 'auto' }}>
+                <Table size={isMobile ? "small" : "small"}>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>Company</TableCell>
-                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>Date</TableCell>
-                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>Status</TableCell>
-                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>Payment</TableCell>
-                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>Actions</TableCell>
+                      <TableCell sx={{ 
+                        fontFamily: '"Inter", sans-serif', 
+                        fontWeight: 600, 
+                        fontSize: isMobile ? '0.7rem' : '0.8rem', 
+                        py: 1,
+                        px: isMobile ? 0.5 : 1
+                      }}>
+                        Company
+                      </TableCell>
+                      {!isMobile && (
+                        <TableCell sx={{ 
+                          fontFamily: '"Inter", sans-serif', 
+                          fontWeight: 600, 
+                          fontSize: isMobile ? '0.7rem' : '0.8rem', 
+                          py: 1 
+                        }}>
+                          Date
+                        </TableCell>
+                      )}
+                      <TableCell sx={{ 
+                        fontFamily: '"Inter", sans-serif', 
+                        fontWeight: 600, 
+                        fontSize: isMobile ? '0.7rem' : '0.8rem', 
+                        py: 1,
+                        px: isMobile ? 0.5 : 1
+                      }}>
+                        Status
+                      </TableCell>
+                      <TableCell sx={{ 
+                        fontFamily: '"Inter", sans-serif', 
+                        fontWeight: 600, 
+                        fontSize: isMobile ? '0.7rem' : '0.8rem', 
+                        py: 1,
+                        px: isMobile ? 0.5 : 1
+                      }}>
+                        Payment
+                      </TableCell>
+                      <TableCell sx={{ 
+                        fontFamily: '"Inter", sans-serif', 
+                        fontWeight: 600, 
+                        fontSize: isMobile ? '0.7rem' : '0.8rem', 
+                        py: 1,
+                        px: isMobile ? 0.5 : 1
+                      }}>
+                        Actions
+                      </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {recentActivities.length > 0 ? (
                       recentActivities.map((activity) => (
                         <TableRow key={activity.id} hover>
-                          <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontSize: '0.8rem', py: 1 }}>
+                          <TableCell sx={{ 
+                            fontFamily: '"Inter", sans-serif', 
+                            fontSize: isMobile ? '0.7rem' : '0.8rem', 
+                            py: 1,
+                            px: isMobile ? 0.5 : 1,
+                            maxWidth: isMobile ? 100 : 'none',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}>
                             {activity.company}
                           </TableCell>
-                          <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontSize: '0.8rem', py: 1 }}>
-                            {new Date(activity.date).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell sx={{ py: 1 }}>
+                          {!isMobile && (
+                            <TableCell sx={{ 
+                              fontFamily: '"Inter", sans-serif', 
+                              fontSize: '0.8rem', 
+                              py: 1 
+                            }}>
+                              {new Date(activity.date).toLocaleDateString()}
+                            </TableCell>
+                          )}
+                          <TableCell sx={{ py: 1, px: isMobile ? 0.5 : 1 }}>
                             {getStatusChip(activity.status)}
                           </TableCell>
-                          <TableCell sx={{ py: 1 }}>
+                          <TableCell sx={{ py: 1, px: isMobile ? 0.5 : 1 }}>
                             {activity.hasPayment ? (
                               <Chip
                                 icon={<CheckCircleIcon />}
                                 label={activity.paymentStatus === 'approved' ? 'Paid' : 'Pending'}
                                 size="small"
                                 color={activity.paymentStatus === 'approved' ? 'success' : 'warning'}
-                                sx={{ height: '24px', fontSize: '0.7rem' }}
+                                sx={{ 
+                                  height: isMobile ? '20px' : '24px', 
+                                  fontSize: isMobile ? '0.6rem' : '0.7rem',
+                                  '& .MuiChip-icon': {
+                                    fontSize: isMobile ? '0.7rem' : '0.9rem'
+                                  }
+                                }}
                               />
                             ) : (
                               <Chip
@@ -619,25 +750,31 @@ const AdminDashboard = () => {
                                 label="No Payment"
                                 size="small"
                                 color="default"
-                                sx={{ height: '24px', fontSize: '0.7rem' }}
+                                sx={{ 
+                                  height: isMobile ? '20px' : '24px', 
+                                  fontSize: isMobile ? '0.6rem' : '0.7rem',
+                                  '& .MuiChip-icon': {
+                                    fontSize: isMobile ? '0.7rem' : '0.9rem'
+                                  }
+                                }}
                               />
                             )}
                           </TableCell>
-                          <TableCell sx={{ py: 1 }}>
+                          <TableCell sx={{ py: 1, px: isMobile ? 0.5 : 1 }}>
                             <IconButton
                               size="small"
                               onClick={() => navigate(`/admin/organizations/${activity.id}`)}
                               sx={{ color: '#15e420', p: 0.5 }}
                             >
-                              <VisibilityIcon fontSize="small" />
+                              <VisibilityIcon fontSize={isMobile ? "small" : "small"} />
                             </IconButton>
                           </TableCell>
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
-                          <Typography variant="body2" sx={{ color: '#666' }}>
+                        <TableCell colSpan={isMobile ? 4 : 5} align="center" sx={{ py: 3 }}>
+                          <Typography variant="body2" sx={{ color: '#666', fontSize: isMobile ? '0.75rem' : '0.875rem' }}>
                             No recent activities found
                           </Typography>
                         </TableCell>
