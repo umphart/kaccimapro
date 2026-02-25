@@ -17,6 +17,7 @@ import {
   Chip,
   Divider,
   Tooltip,
+  Button,
   LinearProgress
 } from '@mui/material';
 import {
@@ -37,7 +38,8 @@ import {
   CalendarToday as CalendarIcon,
   Verified as VerifiedIcon,
   Warning as WarningIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import Layout from './Layout';
@@ -226,6 +228,7 @@ const DocumentCard = styled(motion(Paper))(({ theme, status }) => ({
     background: status === 'approved' ? '#28a745' :
                 status === 'rejected' ? '#dc3545' :
                 status === 'pending' ? '#ffc107' :
+                status === 'reuploaded' ? '#17a2b8' :
                 '#15e420'
   }
 }));
@@ -240,11 +243,13 @@ const DocumentIcon = styled('div')(({ status }) => ({
   marginRight: '1rem',
   background: status === 'approved' ? 'rgba(40, 167, 69, 0.1)' :
               status === 'rejected' ? 'rgba(220, 53, 69, 0.1)' :
+              status === 'reuploaded' ? 'rgba(23, 162, 184, 0.1)' :
               'rgba(21, 228, 32, 0.1)',
   '& svg': {
     fontSize: '1.8rem',
     color: status === 'approved' ? '#28a745' :
            status === 'rejected' ? '#dc3545' :
+           status === 'reuploaded' ? '#17a2b8' :
            '#15e420'
   }
 }));
@@ -267,10 +272,12 @@ const DocumentStatus = styled(Chip)(({ status }) => ({
   fontWeight: 500,
   background: status === 'approved' ? '#d4edda' :
               status === 'rejected' ? '#ffebee' :
+              status === 'reuploaded' ? '#d1ecf1' :
               status === 'pending' ? '#fff3e0' :
               '#e8f5e9',
   color: status === 'approved' ? '#28a745' :
          status === 'rejected' ? '#dc3545' :
+         status === 'reuploaded' ? '#0c5460' :
          status === 'pending' ? '#ff9800' :
          '#15e420',
   '& .MuiChip-icon': {
@@ -371,12 +378,15 @@ const OrganizationProfile = () => {
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [documentStatuses, setDocumentStatuses] = useState({});
+  const [rejectionReasons, setRejectionReasons] = useState({});
   const [documentStats, setDocumentStats] = useState({
     total: 0,
     uploaded: 0,
     approved: 0,
     pending: 0,
-    rejected: 0
+    rejected: 0,
+    reuploaded: 0
   });
 
   useEffect(() => {
@@ -386,8 +396,50 @@ const OrganizationProfile = () => {
   useEffect(() => {
     if (user) {
       fetchOrganizationData();
+      setupRealtimeSubscription();
     }
   }, [user]);
+
+  const setupRealtimeSubscription = () => {
+    if (!user) return;
+
+    const subscription = supabase
+      .channel('organization_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'organizations',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('Organization updated:', payload);
+          setOrganization(payload.new);
+          fetchDocumentStatuses(payload.new.id);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'organization_notifications',
+          filter: `organization_id=eq.${organization?.id}`
+        },
+        (payload) => {
+          console.log('New notification:', payload);
+          if (organization?.id) {
+            fetchDocumentStatuses(organization.id);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  };
 
   const showAlert = (type, message) => {
     setAlert({ open: true, type, message });
@@ -411,6 +463,93 @@ const OrganizationProfile = () => {
     }
   };
 
+  const fetchDocumentStatuses = async (orgId) => {
+    try {
+      const { data: notifications, error } = await supabase
+        .from('organization_notifications')
+        .select('*')
+        .eq('organization_id', orgId)
+        .in('type', ['document_approved', 'document_rejected', 'document_reuploaded'])
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const statuses = {};
+      const reasons = {};
+
+      // Group notifications by document to get the latest status
+      const latestNotifications = {};
+      
+      notifications?.forEach(notif => {
+        const docName = notif.title?.replace('Document Approved: ', '')
+                                   .replace('Document Rejected: ', '')
+                                   .replace('Document Re-uploaded: ', '') || '';
+        
+        if (!latestNotifications[docName] || 
+            new Date(notif.created_at) > new Date(latestNotifications[docName].created_at)) {
+          latestNotifications[docName] = notif;
+        }
+      });
+
+      // Get document list
+      const docs = getDocumentsList(organization);
+      
+      docs.forEach(doc => {
+        const notif = latestNotifications[doc.name];
+        
+        if (notif) {
+          if (notif.type === 'document_approved') {
+            statuses[doc.key] = 'approved';
+          } else if (notif.type === 'document_rejected') {
+            statuses[doc.key] = 'rejected';
+            const reason = notif.message.split('Reason: ')[1] || 'No reason provided';
+            reasons[doc.key] = reason;
+          } else if (notif.type === 'document_reuploaded') {
+            statuses[doc.key] = 'reuploaded';
+          }
+        } else {
+          // If document exists but no notifications, it's pending
+          statuses[doc.key] = organization?.[doc.key] ? 'pending' : 'not_uploaded';
+        }
+      });
+
+      setDocumentStatuses(statuses);
+      setRejectionReasons(reasons);
+
+      // Update document statistics
+      const uploaded = docs.filter(doc => organization?.[doc.key]).length;
+      
+      // If organization is approved, all uploaded documents are approved
+      if (organization?.status === 'approved') {
+        setDocumentStats({
+          total: docs.length,
+          uploaded,
+          approved: uploaded,
+          pending: 0,
+          rejected: 0,
+          reuploaded: 0
+        });
+      } else {
+        const approved = Object.values(statuses).filter(s => s === 'approved').length;
+        const pending = Object.values(statuses).filter(s => s === 'pending').length;
+        const rejected = Object.values(statuses).filter(s => s === 'rejected').length;
+        const reuploaded = Object.values(statuses).filter(s => s === 'reuploaded').length;
+
+        setDocumentStats({
+          total: docs.length,
+          uploaded,
+          approved,
+          pending,
+          rejected,
+          reuploaded
+        });
+      }
+
+    } catch (error) {
+      console.error('Error fetching document statuses:', error);
+    }
+  };
+
   const fetchOrganizationData = async () => {
     try {
       if (!user) return;
@@ -425,20 +564,9 @@ const OrganizationProfile = () => {
 
       setOrganization(orgData);
       
-      // Calculate document statistics
-      const documents = getDocumentsList(orgData);
-      const uploaded = documents.filter(doc => doc.path).length;
-      const approved = documents.filter(doc => doc.status === 'approved').length;
-      const pending = documents.filter(doc => doc.status === 'pending').length;
-      const rejected = documents.filter(doc => doc.status === 'rejected').length;
-      
-      setDocumentStats({
-        total: documents.length,
-        uploaded,
-        approved,
-        pending,
-        rejected
-      });
+      if (orgData?.id) {
+        await fetchDocumentStatuses(orgData.id);
+      }
     } catch (error) {
       console.error('Error fetching organization:', error);
       showAlert('error', 'Failed to load organization data');
@@ -447,8 +575,30 @@ const OrganizationProfile = () => {
     }
   };
 
+  const getDocumentUrl = (path) => {
+    if (!path) return null;
+    
+    // If it's already a full URL, use it directly
+    if (path.startsWith('http')) {
+      return path;
+    }
+    
+    // Otherwise, construct the public URL
+    try {
+      const bucket = path.includes('companyLogo') ? 'logos' : 'documents';
+      const { data } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(path);
+      
+      return data?.publicUrl || null;
+    } catch (error) {
+      console.error('Error getting document URL:', error);
+      return null;
+    }
+  };
+
   const getDocumentsList = (orgData) => {
-    const documents = [
+    return [
       { key: 'cover_letter_path', name: 'Covering Letter', icon: 'description' },
       { key: 'memorandum_path', name: 'Memorandum & Articles', icon: 'description' },
       { key: 'registration_cert_path', name: 'Business Registration Certificate', icon: 'description' },
@@ -458,45 +608,16 @@ const OrganizationProfile = () => {
       { key: 'form_c07_path', name: 'Form C07', icon: 'description' },
       { key: 'id_document_path', name: 'ID Document', icon: 'badge' }
     ];
-
-    return documents.map(doc => {
-      const path = orgData?.[doc.key];
-      const rejectionField = `${doc.key.replace('_path', '_rejection_reason')}`;
-      const rejectionReason = orgData?.[rejectionField];
-      
-      let status = 'not_uploaded';
-      if (path) {
-        status = rejectionReason ? 'rejected' : 
-                (orgData.status === 'approved' ? 'approved' : 'pending');
-      }
-
-      return {
-        ...doc,
-        path,
-        status,
-        rejectionReason
-      };
-    });
   };
 
-  const getDocumentUrl = async (path) => {
-    if (!path) return null;
-    
-    try {
-      const bucket = path.includes('companyLogo') ? 'logos' : 'documents';
-      const { data } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(path);
-      
-      return data.publicUrl;
-    } catch (error) {
-      console.error('Error getting document URL:', error);
-      return null;
+  const handleViewDocument = async (docName, docKey, docPath) => {
+    if (!docPath) {
+      showAlert('error', 'Document not found');
+      return;
     }
-  };
 
-  const handleViewDocument = async (docName, docPath) => {
-    const url = await getDocumentUrl(docPath);
+    const url = getDocumentUrl(docPath);
+    
     if (url) {
       setSelectedDocument({ name: docName, url });
       setModalOpen(true);
@@ -507,6 +628,22 @@ const OrganizationProfile = () => {
 
   const handleDownloadDocument = async (docPath, fileName) => {
     try {
+      // If it's a full URL, fetch and download
+      if (docPath.startsWith('http')) {
+        const response = await fetch(docPath);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      // Otherwise download from storage
       const bucket = docPath.includes('companyLogo') ? 'logos' : 'documents';
       const { data, error } = await supabase.storage
         .from(bucket)
@@ -534,6 +671,8 @@ const OrganizationProfile = () => {
         return <CheckCircleIcon />;
       case 'rejected':
         return <ErrorIcon />;
+      case 'reuploaded':
+        return <RefreshIcon />;
       case 'pending':
         return <PendingIcon />;
       default:
@@ -559,6 +698,7 @@ const OrganizationProfile = () => {
         fontSize: '1.8rem',
         color: status === 'approved' ? '#28a745' :
                status === 'rejected' ? '#dc3545' :
+               status === 'reuploaded' ? '#17a2b8' :
                status === 'pending' ? '#ff9800' :
                '#15e420'
       }
@@ -574,6 +714,19 @@ const OrganizationProfile = () => {
     }
   };
 
+  const getDocumentStatus = (docKey, docPath) => {
+    // If organization is approved, all documents are approved
+    if (organization?.status === 'approved' && docPath) {
+      return 'approved';
+    }
+    
+    // Otherwise use individual document status
+    if (documentStatuses[docKey]) {
+      return documentStatuses[docKey];
+    }
+    return docPath ? 'pending' : 'not_uploaded';
+  };
+
   const submissionDate = organization?.created_at 
     ? new Date(organization.created_at).toLocaleDateString('en-US', {
         year: 'numeric',
@@ -583,7 +736,7 @@ const OrganizationProfile = () => {
     : 'N/A';
 
   const approvalProgress = documentStats.total > 0 
-    ? (documentStats.approved / documentStats.total) * 100 
+    ? ((documentStats.approved + documentStats.reuploaded) / documentStats.total) * 100 
     : 0;
 
   if (loading) {
@@ -767,41 +920,59 @@ const OrganizationProfile = () => {
                   Document Verification Progress
                 </Typography>
                 <Typography variant="body2" sx={{ fontWeight: 600, color: '#15e420' }}>
-                  {Math.round(approvalProgress)}%
+                  {organization?.status === 'approved' ? '100%' : `${Math.round(approvalProgress)}%`}
                 </Typography>
               </Box>
               <LinearProgress 
                 variant="determinate" 
-                value={approvalProgress}
+                value={organization?.status === 'approved' ? 100 : approvalProgress}
                 sx={{ 
                   height: 8, 
                   borderRadius: 4,
                   bgcolor: '#e0e0e0',
                   '& .MuiLinearProgress-bar': {
-                    bgcolor: documentStats.rejected > 0 ? '#dc3545' : '#15e420'
+                    bgcolor: organization?.status === 'approved' ? '#28a745' :
+                            documentStats.rejected > 0 ? '#dc3545' : '#15e420'
                   }
                 }}
               />
               <Box sx={{ display: 'flex', gap: 2, mt: 2, flexWrap: 'wrap' }}>
-                <Chip
-                  icon={<CheckCircleIcon />}
-                  label={`Approved: ${documentStats.approved}`}
-                  size="small"
-                  sx={{ bgcolor: '#d4edda', color: '#28a745' }}
-                />
-                <Chip
-                  icon={<PendingIcon />}
-                  label={`Pending: ${documentStats.pending}`}
-                  size="small"
-                  sx={{ bgcolor: '#fff3e0', color: '#ff9800' }}
-                />
-                {documentStats.rejected > 0 && (
+                {organization?.status === 'approved' ? (
                   <Chip
-                    icon={<ErrorIcon />}
-                    label={`Rejected: ${documentStats.rejected}`}
+                    icon={<VerifiedIcon />}
+                    label="All Documents Approved"
                     size="small"
-                    sx={{ bgcolor: '#ffebee', color: '#dc3545' }}
+                    sx={{ bgcolor: '#d4edda', color: '#28a745' }}
                   />
+                ) : (
+                  <>
+                    <Chip
+                      icon={<CheckCircleIcon />}
+                      label={`Approved: ${documentStats.approved}`}
+                      size="small"
+                      sx={{ bgcolor: '#d4edda', color: '#28a745' }}
+                    />
+                    <Chip
+                      icon={<RefreshIcon />}
+                      label={`Re-uploaded: ${documentStats.reuploaded}`}
+                      size="small"
+                      sx={{ bgcolor: '#d1ecf1', color: '#0c5460' }}
+                    />
+                    <Chip
+                      icon={<PendingIcon />}
+                      label={`Pending: ${documentStats.pending}`}
+                      size="small"
+                      sx={{ bgcolor: '#fff3e0', color: '#ff9800' }}
+                    />
+                    {documentStats.rejected > 0 && (
+                      <Chip
+                        icon={<ErrorIcon />}
+                        label={`Rejected: ${documentStats.rejected}`}
+                        size="small"
+                        sx={{ bgcolor: '#ffebee', color: '#dc3545' }}
+                      />
+                    )}
+                  </>
                 )}
               </Box>
             </Box>
@@ -818,88 +989,110 @@ const OrganizationProfile = () => {
             </SectionTitle>
 
             <DocumentGrid>
-              {getDocumentsList(organization).map((doc, index) => (
-                <DocumentCard
-                  key={doc.key}
-                  status={doc.status}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 * index }}
-                >
-                  <DocumentIcon status={doc.status}>
-                    {getDocumentIcon(doc.icon, doc.status)}
-                  </DocumentIcon>
-                  
-                  <DocumentContent>
-                    <DocumentName>{doc.name}</DocumentName>
+              {getDocumentsList(organization).map((doc, index) => {
+                const docPath = organization?.[doc.key];
+                const status = getDocumentStatus(doc.key, docPath);
+                const rejectionReason = rejectionReasons[doc.key];
+                
+                return (
+                  <DocumentCard
+                    key={doc.key}
+                    status={status}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 * index }}
+                  >
+                    <DocumentIcon status={status}>
+                      {getDocumentIcon(doc.icon, status)}
+                    </DocumentIcon>
                     
-                    {doc.status === 'not_uploaded' ? (
-                      <DocumentStatus
-                        label="Not Uploaded"
-                        status="not_uploaded"
-                        icon={<InfoIcon />}
-                      />
-                    ) : (
-                      <DocumentStatus
-                        label={
-                          doc.status === 'approved' ? 'Approved' :
-                          doc.status === 'rejected' ? 'Rejected' :
-                          'Pending Review'
-                        }
-                        status={doc.status}
-                        icon={getStatusIcon(doc.status)}
-                      />
-                    )}
+                    <DocumentContent>
+                      <DocumentName>{doc.name}</DocumentName>
+                      
+                      {!docPath ? (
+                        <DocumentStatus
+                          label="Not Uploaded"
+                          status="not_uploaded"
+                          icon={<InfoIcon />}
+                        />
+                      ) : (
+                        <DocumentStatus
+                          label={
+                            status === 'approved' ? 'Approved' :
+                            status === 'rejected' ? 'Rejected' :
+                            status === 'reuploaded' ? 'Re-uploaded' :
+                            'Pending Review'
+                          }
+                          status={status}
+                          icon={getStatusIcon(status)}
+                        />
+                      )}
 
-                    {doc.rejectionReason && (
-                      <Tooltip title={doc.rejectionReason} arrow>
+                      {rejectionReason && status === 'rejected' && (
+                        <Tooltip title={rejectionReason} arrow>
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: '#dc3545', 
+                              display: 'block',
+                              mt: 0.5,
+                              fontSize: '0.7rem'
+                            }}
+                          >
+                            <WarningIcon sx={{ fontSize: '0.7rem', mr: 0.5 }} />
+                            {rejectionReason.substring(0, 30)}...
+                          </Typography>
+                        </Tooltip>
+                      )}
+
+                      {status === 'reuploaded' && (
                         <Typography 
                           variant="caption" 
                           sx={{ 
-                            color: '#dc3545', 
+                            color: '#0c5460', 
                             display: 'block',
                             mt: 0.5,
                             fontSize: '0.7rem'
                           }}
                         >
-                          <WarningIcon sx={{ fontSize: '0.7rem', mr: 0.5 }} />
-                          {doc.rejectionReason.substring(0, 30)}...
+                          <RefreshIcon sx={{ fontSize: '0.7rem', mr: 0.5 }} />
+                          Re-uploaded - pending review
                         </Typography>
-                      </Tooltip>
-                    )}
-                  </DocumentContent>
+                      )}
+                    </DocumentContent>
 
-                  {doc.path && (
-                    <Box>
-                      <Tooltip title="View Document">
-                        <IconButton 
-                          onClick={() => handleViewDocument(doc.name, doc.path)}
-                          size="small"
-                          sx={{ 
-                            mr: 0.5,
-                            color: '#15e420',
-                            '&:hover': { bgcolor: 'rgba(21, 228, 32, 0.1)' }
-                          }}
-                        >
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Download">
-                        <IconButton 
-                          onClick={() => handleDownloadDocument(doc.path, `${doc.name}.pdf`)}
-                          size="small"
-                          sx={{ 
-                            color: '#15e420',
-                            '&:hover': { bgcolor: 'rgba(21, 228, 32, 0.1)' }
-                          }}
-                        >
-                          <DownloadIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  )}
-                </DocumentCard>
-              ))}
+                    {docPath && (
+                      <Box>
+                        <Tooltip title="View Document">
+                          <IconButton 
+                            onClick={() => handleViewDocument(doc.name, doc.key, docPath)}
+                            size="small"
+                            sx={{ 
+                              mr: 0.5,
+                              color: '#15e420',
+                              '&:hover': { bgcolor: 'rgba(21, 228, 32, 0.1)' }
+                            }}
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Download">
+                          <IconButton 
+                            onClick={() => handleDownloadDocument(docPath, `${doc.name}.pdf`)}
+                            size="small"
+                            sx={{ 
+                              color: '#15e420',
+                              '&:hover': { bgcolor: 'rgba(21, 228, 32, 0.1)' }
+                            }}
+                          >
+                            <DownloadIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    )}
+                  </DocumentCard>
+                );
+              })}
             </DocumentGrid>
           </InfoCard>
 
@@ -910,14 +1103,16 @@ const OrganizationProfile = () => {
             transition={{ delay: 0.5 }}
           >
             <QuickActions>
-              <PrimaryButton onClick={() => navigate('/documents')}>
-                <DescriptionIcon /> Manage Documents
-              </PrimaryButton>
+              {organization?.status !== 'approved' && (
+                <PrimaryButton onClick={() => navigate('/documents')}>
+                  <DescriptionIcon /> Manage Documents
+                </PrimaryButton>
+              )}
               
               {organization?.status === 'approved' && (
-                <ActionButton onClick={() => navigate('/payment')}>
+                <PrimaryButton onClick={() => navigate('/payment')}>
                   <VerifiedIcon /> Make Payment
-                </ActionButton>
+                </PrimaryButton>
               )}
               
               {organization?.status === 'rejected' && (
@@ -939,71 +1134,167 @@ const OrganizationProfile = () => {
       </Layout>
 
       {/* Document Modal */}
-      <Dialog
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        maxWidth="lg"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: '24px',
-            overflow: 'hidden'
+{/* Document Modal - Updated with better sizing */}
+<Dialog
+  open={modalOpen}
+  onClose={() => setModalOpen(false)}
+  maxWidth={false}
+  fullWidth={false}
+  PaperProps={{
+    sx: {
+      borderRadius: '16px',
+      overflow: 'hidden',
+      maxWidth: '90vw',
+      maxHeight: '90vh',
+      width: 'auto',
+      height: 'auto'
+    }
+  }}
+>
+  <DialogTitle sx={{ 
+    display: 'flex', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    fontFamily: '"Poppins", sans-serif',
+    fontWeight: 600,
+    borderBottom: '1px solid #eee',
+    bgcolor: '#f8f9fa',
+    py: 1.5,
+    px: 2
+  }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <DescriptionIcon sx={{ color: '#15e420' }} />
+      <Box>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+          {selectedDocument?.name}
+        </Typography>
+        {organization?.company_name && (
+          <Typography variant="caption" color="textSecondary">
+            {organization.company_name}
+          </Typography>
+        )}
+      </Box>
+    </Box>
+    <Box>
+      <IconButton 
+        onClick={() => {
+          if (selectedDocument?.url) {
+            window.open(selectedDocument.url, '_blank');
           }
+        }} 
+        sx={{ color: '#15e420', mr: 1 }}
+      >
+        <DownloadIcon />
+      </IconButton>
+      <IconButton onClick={() => setModalOpen(false)}>
+        <CloseIcon />
+      </IconButton>
+    </Box>
+  </DialogTitle>
+  
+  <DialogContent sx={{ p: 0, bgcolor: '#f5f5f5', height: '70vh', width: '80vw' }}>
+    <Box sx={{ height: '100%', width: '100%', position: 'relative' }}>
+      {/* Watermark */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          opacity: 0.03,
+          pointerEvents: 'none',
+          zIndex: 0,
+          width: '200px',
+          height: '200px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
         }}
       >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          fontFamily: '"Poppins", sans-serif',
-          fontWeight: 600,
-          borderBottom: '1px solid #eee',
-          bgcolor: '#f8f9fa'
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <DescriptionIcon sx={{ color: '#15e420' }} />
-            <span>{selectedDocument?.name}</span>
-          </Box>
-          <IconButton onClick={() => setModalOpen(false)}>
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 0, bgcolor: '#f5f5f5' }}>
-          <Box sx={{ position: 'relative', minHeight: '70vh' }}>
-            <Box
-              sx={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                opacity: 0.05,
-                pointerEvents: 'none',
-                zIndex: 0
-              }}
-            >
-              <img src="/static/logo.png" alt="Watermark" width={200} />
-            </Box>
-            {selectedDocument?.url ? (
+        <img src="/static/logo.png" alt="Watermark" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+      </Box>
+
+      {/* Document Viewer */}
+      {selectedDocument?.url ? (
+        (() => {
+          const url = selectedDocument.url;
+          const isPdf = url.toLowerCase().endsWith('.pdf');
+          const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url);
+          
+          if (isPdf) {
+            return (
               <iframe
-                src={selectedDocument.url}
+                src={`${url}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
                 title={selectedDocument.name}
-                width="100%"
-                height="70vh"
-                style={{ 
-                  border: 'none', 
-                  position: 'relative', 
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                  position: 'relative',
                   zIndex: 1,
                   backgroundColor: '#fff'
                 }}
               />
-            ) : (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh' }}>
-                <CircularProgress style={{ color: '#15e420' }} />
+            );
+          } else if (isImage) {
+            return (
+              <Box sx={{
+                height: '100%',
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                backgroundColor: '#fafafa',
+                overflow: 'auto',
+                p: 2
+              }}>
+                <img
+                  src={url}
+                  alt={selectedDocument.name}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                  }}
+                />
               </Box>
-            )}
-          </Box>
-        </DialogContent>
-      </Dialog>
+            );
+          } else {
+            return (
+              <Box sx={{
+                height: '100%',
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: 2,
+                backgroundColor: '#fff'
+              }}>
+                <DescriptionIcon sx={{ fontSize: 64, color: '#ccc' }} />
+                <Typography variant="h6" sx={{ color: '#666' }}>
+                  Cannot preview this file type
+                </Typography>
+                <Button
+                  variant="contained"
+                  onClick={() => window.open(url, '_blank')}
+                  sx={{ bgcolor: '#15e420', '&:hover': { bgcolor: '#12c21e' } }}
+                >
+                  Open in New Tab
+                </Button>
+              </Box>
+            );
+          }
+        })()
+      ) : (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+          <CircularProgress style={{ color: '#15e420' }} />
+        </Box>
+      )}
+    </Box>
+  </DialogContent>
+</Dialog>
     </>
   );
 };

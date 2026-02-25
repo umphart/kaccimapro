@@ -1,43 +1,66 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { supabase } from '../supabaseClient';
 import {
   Box,
   CircularProgress,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Typography,
-  Paper,
+  Container,
+  Alert,
+  Snackbar,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
-import {
-  Download as DownloadIcon,
-} from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import Layout from './Layout';
+import ProfileHeader from './profile/ProfileHeader';
+import StatusCard from './profile/StatusCard';
+import StatsCards from './profile/StatsCards';
+import OrganizationInfo from './profile/OrganizationInfo';
+import ProfileSecurity from './profile/ProfileSecurity';
+import PaymentHistory from './profile/PaymentHistory';
+import MembershipBenefits from './profile/MembershipBenefits';
+import ChangePasswordModal from './profile/ChangePasswordModal';
 import './Profile.css';
 
-// Styled components
-const InfoCard = styled(Paper)(({ theme }) => ({
-  padding: theme.spacing(3),
-  borderRadius: '16px',
-  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)',
-  marginBottom: theme.spacing(3),
-  backgroundColor: 'white'
+// Styled Components
+const ProfileContainer = styled(motion.div)(({ theme }) => ({
+  maxWidth: '1400px',
+  margin: '0 auto',
+  padding: theme.spacing(2),
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(1.5)
+  }
 }));
+
+const StyledContainer = styled(Container)({
+  backgroundColor: '#f5f7fa',
+  minHeight: '100vh',
+  borderRadius: '12px',
+  paddingTop: '24px',
+  paddingBottom: '24px'
+});
 
 const Profile = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
   const [user, setUser] = useState(null);
   const [organization, setOrganization] = useState(null);
   const [payment, setPayment] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [alert, setAlert] = useState(null);
+  const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [logoUrl, setLogoUrl] = useState(null);
-  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [certificateDownloaded, setCertificateDownloaded] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState([]);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [stats, setStats] = useState({
+    totalPayments: 0,
+    approvedPayments: 0,
+    pendingPayments: 0,
+    membershipDays: 0,
+    totalSpent: 0
+  });
 
   useEffect(() => {
     checkUser();
@@ -50,8 +73,11 @@ const Profile = () => {
   }, [user]);
 
   const showAlert = (type, message) => {
-    setAlert({ type, message });
-    setTimeout(() => setAlert(null), 5000);
+    setAlert({ open: true, type, message });
+  };
+
+  const handleCloseAlert = () => {
+    setAlert({ ...alert, open: false });
   };
 
   const checkUser = async () => {
@@ -72,7 +98,6 @@ const Profile = () => {
     try {
       if (!user) return;
 
-      // Fetch organization data
       const { data: orgData, error: orgError } = await supabase
         .from('organizations')
         .select('*')
@@ -83,23 +108,41 @@ const Profile = () => {
 
       setOrganization(orgData);
 
-      // Fetch payment data
       if (orgData?.id) {
         const { data: paymentData, error: paymentError } = await supabase
           .from('payments')
           .select('*')
           .eq('organization_id', orgData.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+          .order('created_at', { ascending: false });
 
         if (!paymentError && paymentData) {
-          setPayment(paymentData);
-        
+          setPayment(paymentData[0]);
+          setPaymentHistory(paymentData);
+          
+          const approved = paymentData.filter(p => p.status === 'approved').length;
+          const pending = paymentData.filter(p => p.status === 'pending').length;
+          const totalSpent = paymentData
+            .filter(p => p.status === 'approved')
+            .reduce((sum, p) => sum + (p.amount || 0), 0);
+          
+          const firstPayment = paymentData.find(p => p.payment_type === 'first' && p.status === 'approved');
+          let membershipDays = 0;
+          if (firstPayment) {
+            const startDate = new Date(firstPayment.created_at);
+            const now = new Date();
+            membershipDays = Math.floor((now - startDate) / (1000 * 60 * 60 * 24));
+          }
+
+          setStats({
+            totalPayments: paymentData.length,
+            approvedPayments: approved,
+            pendingPayments: pending,
+            membershipDays,
+            totalSpent
+          });
         }
       }
 
-      // Get logo URL
       if (orgData.company_logo_path) {
         const { data } = supabase.storage
           .from('logos')
@@ -108,106 +151,25 @@ const Profile = () => {
       }
     } catch (error) {
       console.error('Error fetching organization:', error);
+      showAlert('error', 'Failed to load profile data');
     } finally {
       setLoading(false);
     }
   };
 
-
-
-  const renderContent = () => {
-    return (
-      <section className="dashboard-content">
-        <div className="profile-info">
-          <h3>Profile Information</h3>
-          
-          <div className="photo-container">
-            {logoUrl ? (
-              <img 
-                id="passportPhoto" 
-                src={logoUrl} 
-                alt="Company Logo" 
-                className="profile-photo" 
-                width="70px" 
-                height="70px" 
-              />
-            ) : (
-              <div className="profile-photo-placeholder">
-                <span className="material-icons">business</span>
-              </div>
-            )}
-          </div>
-
-          <div className="info-item">
-            <span className="label">Company Name:</span>
-            <span className="value">{organization?.company_name || 'N/A'}</span>
-          </div>
-
-          <div className="info-item">
-            <span className="label">Email:</span>
-            <span className="value">{organization?.email || user?.email || 'N/A'}</span>
-          </div>
-
-          <div className="info-item">
-            <span className="label">Office Address:</span>
-            <span className="value">{organization?.office_address || 'N/A'}</span>
-          </div>
-
-          <div className="info-item">
-            <span className="label">Phone Number:</span>
-            <span className="value">{organization?.phone_number || 'N/A'}</span>
-          </div>
-
-          <div className="info-item">
-            <span className="label">CAC Number:</span>
-            <span className="value">{organization?.cac_number || 'N/A'}</span>
-          </div>
-
-          <div className="info-item">
-            <span className="label">Nature of Business:</span>
-            <span className="value">{organization?.business_nature || 'N/A'}</span>
-          </div>
-
-          <div className="info-item">
-            <span className="label">Membership Status:</span>
-            <span className={`value status-badge status-${organization?.status?.toLowerCase() || 'pending'}`}>
-              {organization?.status || 'Pending'}
-            </span>
-          </div>
-
-
-          <div className="profile-info-section">
-            <h3>User Profile & Security</h3>
-            
-            <div className="info-item">
-              <span className="label">User Email:</span>
-              <span className="value">{user?.email || 'N/A'}</span>
-            </div>
-
-            <div className="info-item">
-              <span className="label">Last Sign In:</span>
-              <span className="value">
-                {user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString() : 'N/A'}
-              </span>
-            </div>
-
-            <div className="info-item">
-              <span className="label">Password:</span>
-              <span className="value">••••••••</span>
-            </div>
-
-          
-          </div>
-
-        
-        </div>
-      </section>
-    );
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error('Error logging out:', error);
+      showAlert('error', 'Failed to log out');
+    }
   };
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
         <CircularProgress style={{ color: '#15e420' }} />
       </Box>
     );
@@ -215,56 +177,71 @@ const Profile = () => {
 
   return (
     <>
-{alert && (
-  <div className={`mui-alert mui-alert-${alert.type}`}>
-    <span className="material-icons mui-alert-icon">
-      {alert.type === 'success' ? '' : alert.type === 'info' ? 'info' : 'error'}
-    </span>
-    <span>{alert.message}</span>
-  </div>
-)}
-      
+      <Snackbar
+        open={alert.open}
+        autoHideDuration={6000}
+        onClose={handleCloseAlert}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseAlert} severity={alert.type} sx={{ width: '100%' }}>
+          {alert.message}
+        </Alert>
+      </Snackbar>
+
       <Layout>
-        {renderContent()}
+        <StyledContainer maxWidth="xl">
+          <ProfileContainer
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <ProfileHeader 
+              organizationName={organization?.company_name}
+              onLogout={handleLogout}
+              isMobile={isMobile}
+            />
 
-        {(payment?.status === 'approved' || organization?.status === 'approved') && (
-          <>
-            <InfoCard>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#15e420' }}>
-                Membership Information
-              </Typography>
-              <Typography variant="body1" sx={{ color: '#666', lineHeight: 1.6 }}>
-                As a member of KACCIMA, you are entitled to various benefits including access to business resources, 
-                networking opportunities, and support for your business growth.
-              </Typography>
-            </InfoCard>
+            <StatusCard 
+              status={organization?.status}
+              isMobile={isMobile}
+            />
 
-            <InfoCard>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#15e420' }}>
-                Contact Information
-              </Typography>
-              <Typography variant="body1" sx={{ color: '#666', lineHeight: 1.6 }}>
-                Email: info@kaccima.ng<br />
-                Phone: +2347063174462<br />
-                Website: www.kaccima.ng
-              </Typography>
-            </InfoCard>
-          </>
-        )}
+            {organization?.status === 'approved' && (
+              <StatsCards stats={stats} isMobile={isMobile} />
+            )}
+
+            <OrganizationInfo 
+              organization={organization}
+              logoUrl={logoUrl}
+              userEmail={user?.email}
+              isMobile={isMobile}
+            />
+
+            <ProfileSecurity 
+              user={user}
+              onOpenPasswordModal={() => setPasswordModalOpen(true)}
+              isMobile={isMobile}
+            />
+
+            {paymentHistory.length > 0 && (
+              <PaymentHistory 
+                payments={paymentHistory}
+                isMobile={isMobile}
+              />
+            )}
+
+            {(payment?.status === 'approved' || organization?.status === 'approved') && (
+              <MembershipBenefits isMobile={isMobile} />
+            )}
+          </ProfileContainer>
+        </StyledContainer>
       </Layout>
 
-      {/* Confirmation Dialog */}
-      <Dialog open={confirmDialogOpen} onClose={() => setConfirmDialogOpen(false)}>
-        <DialogTitle sx={{ fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
-          Download Certificate Again?
-        </DialogTitle>
-        <DialogContent>
-          <Typography sx={{ color: '#666' }}>
-            You have already downloaded your membership certificate. 
-            Are you sure you want to download it again? This action will be recorded.
-          </Typography>
-        </DialogContent>
-      </Dialog>
+      <ChangePasswordModal
+        open={passwordModalOpen}
+        onClose={() => setPasswordModalOpen(false)}
+        showAlert={showAlert}
+      />
     </>
   );
 };

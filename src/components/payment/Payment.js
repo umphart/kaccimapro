@@ -416,7 +416,7 @@ const Payment = () => {
         <Box sx={{ display: 'flex', gap: 3 }}>
           <Sidebar />
           
-          <Box sx={{ flex: 1, backgroundColor: '#f8fafc', borderRadius: '12px', p: 4, border: '1px solid #eaeef2' }}>
+          <Box sx={{ flex: 1, backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #eaeef2' }}>
             <PaymentContainer
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}

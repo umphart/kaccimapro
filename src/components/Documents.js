@@ -11,86 +11,583 @@ import {
   Card,
   CardContent,
   CardActions,
-  Button,
   IconButton,
-  LinearProgress,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Alert,
   Snackbar,
-  CircularProgress
+  CircularProgress,
+  Chip,
+  Tooltip,
+  Button,
+  LinearProgress,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import {
   Description as DescriptionIcon,
   PictureAsPdf as PdfIcon,
   Image as ImageIcon,
-  CloudUpload as CloudUploadIcon,
   Download as DownloadIcon,
-  Delete as DeleteIcon,
   Visibility as VisibilityIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Folder as FolderIcon,
+  Badge as BadgeIcon,
+  CheckCircle as CheckCircleIcon,
+  Pending as PendingIcon,
+  Error as ErrorIcon,
+  Info as InfoIcon,
+  Warning as WarningIcon,
+  Verified as VerifiedIcon,
+  ZoomIn as ZoomInIcon,
+  ZoomOut as ZoomOutIcon,
+  RotateRight as RotateIcon,
+  OpenInNew as OpenInNewIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
-const StyledCard = styled(Card)(({ theme }) => ({
+// Document fields mapping
+const DOCUMENT_FIELDS = [
+  { key: 'cover_letter_path', name: 'Covering Letter', icon: 'description' },
+  { key: 'memorandum_path', name: 'Memorandum & Articles', icon: 'description' },
+  { key: 'registration_cert_path', name: 'Business Registration Certificate', icon: 'description' },
+  { key: 'incorporation_cert_path', name: 'Certificate of Incorporation', icon: 'description' },
+  { key: 'premises_cert_path', name: 'Business Premises Certificate', icon: 'description' },
+  { key: 'company_logo_path', name: 'Company Logo', icon: 'image' },
+  { key: 'form_c07_path', name: 'Form C07', icon: 'description' },
+  { key: 'id_document_path', name: 'ID Document', icon: 'badge' }
+];
+
+// Styled Components
+const PageContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  gap: theme.spacing(3),
+  backgroundColor: '#f5f7fa',
+  minHeight: '100vh',
+  padding: theme.spacing(2),
+  [theme.breakpoints.down('md')]: {
+    padding: theme.spacing(1),
+    gap: theme.spacing(1)
+  }
+}));
+
+const ContentWrapper = styled(Paper)(({ theme }) => ({
+  flex: 1,
+  padding: theme.spacing(3),
+  borderRadius: '20px',
+  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)',
+  backgroundColor: 'white',
+  overflow: 'hidden',
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(2)
+  }
+}));
+
+const HeaderTitle = styled(Typography)(({ theme }) => ({
+  fontFamily: '"Poppins", sans-serif',
+  fontWeight: 600,
+  fontSize: '1.5rem',
+  color: '#333',
+  marginBottom: theme.spacing(1),
+  '& span': {
+    color: '#15e420'
+  },
+  [theme.breakpoints.down('sm')]: {
+    fontSize: '1.25rem'
+  }
+}));
+
+const HeaderSubtitle = styled(Typography)(({ theme }) => ({
+  fontFamily: '"Inter", sans-serif',
+  fontSize: '0.9rem',
+  color: '#666',
+  marginBottom: theme.spacing(2.5),
+  [theme.breakpoints.down('sm')]: {
+    fontSize: '0.8rem',
+    marginBottom: theme.spacing(2)
+  }
+}));
+
+const StatsCard = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(2),
+  borderRadius: '16px',
+  backgroundColor: '#f8f9fa',
+  display: 'flex',
+  alignItems: 'center',
+  gap: theme.spacing(1.5),
+  marginBottom: theme.spacing(3),
+  flexWrap: 'wrap',
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(1.5),
+    gap: theme.spacing(1)
+  }
+}));
+
+const StatsIcon = styled(Box)(({ color = '#15e420', theme }) => ({
+  width: '48px',
+  height: '48px',
+  borderRadius: '12px',
+  backgroundColor: `${color}10`,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  [theme.breakpoints.down('sm')]: {
+    width: '40px',
+    height: '40px',
+    '& svg': {
+      fontSize: '20px'
+    }
+  },
+  '& svg': {
+    fontSize: '24px',
+    color: color
+  }
+}));
+
+const StatsContent = styled(Box)({
+  flex: 1,
+  minWidth: '100px'
+});
+
+const StatsNumber = styled(Typography)(({ theme }) => ({
+  fontFamily: '"Poppins", sans-serif',
+  fontWeight: 700,
+  fontSize: '1.5rem',
+  color: '#333',
+  lineHeight: 1.2,
+  [theme.breakpoints.down('sm')]: {
+    fontSize: '1.25rem'
+  }
+}));
+
+const StatsLabel = styled(Typography)(({ theme }) => ({
+  fontFamily: '"Inter", sans-serif',
+  fontSize: '0.8rem',
+  color: '#666',
+  textTransform: 'uppercase',
+  letterSpacing: '0.3px',
+  [theme.breakpoints.down('sm')]: {
+    fontSize: '0.7rem'
+  }
+}));
+
+const StyledCard = styled(Card)(({ status, theme }) => ({
   height: '100%',
   display: 'flex',
   flexDirection: 'column',
-  transition: 'all 0.3s',
+  transition: 'all 0.3s ease',
+  borderRadius: '16px',
+  border: '1px solid #f0f0f0',
+  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+  position: 'relative',
+  overflow: 'hidden',
   '&:hover': {
     transform: 'translateY(-4px)',
-    boxShadow: '0 15px 35px rgba(21, 228, 32, 0.15)'
+    boxShadow: '0 15px 35px rgba(21, 228, 32, 0.15)',
+    borderColor: '#15e420'
+  },
+  '&::before': {
+    content: '""',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: '4px',
+    background: status === 'approved' ? '#28a745' :
+                status === 'rejected' ? '#dc3545' :
+                status === 'pending' ? '#ffc107' :
+                '#15e420'
   }
 }));
 
-const UploadArea = styled(Paper)(({ theme }) => ({
-  border: '2px dashed #ccc',
-  backgroundColor: '#fafafa',
-  padding: '40px',
-  textAlign: 'center',
-  cursor: 'pointer',
-  transition: 'all 0.3s',
-  marginBottom: '24px',
-  '&:hover': {
-    borderColor: '#15e420',
-    backgroundColor: '#e8f5e9'
+const CardHeader = styled(Box)(({ theme }) => ({
+  padding: theme.spacing(2),
+  paddingBottom: theme.spacing(1),
+  display: 'flex',
+  alignItems: 'center',
+  gap: theme.spacing(1.5),
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(1.5),
+    gap: theme.spacing(1)
   }
 }));
 
-const HiddenInput = styled('input')({
-  display: 'none'
+const FileIconWrapper = styled(Box)(({ status, iconType, theme }) => ({
+  width: '50px',
+  height: '50px',
+  borderRadius: '12px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: status === 'approved' ? 'rgba(40, 167, 69, 0.1)' :
+              status === 'rejected' ? 'rgba(220, 53, 69, 0.1)' :
+              status === 'pending' ? 'rgba(255, 193, 7, 0.1)' :
+              'rgba(21, 228, 32, 0.1)',
+  [theme.breakpoints.down('sm')]: {
+    width: '40px',
+    height: '40px',
+    '& svg': {
+      fontSize: '22px'
+    }
+  },
+  '& svg': {
+    fontSize: '28px',
+    color: status === 'approved' ? '#28a745' :
+           status === 'rejected' ? '#dc3545' :
+           status === 'pending' ? '#ffc107' :
+           '#15e420'
+  }
+}));
+
+const FileInfo = styled(Box)({
+  flex: 1,
+  overflow: 'hidden'
 });
 
-const getFileIcon = (type) => {
-  if (!type) return <DescriptionIcon sx={{ fontSize: 40, color: '#17a2b8' }} />;
-  if (type.includes('pdf')) return <PdfIcon sx={{ fontSize: 40, color: '#dc3545' }} />;
-  if (type.includes('image')) return <ImageIcon sx={{ fontSize: 40, color: '#15e420' }} />;
-  return <DescriptionIcon sx={{ fontSize: 40, color: '#17a2b8' }} />;
+const FileName = styled(Typography)(({ theme }) => ({
+  fontFamily: '"Inter", sans-serif',
+  fontWeight: 600,
+  fontSize: '0.95rem',
+  color: '#333',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  marginBottom: theme.spacing(0.5),
+  [theme.breakpoints.down('sm')]: {
+    fontSize: '0.85rem'
+  }
+}));
+
+const StatusBadge = styled(Chip)(({ status, theme }) => ({
+  height: '24px',
+  fontSize: '0.7rem',
+  fontWeight: 500,
+  background: status === 'approved' ? '#d4edda' :
+              status === 'rejected' ? '#ffebee' :
+              status === 'pending' ? '#fff3e0' :
+              '#e8f5e9',
+  color: status === 'approved' ? '#28a745' :
+         status === 'rejected' ? '#dc3545' :
+         status === 'pending' ? '#ff9800' :
+         '#15e420',
+  [theme.breakpoints.down('sm')]: {
+    height: '20px',
+    fontSize: '0.65rem'
+  },
+  '& .MuiChip-icon': {
+    fontSize: '0.9rem',
+    color: 'inherit'
+  }
+}));
+
+const FileDetails = styled(Box)({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '8px',
+  marginBottom: '12px'
+});
+
+const DetailRow = styled(Box)({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  fontSize: '0.75rem',
+  color: '#666'
+});
+
+const ActionButton = styled(IconButton)(({ theme }) => ({
+  backgroundColor: '#fff',
+  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+  transition: 'all 0.2s ease',
+  [theme.breakpoints.down('sm')]: {
+    padding: '6px',
+    '& svg': {
+      fontSize: '1rem'
+    }
+  },
+  '&:hover': {
+    backgroundColor: '#15e420',
+    transform: 'scale(1.1)',
+    '& svg': {
+      color: '#fff'
+    }
+  },
+  '& svg': {
+    fontSize: '1.2rem',
+    color: '#15e420'
+  }
+}));
+
+const EmptyState = styled(Box)(({ theme }) => ({
+  textAlign: 'center',
+  padding: theme.spacing(8, 2),
+  backgroundColor: '#f8f9fa',
+  borderRadius: '16px',
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(4, 1)
+  }
+}));
+
+const EmptyIcon = styled(Box)(({ theme }) => ({
+  width: '80px',
+  height: '80px',
+  borderRadius: '50%',
+  backgroundColor: 'rgba(21, 228, 32, 0.1)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  margin: '0 auto 20px',
+  [theme.breakpoints.down('sm')]: {
+    width: '60px',
+    height: '60px',
+    '& svg': {
+      fontSize: '30px'
+    }
+  },
+  '& svg': {
+    fontSize: '40px',
+    color: '#15e420'
+  }
+}));
+
+const ProgressContainer = styled(Box)(({ theme }) => ({
+  marginTop: theme.spacing(2.5),
+  marginBottom: theme.spacing(3),
+  [theme.breakpoints.down('sm')]: {
+    marginTop: theme.spacing(2),
+    marginBottom: theme.spacing(2.5)
+  }
+}));
+
+const LoadingContainer = styled(Box)({
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  minHeight: '100vh',
+});
+
+// Document Viewer Styled Components
+const ViewerDialog = styled(Dialog)(({ theme }) => ({
+  '& .MuiDialog-paper': {
+    borderRadius: '20px',
+    overflow: 'hidden',
+    maxWidth: '95vw',
+    maxHeight: '95vh',
+    [theme.breakpoints.down('sm')]: {
+      borderRadius: '12px',
+      maxWidth: '100vw',
+      maxHeight: '100vh',
+      margin: 0
+    }
+  }
+}));
+
+const ViewerContainer = styled(Box)(({ theme }) => ({
+  height: '85vh',
+  width: '85vw',
+  display: 'flex',
+  flexDirection: 'column',
+  backgroundColor: '#1a1a1a',
+  [theme.breakpoints.down('sm')]: {
+    height: '100vh',
+    width: '100vw'
+  }
+}));
+
+const ViewerHeader = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: theme.spacing(1.5, 2),
+  borderBottom: '1px solid #333',
+  backgroundColor: '#2d2d2d',
+  color: '#fff',
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(1, 1.5)
+  }
+}));
+
+const ViewerTitle = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: theme.spacing(1.5),
+  '& svg': {
+    color: '#15e420',
+    fontSize: '1.5rem'
+  }
+}));
+
+const ViewerContent = styled(Box)({
+  flex: 1,
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: '#2d2d2d',
+  overflow: 'auto',
+  position: 'relative'
+});
+
+const PdfFrame = styled('iframe')({
+  width: '100%',
+  height: '100%',
+  border: 'none',
+  backgroundColor: '#fff'
+});
+
+const ImageViewer = styled(Box)({
+  flex: 1,
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  overflow: 'auto',
+  padding: '20px'
+});
+
+const StyledImage = styled('img')(({ zoom, rotation }) => ({
+  maxWidth: `${zoom}%`,
+  maxHeight: `${zoom}%`,
+  transform: `rotate(${rotation}deg)`,
+  objectFit: 'contain',
+  transition: 'all 0.2s ease',
+  boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+  cursor: 'zoom-in'
+}));
+
+const ZoomControls = styled(Box)(({ theme }) => ({
+  position: 'absolute',
+  bottom: theme.spacing(2),
+  right: theme.spacing(2),
+  display: 'flex',
+  gap: theme.spacing(1),
+  backgroundColor: 'rgba(0,0,0,0.7)',
+  padding: theme.spacing(0.5),
+  borderRadius: '30px',
+  zIndex: 10,
+  backdropFilter: 'blur(5px)',
+  [theme.breakpoints.down('sm')]: {
+    bottom: theme.spacing(1),
+    right: theme.spacing(1),
+    padding: theme.spacing(0.25)
+  },
+  '& button': {
+    color: '#fff',
+    '&:hover': {
+      backgroundColor: 'rgba(255,255,255,0.1)'
+    },
+    '&.Mui-disabled': {
+      opacity: 0.3
+    }
+  }
+}));
+
+const Watermark = styled(Box)({
+  position: 'absolute',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+  opacity: 0.03,
+  pointerEvents: 'none',
+  zIndex: 0,
+  '& img': {
+    maxWidth: '200px',
+    maxHeight: '200px'
+  }
+});
+
+const FallbackView = styled(Box)({
+  flex: 1,
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: '16px',
+  backgroundColor: '#2d2d2d',
+  color: '#fff'
+});
+
+// Helper functions
+const getStatusIcon = (status) => {
+  switch(status) {
+    case 'approved':
+      return <CheckCircleIcon />;
+    case 'rejected':
+      return <ErrorIcon />;
+    case 'pending':
+      return <PendingIcon />;
+    default:
+      return <InfoIcon />;
+  }
 };
 
-const formatFileSize = (bytes) => {
-  if (bytes === 0 || !bytes) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+const getDocumentIcon = (iconType, status) => {
+  const props = { 
+    sx: { 
+      fontSize: '28px'
+    }
+  };
+
+  switch(iconType) {
+    case 'image':
+      return <ImageIcon {...props} />;
+    case 'badge':
+      return <BadgeIcon {...props} />;
+    default:
+      return <DescriptionIcon {...props} />;
+  }
+};
+
+const getDocumentUrl = (path, bucket) => {
+  if (!path) return null;
+  
+  // If it's already a full URL, use it directly
+  if (path.startsWith('http')) {
+    return path;
+  }
+  
+  // Otherwise construct public URL
+  try {
+    const { data } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch (error) {
+    console.error('Error getting document URL:', error);
+    return null;
+  }
+};
+
+const getFileType = (path) => {
+  if (!path) return 'unknown';
+  const ext = path.split('.').pop()?.toLowerCase() || '';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'image';
+  if (ext === 'pdf') return 'pdf';
+  return 'other';
 };
 
 const Documents = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  
   const [user, setUser] = useState(null);
   const [organization, setOrganization] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [uploadFile, setUploadFile] = useState(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [zoom, setZoom] = useState(100);
+  const [rotation, setRotation] = useState(0);
+  const [documentStats, setDocumentStats] = useState({
+    total: 0,
+    uploaded: 0,
+    approved: 0,
+    pending: 0,
+    rejected: 0
+  });
 
   useEffect(() => {
     checkUser();
@@ -99,7 +596,6 @@ const Documents = () => {
   useEffect(() => {
     if (user) {
       fetchOrganizationData();
-      fetchDocuments();
     }
   }, [user]);
 
@@ -127,178 +623,180 @@ const Documents = () => {
 
   const fetchOrganizationData = async () => {
     try {
-      const { data, error } = await supabase
+      if (!user) return;
+
+      const { data: orgData, error } = await supabase
         .from('organizations')
         .select('*')
         .eq('user_id', user.id)
         .single();
 
-      if (error) throw error;
-      setOrganization(data);
-    } catch (error) {
-      console.error('Error fetching organization:', error);
-    }
-  };
+      if (error) {
+        console.error('Organization fetch error:', error);
+        throw error;
+      }
 
-  const fetchDocuments = async () => {
-    try {
-      // List all files in user's folder
-      const { data, error } = await supabase.storage
-        .from('documents')
-        .list(`${user.id}/`);
+      setOrganization(orgData);
+      
+      // Fetch all payments for this organization to check approval status
+      const { data: payments, error: paymentsError } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('organization_id', orgData.id)
+        .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (paymentsError) {
+        console.error('Error fetching payments:', paymentsError);
+      }
 
-      const docList = await Promise.all(
-        data.map(async (file) => {
-          const { data: urlData } = supabase.storage
-            .from('documents')
-            .getPublicUrl(`${user.id}/${file.name}`);
+      // Check if any payment is approved
+      const hasApprovedPayment = payments?.some(p => p.status === 'approved') || false;
 
-          return {
-            name: file.name,
-            path: `${user.id}/${file.name}`,
-            size: file.metadata?.size || 0,
-            created_at: file.created_at,
-            updated_at: file.updated_at,
-            url: urlData.publicUrl,
-            type: file.metadata?.mimetype || 'application/octet-stream'
-          };
-        })
+      // Build documents list from organization fields
+      const uploadedDocs = await Promise.all(
+        DOCUMENT_FIELDS
+          .filter(doc => orgData[doc.key])
+          .map(async (doc) => {
+            
+            // Check if this specific document has a rejection reason
+            const rejectionField = `${doc.key.replace('_path', '_rejection_reason')}`;
+            const rejectionReason = orgData[rejectionField];
+            
+            // Determine document status:
+            // 1. If there's a rejection reason, it's rejected
+            // 2. If the organization is approved OR there's an approved payment, mark document as approved
+            // 3. Otherwise, it's pending
+            let status = 'pending';
+            
+            if (rejectionReason) {
+              status = 'rejected';
+            } else if (orgData.status === 'approved' || hasApprovedPayment) {
+              status = 'approved';
+            }
+
+            const bucket = doc.key === 'company_logo_path' ? 'logos' : 'documents';
+            const url = getDocumentUrl(orgData[doc.key], bucket);
+            const fileType = getFileType(orgData[doc.key]);
+
+            return {
+              id: `${orgData.id}_${doc.key}`,
+              name: doc.name,
+              path: orgData[doc.key],
+              field: doc.key,
+              icon: doc.icon,
+              status: status,
+              rejectionReason: rejectionReason,
+              uploadedAt: orgData.updated_at || orgData.created_at || new Date().toISOString(),
+              fileType: fileType,
+              url: url,
+              bucket: bucket,
+              isImage: fileType === 'image',
+              isPdf: fileType === 'pdf'
+            };
+          })
       );
 
-      setDocuments(docList);
+      setDocuments(uploadedDocs);
+      
+      // Calculate stats
+      const approved = uploadedDocs.filter(d => d.status === 'approved').length;
+      const pending = uploadedDocs.filter(d => d.status === 'pending').length;
+      const rejected = uploadedDocs.filter(d => d.status === 'rejected').length;
+      
+      setDocumentStats({
+        total: DOCUMENT_FIELDS.length,
+        uploaded: uploadedDocs.length,
+        approved,
+        pending,
+        rejected
+      });
+
     } catch (error) {
-      console.error('Error fetching documents:', error);
+      console.error('Error fetching organization:', error);
       showAlert('error', 'Failed to load documents');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // Validate file size (10MB max)
-      if (file.size > 10 * 1024 * 1024) {
-        showAlert('error', 'File size must be less than 10MB');
-        return;
-      }
-
-      // Validate file type
-      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
-      if (!allowedTypes.includes(file.type)) {
-        showAlert('error', 'Please upload PDF or image files only');
-        return;
-      }
-
-      setUploadFile(file);
-      setUploadModalOpen(true);
-    }
-  };
-
-  const handleUpload = async () => {
-    if (!uploadFile) return;
-
-    setUploading(true);
-    setUploadProgress(0);
-
-    try {
-      const timestamp = Date.now();
-      const cleanFileName = uploadFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
-      const fileName = `${timestamp}_${cleanFileName}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      // Simulate progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 300);
-
-      const { data, error } = await supabase.storage
-        .from('documents')
-        .upload(filePath, uploadFile, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
-      if (error) throw error;
-
-      setTimeout(() => {
-        showAlert('success', 'File uploaded successfully');
-        setUploadModalOpen(false);
-        setUploadFile(null);
-        setUploadProgress(0);
-        fetchDocuments();
-      }, 500);
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      showAlert('error', 'Failed to upload file');
-      setUploadProgress(0);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleDownload = async (doc) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from('documents')
-        .download(doc.path);
-
-      if (error) throw error;
-
-      const url = URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = doc.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error downloading file:', error);
-      showAlert('error', 'Failed to download file');
-    }
-  };
-
-  const handleDelete = async (doc) => {
-    if (!window.confirm('Are you sure you want to delete this document?')) return;
-
-    try {
-      const { error } = await supabase.storage
-        .from('documents')
-        .remove([doc.path]);
-
-      if (error) throw error;
-
-      showAlert('success', 'Document deleted successfully');
-      fetchDocuments();
-    } catch (error) {
-      console.error('Error deleting document:', error);
-      showAlert('error', 'Failed to delete document');
-    }
-  };
-
-  const handleView = (doc) => {
+  const handleViewDocument = (doc) => {
     setSelectedDocument(doc);
+    setZoom(100);
+    setRotation(0);
     setModalOpen(true);
   };
 
-  // Consistent loading state
+  const handleDownloadDocument = async (doc) => {
+    try {
+      // If it's a full URL, fetch and download
+      if (doc.path.startsWith('http')) {
+        const response = await fetch(doc.path);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${organization?.company_name || 'document'}_${doc.name}.${doc.fileType === 'pdf' ? 'pdf' : 'jpg'}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        // Download from storage
+        const { data, error } = await supabase.storage
+          .from(doc.bucket)
+          .download(doc.path);
+
+        if (error) {
+          console.error('Download error:', error);
+          throw error;
+        }
+
+        const url = URL.createObjectURL(data);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${organization?.company_name || 'document'}_${doc.name}.${doc.fileType === 'pdf' ? 'pdf' : 'jpg'}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+      
+      showAlert('success', 'Download started');
+    } catch (error) {
+      console.error('Error downloading document:', error);
+      showAlert('error', 'Failed to download document. Please try again.');
+    }
+  };
+
+  const handleOpenInNewTab = () => {
+    if (selectedDocument?.url) {
+      window.open(selectedDocument.url, '_blank');
+    }
+  };
+
+  const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 300));
+  const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 25));
+  const handleRotate = () => setRotation(prev => (prev + 90) % 360);
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-NG', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  const approvalProgress = documentStats.total > 0 
+    ? (documentStats.approved / documentStats.total) * 100 
+    : 0;
+
+  // Show loading state without sidebar
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <LoadingContainer>
         <CircularProgress style={{ color: '#15e420' }} />
-      </Box>
+      </LoadingContainer>
     );
   }
 
@@ -306,221 +804,331 @@ const Documents = () => {
     <>
       <Snackbar
         open={alert.open}
-        autoHideDuration={6000}
+        autoHideDuration={4000}
         onClose={handleCloseAlert}
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <Alert onClose={handleCloseAlert} severity={alert.type} sx={{ width: '100%' }}>
+        <Alert onClose={handleCloseAlert} severity={alert.type} sx={{ width: '100%', borderRadius: '8px' }}>
           {alert.message}
         </Alert>
       </Snackbar>
 
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Box sx={{ display: 'flex', gap: 3 }}>
-          {/* Sidebar */}
-          <Sidebar />
+      <PageContainer>
+        {/* Sidebar */}
+        <Sidebar />
 
-          {/* Main Content */}
-          <Box sx={{ flex: 1 }}>
-            <Paper sx={{ p: 3, borderRadius: '16px', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)' }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: '#15e420' }}>
-                  Document Management
-                </Typography>
-                
-                {/* Hidden file input */}
-                <HiddenInput
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  id="file-upload"
-                  type="file"
-                  onChange={handleFileSelect}
-                />
-                <label htmlFor="file-upload">
-                  <Button
-                    variant="contained"
-                    component="span"
-                    startIcon={<CloudUploadIcon />}
-                    sx={{
-                      bgcolor: '#15e420',
-                      '&:hover': { bgcolor: '#12c21e' }
-                    }}
-                  >
-                    Upload Document
-                  </Button>
-                </label>
-              </Box>
+        {/* Main Content */}
+        <ContentWrapper>
+          {/* Header */}
+          <Box sx={{ mb: { xs: 2, sm: 3 } }}>
+            <HeaderTitle variant="h4">
+              My <span>Documents</span>
+            </HeaderTitle>
+            <HeaderSubtitle>
+              View and manage your submitted documents
+            </HeaderSubtitle>
+          </Box>
 
-              {/* Upload Area */}
-              <UploadArea onClick={() => document.getElementById('file-upload').click()}>
-                <CloudUploadIcon sx={{ fontSize: 48, color: '#15e420', mb: 2 }} />
-                <Typography variant="h6" sx={{ mb: 1 }}>
-                  Click to upload files
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#666' }}>
-                  Supported formats: PDF, PNG, JPG, JPEG (Max: 10MB)
-                </Typography>
-              </UploadArea>
-
-              {/* Documents Grid */}
-              <Grid container spacing={3}>
-                {documents.map((doc) => (
-                  <Grid item xs={12} sm={6} md={4} key={doc.path}>
-                    <StyledCard>
-                      <CardContent sx={{ flex: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                          {getFileIcon(doc.type)}
-                          <Box sx={{ ml: 2, flex: 1 }}>
-                            <Typography variant="subtitle1" noWrap sx={{ fontWeight: 600 }}>
-                              {doc.name.length > 30 ? doc.name.substring(0, 30) + '...' : doc.name}
-                            </Typography>
-                            <Typography variant="caption" color="textSecondary">
-                              {formatFileSize(doc.size)}
-                            </Typography>
-                          </Box>
-                        </Box>
-                        <Typography variant="caption" color="textSecondary" display="block">
-                          Uploaded: {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : 'N/A'}
-                        </Typography>
-                      </CardContent>
-                      <CardActions sx={{ justifyContent: 'flex-end', p: 2, pt: 0 }}>
-                        <IconButton onClick={() => handleView(doc)} size="small" sx={{ color: '#15e420' }}>
-                          <VisibilityIcon />
-                        </IconButton>
-                        <IconButton onClick={() => handleDownload(doc)} size="small" sx={{ color: '#15e420' }}>
-                          <DownloadIcon />
-                        </IconButton>
-                        <IconButton onClick={() => handleDelete(doc)} size="small" sx={{ color: '#dc3545' }}>
-                          <DeleteIcon />
-                        </IconButton>
-                      </CardActions>
-                    </StyledCard>
-                  </Grid>
-                ))}
-
-                {documents.length === 0 && (
-                  <Grid item xs={12}>
-                    <Box sx={{ textAlign: 'center', py: 8 }}>
-                      <DescriptionIcon sx={{ fontSize: 64, color: '#ccc', mb: 2 }} />
-                      <Typography variant="h6" sx={{ color: '#666', mb: 1 }}>
-                        No Documents Found
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: '#999' }}>
-                        Click the upload button to add your first document
-                      </Typography>
-                    </Box>
-                  </Grid>
-                )}
+          {/* Organization Info */}
+          {organization && (
+            <Paper sx={{ 
+              p: { xs: 1.5, sm: 2 }, 
+              mb: { xs: 2, sm: 3 }, 
+              bgcolor: '#f8f9fa', 
+              borderRadius: '12px' 
+            }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" sx={{ color: '#666', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
+                    Organization: <strong style={{ color: '#333' }}>{organization.company_name}</strong>
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2" sx={{ color: '#666', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
+                    Status: 
+                    <Chip
+                      size="small"
+                      icon={organization.status === 'approved' ? <VerifiedIcon /> : 
+                            organization.status === 'rejected' ? <ErrorIcon /> : <PendingIcon />}
+                      label={organization.status || 'Pending'}
+                      sx={{ 
+                        ml: 1,
+                        bgcolor: organization.status === 'approved' ? '#d4edda' :
+                                organization.status === 'rejected' ? '#ffebee' : '#fff3e0',
+                        color: organization.status === 'approved' ? '#28a745' :
+                               organization.status === 'rejected' ? '#dc3545' : '#ff9800',
+                        height: { xs: '20px', sm: '24px' },
+                        fontSize: { xs: '0.65rem', sm: '0.7rem' }
+                      }}
+                    />
+                  </Typography>
+                </Grid>
               </Grid>
             </Paper>
-          </Box>
-        </Box>
-      </Container>
+          )}
 
-      {/* Upload Modal */}
-      <Dialog open={uploadModalOpen} onClose={() => !uploading && setUploadModalOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          Upload Document
-          {!uploading && (
-            <IconButton
-              onClick={() => {
-                setUploadModalOpen(false);
-                setUploadFile(null);
-                setUploadProgress(0);
-              }}
-              sx={{ position: 'absolute', right: 8, top: 8 }}
-            >
-              <CloseIcon />
-            </IconButton>
-          )}
-        </DialogTitle>
-        <DialogContent dividers>
-          {uploadFile && (
-            <Box sx={{ textAlign: 'center', py: 2 }}>
-              {getFileIcon(uploadFile.type)}
-              <Typography variant="subtitle1" sx={{ mt: 2, fontWeight: 600 }}>
-                {uploadFile.name}
+          {/* Stats Cards */}
+          <Grid container spacing={2} sx={{ mb: { xs: 2, sm: 3 } }}>
+            <Grid item xs={6} sm={3}>
+              <StatsCard elevation={0} sx={{ flexDirection: 'column', textAlign: 'center', p: { xs: 1.5, sm: 2 } }}>
+                <StatsIcon color="#17a2b8" sx={{ mb: 1 }}>
+                  <FolderIcon />
+                </StatsIcon>
+                <StatsNumber>{documentStats.uploaded}</StatsNumber>
+                <StatsLabel>Uploaded</StatsLabel>
+              </StatsCard>
+            </Grid>
+            
+            <Grid item xs={6} sm={3}>
+              <StatsCard elevation={0} sx={{ flexDirection: 'column', textAlign: 'center', p: { xs: 1.5, sm: 2 } }}>
+                <StatsIcon color="#28a745" sx={{ mb: 1 }}>
+                  <CheckCircleIcon />
+                </StatsIcon>
+                <StatsNumber>{documentStats.approved}</StatsNumber>
+                <StatsLabel>Approved</StatsLabel>
+              </StatsCard>
+            </Grid>
+            
+            <Grid item xs={6} sm={3}>
+              <StatsCard elevation={0} sx={{ flexDirection: 'column', textAlign: 'center', p: { xs: 1.5, sm: 2 } }}>
+                <StatsIcon color="#ffc107" sx={{ mb: 1 }}>
+                  <PendingIcon />
+                </StatsIcon>
+                <StatsNumber>{documentStats.pending}</StatsNumber>
+                <StatsLabel>Pending</StatsLabel>
+              </StatsCard>
+            </Grid>
+            
+            <Grid item xs={6} sm={3}>
+              <StatsCard elevation={0} sx={{ flexDirection: 'column', textAlign: 'center', p: { xs: 1.5, sm: 2 } }}>
+                <StatsIcon color="#dc3545" sx={{ mb: 1 }}>
+                  <ErrorIcon />
+                </StatsIcon>
+                <StatsNumber>{documentStats.rejected}</StatsNumber>
+                <StatsLabel>Rejected</StatsLabel>
+              </StatsCard>
+            </Grid>
+          </Grid>
+
+          {/* Progress Bar */}
+          <ProgressContainer>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 500, color: '#666', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                Overall Verification Progress
               </Typography>
-              <Typography variant="caption" color="textSecondary">
-                {formatFileSize(uploadFile.size)}
+              <Typography variant="body2" sx={{ fontWeight: 600, color: '#15e420', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                {Math.round(approvalProgress)}%
               </Typography>
-              {uploading && (
-                <Box sx={{ width: '100%', mt: 3 }}>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={uploadProgress} 
-                    sx={{ 
-                      mb: 1,
-                      '& .MuiLinearProgress-bar': {
-                        backgroundColor: '#15e420'
-                      }
-                    }} 
-                  />
-                  <Typography variant="caption">{uploadProgress}% uploaded</Typography>
-                </Box>
-              )}
             </Box>
+            <LinearProgress 
+              variant="determinate" 
+              value={approvalProgress}
+              sx={{ 
+                height: { xs: 6, sm: 8 }, 
+                borderRadius: 4,
+                bgcolor: '#e0e0e0',
+                '& .MuiLinearProgress-bar': {
+                  bgcolor: documentStats.rejected > 0 ? '#dc3545' : '#15e420'
+                }
+              }}
+            />
+          </ProgressContainer>
+
+          {/* Documents Grid */}
+          {documents.length > 0 ? (
+            <Grid container spacing={3}>
+              {documents.map((doc, index) => (
+                <Grid item xs={12} sm={6} md={4} key={doc.id}>
+                  <StyledCard status={doc.status}>
+                    <CardHeader>
+                      <FileIconWrapper status={doc.status} iconType={doc.icon}>
+                        {getDocumentIcon(doc.icon, doc.status)}
+                      </FileIconWrapper>
+                      <FileInfo>
+                        <FileName title={doc.name}>
+                          {doc.name}
+                        </FileName>
+                        <StatusBadge
+                          size="small"
+                          icon={getStatusIcon(doc.status)}
+                          label={
+                            doc.status === 'approved' ? 'Approved' :
+                            doc.status === 'rejected' ? 'Rejected' :
+                            'Pending Review'
+                          }
+                          status={doc.status}
+                        />
+                      </FileInfo>
+                    </CardHeader>
+                    
+                    <CardContent>
+                      <FileDetails>
+                        <DetailRow>
+                          <DescriptionIcon sx={{ fontSize: { xs: '0.8rem', sm: '0.9rem' }, color: '#999' }} />
+                          <span style={{ fontSize: isMobile ? '0.7rem' : '0.75rem' }}>
+                            Uploaded: {formatDate(doc.uploadedAt)}
+                          </span>
+                        </DetailRow>
+                        
+                        <DetailRow>
+                          <InfoIcon sx={{ fontSize: { xs: '0.8rem', sm: '0.9rem' }, color: '#999' }} />
+                          <span style={{ fontSize: isMobile ? '0.7rem' : '0.75rem' }}>
+                            Type: {doc.fileType?.toUpperCase() || 'DOCUMENT'}
+                          </span>
+                        </DetailRow>
+
+                        {doc.rejectionReason && (
+                          <Tooltip title={doc.rejectionReason} arrow>
+                            <DetailRow sx={{ 
+                              color: '#dc3545', 
+                              bgcolor: '#ffebee', 
+                              p: 1, 
+                              borderRadius: '4px',
+                              flexWrap: 'wrap'
+                            }}>
+                              <WarningIcon sx={{ fontSize: '0.9rem' }} />
+                              <span style={{ fontSize: isMobile ? '0.65rem' : '0.7rem' }}>
+                                {doc.rejectionReason.substring(0, isMobile ? 30 : 40)}...
+                              </span>
+                            </DetailRow>
+                          </Tooltip>
+                        )}
+                      </FileDetails>
+                      
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
+                        <Tooltip title="View Document">
+                          <ActionButton size="small" onClick={() => handleViewDocument(doc)}>
+                            <VisibilityIcon fontSize="small" />
+                          </ActionButton>
+                        </Tooltip>
+                        <Tooltip title="Download">
+                          <ActionButton size="small" onClick={() => handleDownloadDocument(doc)}>
+                            <DownloadIcon fontSize="small" />
+                          </ActionButton>
+                        </Tooltip>
+                      </Box>
+                    </CardContent>
+                  </StyledCard>
+                </Grid>
+              ))}
+            </Grid>
+          ) : (
+            <EmptyState>
+              <EmptyIcon>
+                <DescriptionIcon />
+              </EmptyIcon>
+              <Typography variant="h6" sx={{ color: '#333', mb: 1, fontWeight: 600, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                No Documents Uploaded
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#999', maxWidth: '400px', mx: 'auto', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
+                You haven't submitted any documents yet. Please upload the required documents in your organization profile.
+              </Typography>
+            </EmptyState>
           )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => {
-            setUploadModalOpen(false);
-            setUploadFile(null);
-            setUploadProgress(0);
-          }} disabled={uploading}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleUpload}
-            variant="contained"
-            disabled={!uploadFile || uploading}
-            sx={{ bgcolor: '#15e420', '&:hover': { bgcolor: '#12c21e' } }}
-          >
-            {uploading ? 'Uploading...' : 'Upload'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        </ContentWrapper>
+      </PageContainer>
 
       {/* Document Viewer Modal */}
-      <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>
-          {selectedDocument?.name}
-          <IconButton
-            onClick={() => setModalOpen(false)}
-            sx={{ position: 'absolute', right: 8, top: 8 }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Box sx={{ position: 'relative', minHeight: 600 }}>
-            <Box
-              sx={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                opacity: 0.1,
-                pointerEvents: 'none'
-              }}
-            >
-              <img src="/static/logo.png" alt="Watermark" width={200} />
-            </Box>
-            {selectedDocument?.url ? (
-              <iframe
-                src={selectedDocument.url}
-                title={selectedDocument.name}
-                width="100%"
-                height="600px"
-                style={{ border: 'none', position: 'relative', zIndex: 1 }}
-              />
-            ) : (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 600 }}>
-                <Typography>Document preview not available</Typography>
+      <ViewerDialog 
+        open={modalOpen} 
+        onClose={() => setModalOpen(false)}
+        maxWidth={false}
+        fullWidth={false}
+        fullScreen={isMobile}
+      >
+        <ViewerContainer>
+          <ViewerHeader>
+            <ViewerTitle>
+              {selectedDocument?.isImage ? <ImageIcon /> : 
+               selectedDocument?.isPdf ? <PdfIcon /> : 
+               <DescriptionIcon />}
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#fff', fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                  {selectedDocument?.name}
+                </Typography>
+                {organization?.company_name && (
+                  <Typography variant="caption" sx={{ color: '#aaa', display: 'block' }}>
+                    {organization.company_name}
+                  </Typography>
+                )}
               </Box>
+            </ViewerTitle>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Tooltip title="Open in new tab">
+                <IconButton onClick={handleOpenInNewTab} sx={{ color: '#15e420' }}>
+                  <OpenInNewIcon />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Download">
+                <IconButton onClick={() => selectedDocument && handleDownloadDocument(selectedDocument)} sx={{ color: '#15e420' }}>
+                  <DownloadIcon />
+                </IconButton>
+              </Tooltip>
+              <IconButton onClick={() => setModalOpen(false)} sx={{ color: '#fff' }}>
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </ViewerHeader>
+
+          <ViewerContent>
+            <Watermark>
+              <img src="/static/logo.png" alt="Watermark" />
+            </Watermark>
+
+            {selectedDocument?.isPdf ? (
+              <PdfFrame
+                src={`${selectedDocument.url}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
+                title={selectedDocument.name}
+              />
+            ) : selectedDocument?.isImage ? (
+              <ImageViewer>
+                <StyledImage
+                  src={selectedDocument.url}
+                  alt={selectedDocument.name}
+                  zoom={zoom}
+                  rotation={rotation}
+                  onClick={handleZoomIn}
+                />
+                <ZoomControls>
+                  <IconButton size="small" onClick={handleZoomOut} disabled={zoom <= 25}>
+                    <ZoomOutIcon />
+                  </IconButton>
+                  <Typography variant="caption" sx={{ color: '#fff', px: 1 }}>
+                    {zoom}%
+                  </Typography>
+                  <IconButton size="small" onClick={handleZoomIn} disabled={zoom >= 300}>
+                    <ZoomInIcon />
+                  </IconButton>
+                  <IconButton size="small" onClick={handleRotate}>
+                    <RotateIcon />
+                  </IconButton>
+                </ZoomControls>
+              </ImageViewer>
+            ) : (
+              <FallbackView>
+                <DescriptionIcon sx={{ fontSize: 64, color: '#666' }} />
+                <Typography variant="h6" sx={{ color: '#fff', textAlign: 'center' }}>
+                  Cannot preview this file type
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#aaa', textAlign: 'center', maxWidth: '400px' }}>
+                  This file format cannot be previewed directly. Please download to view.
+                </Typography>
+                <Button
+                  variant="contained"
+                  onClick={() => selectedDocument && handleDownloadDocument(selectedDocument)}
+                  sx={{ 
+                    mt: 2,
+                    bgcolor: '#15e420',
+                    '&:hover': { bgcolor: '#12c21e' }
+                  }}
+                >
+                  Download File
+                </Button>
+              </FallbackView>
             )}
-          </Box>
-        </DialogContent>
-      </Dialog>
+          </ViewerContent>
+        </ViewerContainer>
+      </ViewerDialog>
     </>
   );
 };
