@@ -226,7 +226,6 @@ const AdminDocuments = () => {
       return (
         <Chip
           icon={<CheckCircleIcon />}
-          label="Complete"
           size="small"
           color="success"
         />
@@ -236,7 +235,7 @@ const AdminDocuments = () => {
     return (
       <Chip
         icon={<PendingIcon />}
-        label={`${org.uploadedDocs}/${org.totalDocs} Uploaded`}
+        label={`${org.uploadedDocs}/${org.totalDocs}`}
         size="small"
         color="warning"
       />
@@ -422,7 +421,7 @@ const AdminDocuments = () => {
                 </Grid>
                 <Grid item xs={12} md={6} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <Typography variant="body2" sx={{ color: '#666' }}>
-                    {totalCount} organizations found
+                    {totalCount} organizations found..
                   </Typography>
                 </Grid>
               </Grid>

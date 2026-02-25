@@ -20,13 +20,13 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  TextField,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Tooltip,
-  Badge
+  Badge,
+  alpha
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -38,11 +38,67 @@ import {
   Visibility as VisibilityIcon,
   Download as DownloadIcon,
   History as HistoryIcon,
-  Pending as PendingIcon // Move PendingIcon here from @mui/material
+  Pending as PendingIcon,
+  Business as BusinessIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+  LocationOn as LocationIcon,
+  PictureAsPdf as PdfIcon,
+  Image as ImageIcon,
+  InsertDriveFile as FileIcon
 } from '@mui/icons-material';
+import { styled } from '@mui/material/styles';
 import { supabase } from '../../supabaseClient';
 import AdminSidebar from './AdminSidebar';
-import { documentFields } from './organizationConstants'; // Fix import path
+import { documentFields } from './organizationConstants';
+import DocumentViewerDialog from './DocumentViewerDialog';
+
+// Styled components
+const StyledCard = styled(Card)(({ theme, status }) => ({
+  borderRadius: '12px',
+  transition: 'all 0.2s ease',
+  border: '1px solid #eaeef2',
+  boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+  backgroundColor: '#ffffff',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: '0 8px 16px rgba(0,0,0,0.04)',
+    borderColor: theme.palette.primary.main
+  }
+}));
+
+const StatusIcon = styled(Box)(({ theme, status }) => ({
+  position: 'absolute',
+  top: 8,
+  right: 8,
+  width: 24,
+  height: 24,
+  borderRadius: '50%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: 
+    status === 'approved' ? alpha(theme.palette.success.main, 0.1) :
+    status === 'rejected' ? alpha(theme.palette.error.main, 0.1) :
+    alpha(theme.palette.warning.main, 0.1),
+  color: 
+    status === 'approved' ? theme.palette.success.main :
+    status === 'rejected' ? theme.palette.error.main :
+    theme.palette.warning.main
+}));
+
+const InfoItem = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: theme.spacing(1),
+  padding: theme.spacing(0.75, 1.5),
+  borderRadius: '8px',
+  backgroundColor: '#ffffff',
+  border: '1px solid #eaeef2',
+  '&:hover': {
+    backgroundColor: '#f8fafc',
+  },
+}));
 
 const AdminDocumentReview = () => {
   const navigate = useNavigate();
@@ -50,11 +106,11 @@ const AdminDocumentReview = () => {
   const [loading, setLoading] = useState(true);
   const [organization, setOrganization] = useState(null);
   const [documents, setDocuments] = useState([]);
-  const [rejectionDialog, setRejectionDialog] = useState({ open: false, doc: null, reason: '' });
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
-  const [processing, setProcessing] = useState(false);
   const [reuploadHistory, setReuploadHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState(null);
 
   useEffect(() => {
     fetchOrganizationDetails();
@@ -67,7 +123,6 @@ const AdminDocumentReview = () => {
   const fetchOrganizationDetails = async () => {
     setLoading(true);
     try {
-      // Fetch organization data
       const { data: orgData, error: orgError } = await supabase
         .from('organizations')
         .select('*')
@@ -77,12 +132,25 @@ const AdminDocumentReview = () => {
       if (orgError) throw orgError;
       setOrganization(orgData);
 
-      // Build documents list with status
       const docs = [];
       
       for (const field of documentFields) {
         if (orgData[field.key]) {
-          // Check document status from notifications
+          let bucket = field.bucket;
+          let path = orgData[field.key];
+          
+          if (path && path.includes('supabase.co/storage/v1/object/public/')) {
+            const urlParts = path.split('/object/public/');
+            if (urlParts.length > 1) {
+              const bucketAndPath = urlParts[1];
+              const bucketEndIndex = bucketAndPath.indexOf('/');
+              if (bucketEndIndex > -1) {
+                bucket = bucketAndPath.substring(0, bucketEndIndex);
+                path = bucketAndPath.substring(bucketEndIndex + 1);
+              }
+            }
+          }
+
           const { data: notifications } = await supabase
             .from('organization_notifications')
             .select('*')
@@ -101,23 +169,29 @@ const AdminDocumentReview = () => {
             } else if (latest.type === 'document_rejected') {
               status = 'rejected';
             } else if (latest.type === 'document_reuploaded') {
-              status = 'reuploaded';
+              status = 'pending';
             }
           }
 
+          const fileExt = path?.split('.').pop()?.toLowerCase() || '';
+          
           docs.push({
             ...field,
-            path: orgData[field.key],
+            originalPath: orgData[field.key],
+            path,
+            bucket,
             status,
             rejectionReason,
-            notifications: notifications || []
+            notifications: notifications || [],
+            fileExt,
+            isImage: ['jpg', 'jpeg', 'png', 'gif', 'svg'].includes(fileExt),
+            isPdf: fileExt === 'pdf'
           });
         }
       }
 
       setDocuments(docs);
 
-      // Fetch re-upload history
       const { data: history } = await supabase
         .from('organization_notifications')
         .select('*')
@@ -135,126 +209,18 @@ const AdminDocumentReview = () => {
     }
   };
 
-  const handleApproveDocument = async (doc) => {
-    setProcessing(true);
-    try {
-      // Update document status
-      const { error } = await supabase
-        .from('organizations')
-        .update({ 
-          [doc.rejectionField]: null, // Clear rejection reason
-          updated_at: new Date().toISOString() 
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      // Create approval notification
-      await supabase
-        .from('organization_notifications')
-        .insert([{
-          organization_id: id,
-          type: 'document_approved',
-          title: `Document Approved: ${doc.name}`,
-          message: `Your ${doc.name} has been approved.`,
-          category: 'document',
-          for_admin: false,
-          read: false,
-          created_at: new Date().toISOString()
-        }]);
-
-      // Update local state
-      setDocuments(prev => prev.map(d => 
-        d.key === doc.key ? { ...d, status: 'approved', rejectionReason: null } : d
-      ));
-
-      showAlert('success', `${doc.name} approved successfully`);
-    } catch (error) {
-      console.error('Error approving document:', error);
-      showAlert('error', 'Failed to approve document');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleRejectDocument = async () => {
-    const { doc, reason } = rejectionDialog;
-    if (!reason.trim()) {
-      showAlert('error', 'Please provide a rejection reason');
-      return;
-    }
-
-    setProcessing(true);
-    try {
-      // Update rejection reason in organizations table
-      const { error } = await supabase
-        .from('organizations')
-        .update({ 
-          [doc.rejectionField]: reason,
-          updated_at: new Date().toISOString() 
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      // Create rejection notification for user
-      await supabase
-        .from('organization_notifications')
-        .insert([{
-          organization_id: id,
-          type: 'document_rejected',
-          title: `Document Rejected: ${doc.name}`,
-          message: `Your ${doc.name} was rejected. Reason: ${reason}`,
-          category: 'document',
-          for_admin: false,
-          read: false,
-          created_at: new Date().toISOString()
-        }]);
-
-      // Also create notification for admin to track
-      await supabase
-        .from('organization_notifications')
-        .insert([{
-          organization_id: id,
-          type: 'document_rejected',
-          title: `Document Rejected: ${doc.name}`,
-          message: `Rejected ${doc.name} for ${organization?.company_name}. Reason: ${reason}`,
-          category: 'document',
-          for_admin: true,
-          read: false,
-          created_at: new Date().toISOString()
-        }]);
-
-      // Update local state
-      setDocuments(prev => prev.map(d => 
-        d.key === doc.key ? { ...d, status: 'rejected', rejectionReason: reason } : d
-      ));
-
-      showAlert('success', `${doc.name} rejected with reason`);
-      setRejectionDialog({ open: false, doc: null, reason: '' });
-    } catch (error) {
-      console.error('Error rejecting document:', error);
-      showAlert('error', 'Failed to reject document');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleViewDocument = async (doc) => {
-    try {
-      const { data } = supabase.storage
-        .from(doc.bucket)
-        .getPublicUrl(doc.path);
-      
-      window.open(data.publicUrl, '_blank');
-    } catch (error) {
-      console.error('Error viewing document:', error);
-      showAlert('error', 'Failed to open document');
-    }
+  const handleViewDocument = (doc) => {
+    setSelectedDocument(doc);
+    setViewerOpen(true);
   };
 
   const handleDownloadDocument = async (doc) => {
     try {
+      if (doc.originalPath?.startsWith('http')) {
+        window.open(doc.originalPath, '_blank');
+        return;
+      }
+
       const { data, error } = await supabase.storage
         .from(doc.bucket)
         .download(doc.path);
@@ -264,7 +230,7 @@ const AdminDocumentReview = () => {
       const url = window.URL.createObjectURL(data);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${doc.name}.pdf`;
+      link.download = `${doc.name.replace(/\s+/g, '_')}.${doc.fileExt || 'pdf'}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -275,29 +241,24 @@ const AdminDocumentReview = () => {
     }
   };
 
-  const getStatusChip = (status) => {
-    const config = {
-      approved: { color: 'success', icon: <CheckCircleIcon />, label: 'Approved' },
-      rejected: { color: 'error', icon: <CancelIcon />, label: 'Rejected' },
-      reuploaded: { color: 'info', icon: <RefreshIcon />, label: 'Re-uploaded' },
-      pending: { color: 'warning', icon: <PendingIcon />, label: 'Pending' }
-    };
-    const statusConfig = config[status] || config.pending;
+  const getStatusIcon = (status) => {
+    switch(status) {
+      case 'approved': return <CheckCircleIcon fontSize="small" />;
+      case 'rejected': return <CancelIcon fontSize="small" />;
+      default: return <PendingIcon fontSize="small" />;
+    }
+  };
 
-    return (
-      <Chip
-        icon={statusConfig.icon}
-        label={statusConfig.label}
-        size="small"
-        color={statusConfig.color}
-      />
-    );
+  const getFileIcon = (doc) => {
+    if (doc.isImage) return <ImageIcon sx={{ fontSize: 32 }} />;
+    if (doc.isPdf) return <PdfIcon sx={{ fontSize: 32 }} />;
+    return <FileIcon sx={{ fontSize: 32 }} />;
   };
 
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress style={{ color: '#15e420' }} />
+        <CircularProgress size={32} sx={{ color: '#15e420' }} />
       </Box>
     );
   }
@@ -306,260 +267,329 @@ const AdminDocumentReview = () => {
     <>
       <Snackbar
         open={alert.open}
-        autoHideDuration={6000}
+        autoHideDuration={4000}
         onClose={() => setAlert({ ...alert, open: false })}
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <Alert severity={alert.type} sx={{ width: '100%' }}>
+        <Alert severity={alert.type} sx={{ borderRadius: '8px' }}>
           {alert.message}
         </Alert>
       </Snackbar>
 
-      {/* Rejection Dialog */}
-      <Dialog 
-        open={rejectionDialog.open} 
-        onClose={() => setRejectionDialog({ open: false, doc: null, reason: '' })}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Reject Document</DialogTitle>
-        <DialogContent>
-          <Typography variant="subtitle2" gutterBottom>
-            Document: {rejectionDialog.doc?.name}
-          </Typography>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Rejection Reason"
-            fullWidth
-            multiline
-            rows={4}
-            value={rejectionDialog.reason}
-            onChange={(e) => setRejectionDialog(prev => ({ ...prev, reason: e.target.value }))}
-            placeholder="Explain why this document is being rejected..."
-            required
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRejectionDialog({ open: false, doc: null, reason: '' })}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleRejectDocument} 
-            variant="contained" 
-            color="error"
-            disabled={!rejectionDialog.reason.trim() || processing}
-          >
-            {processing ? 'Rejecting...' : 'Reject Document'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <DocumentViewerDialog
+        open={viewerOpen}
+        onClose={() => {
+          setViewerOpen(false);
+          setSelectedDocument(null);
+        }}
+        document={selectedDocument}
+        companyName={organization?.company_name}
+        onDownload={handleDownloadDocument}
+      />
 
-      {/* History Dialog */}
       <Dialog 
         open={showHistory} 
         onClose={() => setShowHistory(false)}
-        maxWidth="md"
+        maxWidth="sm"
         fullWidth
+        PaperProps={{ sx: { borderRadius: '12px' } }}
       >
-        <DialogTitle>Document Re-upload History</DialogTitle>
+        <DialogTitle sx={{ pb: 1, fontWeight: 600 }}>Re-upload History</DialogTitle>
         <DialogContent>
           {reuploadHistory.length > 0 ? (
-            <List>
+            <List dense>
               {reuploadHistory.map((item, index) => (
-                <ListItem key={index} divider>
+                <ListItem key={index} divider={index < reuploadHistory.length - 1}>
                   <ListItemIcon>
-                    <RefreshIcon color="info" />
+                    <RefreshIcon sx={{ color: '#17a2b8', fontSize: 20 }} />
                   </ListItemIcon>
                   <ListItemText
                     primary={item.title}
-                    secondary={
-                      <>
-                        <Typography variant="caption" display="block">
-                          {new Date(item.created_at).toLocaleString()}
-                        </Typography>
-                        <Typography variant="body2">{item.message}</Typography>
-                      </>
-                    }
+                    secondary={new Date(item.created_at).toLocaleString()}
+                    primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+                    secondaryTypographyProps={{ variant: 'caption' }}
                   />
                 </ListItem>
               ))}
             </List>
           ) : (
-            <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
-              No re-upload history found
+            <Typography color="textSecondary" align="center" sx={{ py: 3 }}>
+              No re-upload history
             </Typography>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowHistory(false)}>Close</Button>
+          <Button onClick={() => setShowHistory(false)} size="small">
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
 
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Box sx={{ display: 'flex', gap: 3 }}>
+      <Container maxWidth="xl" sx={{ py: 3,  minHeight: '100vh' }}>
+        <Box sx={{ display: 'flex', gap: 2 }}>
           <AdminSidebar />
           
-          <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '16px' }}>
+          <Box sx={{ flex: 1 ,bgcolor: '#f8fafc', borderRadius: '12px', p: 3, border: '1px solid #eaeef2' }}>
             {/* Header */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
-              <IconButton onClick={() => navigate('/admin/organizations')} sx={{ color: '#15e420' }}>
-                <ArrowBackIcon />
-              </IconButton>
-              <Typography variant="h4" sx={{ fontFamily: '"Poppins", sans-serif', fontWeight: 700 }}>
-                Document Review..
-              </Typography>
-              <Box sx={{ ml: 'auto', display: 'flex', gap: 2 }}>
-                <Tooltip title="View Re-upload History">
-                  <IconButton onClick={() => setShowHistory(true)} sx={{ color: '#15e420' }}>
-                    <Badge badgeContent={reuploadHistory.length} color="info">
-                      <HistoryIcon />
+            <Paper sx={{ p: 2, mb: 2, borderRadius: '12px', bgcolor: '#ffffff', border: '1px solid #eaeef2' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <IconButton size="small" onClick={() => navigate('/admin/organizations')}>
+                  <ArrowBackIcon fontSize="small" />
+                </IconButton>
+                <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem' }}>
+                  Document Review
+                </Typography>
+                <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
+                  <IconButton size="small" onClick={() => setShowHistory(true)}>
+                    <Badge badgeContent={reuploadHistory.length} color="info" max={9}>
+                      <HistoryIcon fontSize="small" />
                     </Badge>
                   </IconButton>
-                </Tooltip>
-                <Chip
-                  label={organization?.status}
-                  color={
-                    organization?.status === 'approved' ? 'success' :
-                    organization?.status === 'rejected' ? 'error' : 'warning'
-                  }
-                />
+                  <Chip
+                    label={organization?.status}
+                    size="small"
+                    color={
+                      organization?.status === 'approved' ? 'success' :
+                      organization?.status === 'rejected' ? 'error' : 'warning'
+                    }
+                    sx={{ height: 24, textTransform: 'capitalize' }}
+                  />
+                </Box>
               </Box>
-            </Box>
+            </Paper>
 
-            {/* Organization Info */}
-            <Paper sx={{ p: 3, mb: 4, borderRadius: '16px' }}>
-              <Typography variant="h6" gutterBottom>
-                {organization?.company_name}
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="body2" color="textSecondary">
-                    Email: {organization?.email}
+            {/* Organization Info - Enhanced */}
+            <Paper sx={{ p: 2, mb: 2, borderRadius: '12px', bgcolor: '#ffffff', border: '1px solid #eaeef2' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                <Avatar sx={{ width: 48, height: 48, bgcolor: '#15e420' }}>
+                  <BusinessIcon />
+                </Avatar>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem' }}>
+                    {organization?.company_name}
                   </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="body2" color="textSecondary">
+                  <Typography variant="caption" color="textSecondary">
                     CAC: {organization?.cac_number || 'N/A'}
                   </Typography>
+                </Box>
+              </Box>
+              
+              <Divider sx={{ my: 1.5 }} />
+              
+              <Grid container spacing={1.5}>
+                <Grid item xs={12} sm={6}>
+                  <InfoItem>
+                    <EmailIcon sx={{ color: '#15e420', fontSize: 18 }} />
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                      {organization?.email}
+                    </Typography>
+                  </InfoItem>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <InfoItem>
+                    <PhoneIcon sx={{ color: '#15e420', fontSize: 18 }} />
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                      {organization?.phone_number || 'N/A'}
+                    </Typography>
+                  </InfoItem>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="body2" color="textSecondary">
-                    Re-upload Count: {organization?.re_upload_count || 0}
-                  </Typography>
+                  <InfoItem>
+                    <LocationIcon sx={{ color: '#15e420', fontSize: 18 }} />
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }} noWrap>
+                      {organization?.office_address || 'N/A'}
+                    </Typography>
+                  </InfoItem>
+                </Grid>
+                <Grid item xs={6}>
+                  <InfoItem>
+                    <HistoryIcon sx={{ color: '#15e420', fontSize: 18 }} />
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                      Re-uploads: {organization?.re_upload_count || 0}
+                    </Typography>
+                  </InfoItem>
                 </Grid>
                 {organization?.last_re_upload_at && (
-                  <Grid item xs={12}>
-                    <Typography variant="body2" color="textSecondary">
-                      Last Re-upload: {new Date(organization.last_re_upload_at).toLocaleString()}
-                    </Typography>
+                  <Grid item xs={6}>
+                    <InfoItem>
+                      <RefreshIcon sx={{ color: '#15e420', fontSize: 18 }} />
+                      <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                        {new Date(organization.last_re_upload_at).toLocaleDateString()}
+                      </Typography>
+                    </InfoItem>
                   </Grid>
                 )}
               </Grid>
             </Paper>
 
-            {/* Documents Grid */}
-            <Grid container spacing={3}>
-              {documents.map((doc) => (
-                <Grid item xs={12} md={6} key={doc.key}>
-                  <Card sx={{ 
-                    borderRadius: '12px',
-                    border: doc.status === 'rejected' ? '1px solid #ffcdd2' : 'none',
-                    bgcolor: doc.status === 'rejected' ? '#fff8f8' : 'white'
-                  }}>
-                    <CardContent>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <DescriptionIcon sx={{ color: '#15e420' }} />
-                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                            {doc.name}
-                            {!doc.required && (
-                              <Chip
-                                label="Optional"
-                                size="small"
-                                sx={{ ml: 1, height: 20, fontSize: '0.65rem' }}
-                              />
-                            )}
-                          </Typography>
-                        </Box>
-                        {getStatusChip(doc.status)}
-                      </Box>
+            {/* Document Grid */}
+            <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600, color: '#4a5568' }}>
+              Documents ({documents.length})
+            </Typography>
+            
+            <Grid container spacing={1.5}>
+              {documents.map((doc) => {
+                const wasReuploaded = reuploadHistory.some(
+                  h => h.title?.includes(doc.name) || h.message?.includes(doc.name)
+                );
+                
+                return (
+                  <Grid item xs={12} sm={6} md={4} lg={3} key={doc.key}>
+                    <StyledCard>
+                      <CardContent sx={{ p: 2, position: 'relative' }}>
+                        {/* Status Icon */}
+                        <StatusIcon status={doc.status}>
+                          {getStatusIcon(doc.status)}
+                        </StatusIcon>
 
-                      {doc.rejectionReason && (
-                        <Alert 
-                          severity="error" 
-                          icon={<WarningIcon />}
-                          sx={{ mb: 2 }}
-                        >
-                          <Typography variant="body2">
-                            <strong>Rejection Reason:</strong> {doc.rejectionReason}
-                          </Typography>
-                        </Alert>
-                      )}
-
-                      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                        <Tooltip title="View Document">
-                          <IconButton 
-                            size="small" 
-                            onClick={() => handleViewDocument(doc)}
-                            sx={{ color: '#15e420' }}
-                          >
-                            <VisibilityIcon />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Download">
-                          <IconButton 
-                            size="small" 
-                            onClick={() => handleDownloadDocument(doc)}
-                            sx={{ color: '#15e420' }}
-                          >
-                            <DownloadIcon />
-                          </IconButton>
-                        </Tooltip>
-                        
-                        {doc.status !== 'approved' && (
-                          <>
-                            <Tooltip title="Approve">
-                              <IconButton 
-                                size="small"
-                                onClick={() => handleApproveDocument(doc)}
-                                disabled={processing}
-                                sx={{ color: '#28a745' }}
-                              >
-                                <CheckCircleIcon />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Reject">
-                              <IconButton 
-                                size="small"
-                                onClick={() => setRejectionDialog({ open: true, doc, reason: '' })}
-                                disabled={processing}
-                                sx={{ color: '#dc3545' }}
-                              >
-                                <CancelIcon />
-                              </IconButton>
-                            </Tooltip>
-                          </>
+                        {/* Re-upload Indicator */}
+                        {wasReuploaded && doc.status === 'pending' && (
+                          <Tooltip title="Re-uploaded" arrow>
+                            <Box sx={{ 
+                              position: 'absolute',
+                              top: 8,
+                              left: 8,
+                              width: 20,
+                              height: 20,
+                              borderRadius: '50%',
+                              bgcolor: alpha('#17a2b8', 0.1),
+                              color: '#17a2b8',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}>
+                              <RefreshIcon sx={{ fontSize: 12 }} />
+                            </Box>
+                          </Tooltip>
                         )}
-                      </Box>
 
-                      {/* Show notification history */}
-                      {doc.notifications && doc.notifications.length > 0 && (
-                        <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #e0e0e0' }}>
-                          <Typography variant="caption" color="textSecondary">
-                            History:
-                          </Typography>
-                          {doc.notifications.slice(0, 2).map((notif, idx) => (
-                            <Typography key={idx} variant="caption" display="block" sx={{ fontSize: '0.7rem' }}>
-                              • {new Date(notif.created_at).toLocaleDateString()}: {notif.type.replace('_', ' ')}
-                            </Typography>
-                          ))}
+                        {/* Icon */}
+                        <Box sx={{ 
+                          display: 'flex', 
+                          justifyContent: 'center',
+                          mb: 1.5,
+                          color: 
+                            doc.status === 'approved' ? '#28a745' :
+                            doc.status === 'rejected' ? '#dc3545' :
+                            '#ffc107'
+                        }}>
+                          {getFileIcon(doc)}
                         </Box>
-                      )}
-                    </CardContent>
-                  </Card>
+
+                        {/* Name */}
+                        <Tooltip title={doc.name} arrow>
+                          <Typography 
+                            variant="body2" 
+                            align="center"
+                            sx={{ 
+                              fontWeight: 500,
+                              fontSize: '0.85rem',
+                              mb: 1,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {doc.name}
+                          </Typography>
+                        </Tooltip>
+
+                        {/* Rejection Icon */}
+                        {doc.rejectionReason && doc.status === 'rejected' && (
+                          <Tooltip title={doc.rejectionReason} arrow>
+                            <Box sx={{ 
+                              display: 'flex', 
+                              justifyContent: 'center',
+                              mb: 1
+                            }}>
+                              <WarningIcon sx={{ fontSize: 16, color: '#dc3545' }} />
+                            </Box>
+                          </Tooltip>
+                        )}
+
+                        {/* Actions */}
+                        <Box sx={{ 
+                          display: 'flex', 
+                          justifyContent: 'center',
+                          gap: 0.5,
+                          mt: 1
+                        }}>
+                          <Tooltip title="View Document">
+                            <IconButton 
+                              size="small" 
+                              onClick={() => handleViewDocument(doc)}
+                              sx={{ 
+                                p: 0.5,
+                                bgcolor: alpha('#15e420', 0.05),
+                                '&:hover': { bgcolor: alpha('#15e420', 0.1) }
+                              }}
+                            >
+                              <VisibilityIcon sx={{ fontSize: 18, color: '#15e420' }} />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Download">
+                            <IconButton 
+                              size="small" 
+                              onClick={() => handleDownloadDocument(doc)}
+                              sx={{ 
+                                p: 0.5,
+                                bgcolor: alpha('#15e420', 0.05),
+                                '&:hover': { bgcolor: alpha('#15e420', 0.1) }
+                              }}
+                            >
+                              <DownloadIcon sx={{ fontSize: 18, color: '#15e420' }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+
+                        {/* History Dots - Minimal */}
+                        {doc.notifications && doc.notifications.length > 0 && (
+                          <Box sx={{ 
+                            display: 'flex', 
+                            justifyContent: 'center',
+                            gap: 0.5,
+                            mt: 1
+                          }}>
+                            {doc.notifications.slice(0, 3).map((notif, idx) => (
+                              <Tooltip 
+                                key={idx}
+                                title={`${notif.type.replace('_', ' ')} - ${new Date(notif.created_at).toLocaleDateString()}`}
+                                arrow
+                              >
+                                <Box sx={{ 
+                                  width: 6, 
+                                  height: 6, 
+                                  borderRadius: '50%',
+                                  bgcolor: 
+                                    notif.type === 'document_approved' ? '#28a745' :
+                                    notif.type === 'document_rejected' ? '#dc3545' :
+                                    notif.type === 'document_reuploaded' ? '#17a2b8' :
+                                    '#ffc107'
+                                }} />
+                              </Tooltip>
+                            ))}
+                          </Box>
+                        )}
+                      </CardContent>
+                    </StyledCard>
+                  </Grid>
+                );
+              })}
+
+              {documents.length === 0 && (
+                <Grid item xs={12}>
+                  <Paper sx={{ 
+                    p: 4, 
+                    textAlign: 'center',
+                    borderRadius: '12px',
+                    bgcolor: '#ffffff',
+                    border: '1px solid #eaeef2'
+                  }}>
+                    <DescriptionIcon sx={{ fontSize: 48, color: '#ccc', mb: 2 }} />
+                    <Typography color="textSecondary">No documents uploaded yet</Typography>
+                  </Paper>
                 </Grid>
-              ))}
+              )}
             </Grid>
           </Box>
         </Box>

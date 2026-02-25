@@ -909,7 +909,7 @@ const AdminOrganizationDocuments = () => {
             Download
           </Button>
           <Button onClick={() => setModalOpen(false)} variant="outlined">
-            Close
+            Closess
           </Button>
         </DialogActions>
       </Dialog>

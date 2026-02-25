@@ -1,34 +1,116 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { supabase } from '../../supabaseClient';
 import PaymentSummary from './PaymentSummary';
-import { Box, CircularProgress, Container, Paper, Typography, Alert as MuiAlert, Snackbar } from '@mui/material';
+import PaymentHeader from './PaymentHeader';
+import PaymentStatusCard from './PaymentStatusCard';
+import PaymentStepper from './PaymentStepper';
+import BankDetailsCard from './BankDetailsCard';
+import FileUploadArea from './FileUploadArea';
+import PaymentHistory from './PaymentHistory';
+import ReceiptModal from './ReceiptModal';
+import {
+  Box,
+  CircularProgress,
+  Container,
+  Paper,
+  Typography,
+  Alert as MuiAlert,
+  Snackbar,
+  Button,
+  useMediaQuery,
+  useTheme
+} from '@mui/material';
+import { Verified as VerifiedIcon } from '@mui/icons-material';
+import { styled } from '@mui/material/styles';
 import Sidebar from '../Sidebar';
-import { 
-  sendAdminPaymentNotification 
-} from '../../utils/emailService';
+import { sendAdminPaymentNotification } from '../../utils/emailService';
+import {
+  PAYMENT_CONSTANTS,
+  PAYMENT_STEPS,
+  PAYMENT_TYPES,
+  PAYMENT_STATUS,
+  FILE_CONSTANTS
+} from './paymentConstants';
+import {
+  validateFile,
+  formatCurrency,
+  getStatusIcon,
+  getStatusColor,
+  calculatePaymentDetails
+} from '../../utils/paymentUtils';
 import './Payment.css';
+
+// Styled Components
+const PaymentContainer = styled(motion.div)({
+  maxWidth: '1200px',
+  margin: '0 auto',
+  padding: '2rem',
+  fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
+});
+
+const ActionButton = styled(Button)({
+  padding: '0.75rem 1.5rem',
+  borderRadius: '8px',
+  fontWeight: 600,
+  textTransform: 'none',
+  fontSize: '1rem',
+  transition: 'all 0.3s ease',
+  '&.primary': {
+    background: 'linear-gradient(135deg, #15e420 0%, #0fa819 100%)',
+    color: 'white',
+    '&:hover': {
+      transform: 'translateY(-2px)',
+      boxShadow: '0 10px 30px rgba(21, 228, 32, 0.3)'
+    }
+  },
+  '&.outline': {
+    border: '2px solid #15e420',
+    color: '#15e420',
+    background: 'transparent',
+    '&:hover': {
+      background: 'rgba(21, 228, 32, 0.05)',
+      transform: 'translateY(-2px)'
+    }
+  }
+});
 
 const Payment = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  // State
   const [user, setUser] = useState(null);
   const [organization, setOrganization] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
+  
+  // Payment state
   const [receiptFile, setReceiptFile] = useState(null);
   const [fileName, setFileName] = useState('');
-  const [paymentType, setPaymentType] = useState('first');
-  const [paymentAmount, setPaymentAmount] = useState(25000);
+  const [filePreview, setFilePreview] = useState(null);
+  const [paymentType, setPaymentType] = useState(PAYMENT_TYPES.FIRST);
+  const [paymentAmount, setPaymentAmount] = useState(PAYMENT_CONSTANTS.FIRST_PAYMENT);
   const [previousPayments, setPreviousPayments] = useState([]);
   const [lastPaymentDate, setLastPaymentDate] = useState(null);
   const [nextRenewalDate, setNextRenewalDate] = useState(null);
   const [isRenewalDue, setIsRenewalDue] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
+  
+  // Modal state
+  const [selectedHistoryPayment, setSelectedHistoryPayment] = useState(null);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
-  const FIRST_PAYMENT_AMOUNT = 25000;
-  const RENEWAL_AMOUNT = 15000;
+  // Computed values
+  const isNotDue = paymentType === PAYMENT_TYPES.NOT_DUE;
+  const isFirstPayment = paymentType === PAYMENT_TYPES.FIRST;
+  const isRenewal = paymentType === PAYMENT_TYPES.RENEWAL;
 
+  // Effects
   useEffect(() => {
     checkUser();
   }, []);
@@ -39,10 +121,18 @@ const Payment = () => {
     }
   }, [user, location.state]);
 
+  // Helper functions
+  const showAlert = useCallback((type, message) => {
+    setAlert({ open: true, type, message });
+  }, []);
+
+  const handleCloseAlert = useCallback(() => {
+    setAlert(prev => ({ ...prev, open: false }));
+  }, []);
+
   const checkUser = async () => {
     try {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error) throw error;
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         navigate('/login');
       } else {
@@ -56,6 +146,8 @@ const Payment = () => {
 
   const loadOrganizationData = async () => {
     try {
+      let orgData;
+
       if (location.state?.organizationId) {
         const { data, error } = await supabase
           .from('organizations')
@@ -63,14 +155,9 @@ const Payment = () => {
           .eq('id', location.state.organizationId)
           .single();
 
-        if (!error && data) {
-          setOrganization(data);
-          await checkPaymentHistory(data.id);
-          return;
-        }
-      }
-
-      if (user) {
+        if (error) throw error;
+        orgData = data;
+      } else if (user) {
         const { data, error } = await supabase
           .from('organizations')
           .select('*')
@@ -80,16 +167,19 @@ const Payment = () => {
           .single();
 
         if (error) {
-          console.error('Error fetching organization:', error);
-          showAlert('error', 'Organization not found. Please complete registration first.');
-          setTimeout(() => navigate('/organization-registration'), 2000);
-          return;
+          if (error.code === 'PGRST116') {
+            showAlert('error', 'Organization not found. Please complete registration first.');
+            setTimeout(() => navigate('/organization-registration'), 2000);
+            return;
+          }
+          throw error;
         }
+        orgData = data;
+      }
 
-        if (data) {
-          setOrganization(data);
-          await checkPaymentHistory(data.id);
-        }
+      if (orgData) {
+        setOrganization(orgData);
+        await checkPaymentHistory(orgData.id);
       }
     } catch (error) {
       console.error('Error:', error);
@@ -111,13 +201,17 @@ const Payment = () => {
 
       setPreviousPayments(data || []);
 
-      const approvedPayments = data?.filter(p => p.status === 'approved' || p.status === 'accepted') || [];
+      const approvedPayments = data?.filter(p => 
+        p.status === PAYMENT_STATUS.APPROVED || p.status === PAYMENT_STATUS.ACCEPTED
+      ) || [];
+      
       const lastApproved = approvedPayments[0];
 
       if (lastApproved) {
-        setLastPaymentDate(new Date(lastApproved.created_at));
+        const lastPaymentDate = new Date(lastApproved.created_at);
+        setLastPaymentDate(lastPaymentDate);
         
-        const paymentYear = new Date(lastApproved.created_at).getFullYear();
+        const paymentYear = lastPaymentDate.getFullYear();
         const renewalDate = new Date(paymentYear + 1, 0, 1);
         setNextRenewalDate(renewalDate);
 
@@ -126,62 +220,95 @@ const Payment = () => {
         setIsRenewalDue(isDue);
 
         if (isDue) {
-          setPaymentType('renewal');
-          setPaymentAmount(RENEWAL_AMOUNT);
+          setPaymentType(PAYMENT_TYPES.RENEWAL);
+          setPaymentAmount(PAYMENT_CONSTANTS.RENEWAL_AMOUNT);
         } else {
-          setPaymentType('not_due');
+          setPaymentType(PAYMENT_TYPES.NOT_DUE);
           setPaymentAmount(0);
         }
       } else {
-        setPaymentType('first');
-        setPaymentAmount(FIRST_PAYMENT_AMOUNT);
+        setPaymentType(PAYMENT_TYPES.FIRST);
+        setPaymentAmount(PAYMENT_CONSTANTS.FIRST_PAYMENT);
         setIsRenewalDue(false);
       }
+      
+      setActiveStep(0);
     } catch (error) {
       console.error('Error checking payment history:', error);
     }
   };
 
-  const showAlert = (type, message) => {
-    setAlert({ open: true, type, message });
+  const handleFileChange = (file) => {
+    if (!file) return;
+
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      showAlert('error', validation.error);
+      return;
+    }
+
+    setReceiptFile(file);
+    setFileName(file.name);
+    
+    // Create preview for images
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFilePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setFilePreview(null);
+    }
+    
+    setActiveStep(3);
   };
 
-  const handleCloseAlert = () => {
-    setAlert({ ...alert, open: false });
+  const handleViewReceipt = async (payment) => {
+    try {
+      const { data } = supabase.storage
+        .from('documents')
+        .getPublicUrl(payment.receipt_path);
+      
+      setSelectedHistoryPayment({
+        ...payment,
+        url: data.publicUrl
+      });
+      setHistoryModalOpen(true);
+    } catch (error) {
+      console.error('Error getting receipt URL:', error);
+      showAlert('error', 'Could not load receipt');
+    }
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        showAlert('error', 'File size must be less than 5MB');
-        e.target.value = null;
-        return;
-      }
+  const handleDownloadReceipt = async (payment) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .download(payment.receipt_path);
 
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
-      if (!allowedTypes.includes(file.type)) {
-        showAlert('error', 'Please upload JPG, PNG, or PDF files only');
-        e.target.value = null;
-        return;
-      }
+      if (error) throw error;
 
-      setReceiptFile(file);
-      setFileName(file.name);
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payment_receipt_${payment.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading receipt:', error);
+      showAlert('error', 'Failed to download receipt');
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!user) {
+    if (!user || !organization) {
       showAlert('error', 'Please login first');
       navigate('/login');
-      return;
-    }
-
-    if (!organization) {
-      showAlert('error', 'Organization not found');
       return;
     }
 
@@ -190,7 +317,7 @@ const Payment = () => {
       return;
     }
 
-    if (paymentType === 'not_due') {
+    if (isNotDue) {
       showAlert('error', 'No payment is due at this time');
       return;
     }
@@ -213,7 +340,7 @@ const Payment = () => {
       }
 
       const currentYear = new Date().getFullYear();
-      const paymentYear = paymentType === 'renewal' ? currentYear : currentYear;
+      const paymentYear = isRenewal ? currentYear : currentYear;
 
       const paymentData = {
         organization_id: organization.id,
@@ -222,7 +349,7 @@ const Payment = () => {
         payment_type: paymentType,
         payment_method: 'Bank Transfer',
         receipt_path: filePath,
-        status: 'pending',
+        status: PAYMENT_STATUS.PENDING,
         payment_year: paymentYear,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -235,7 +362,6 @@ const Payment = () => {
         .single();
 
       if (paymentError) {
-        console.error('Payment insert error:', paymentError);
         throw new Error(paymentError.message);
       }
 
@@ -286,11 +412,33 @@ const Payment = () => {
         </MuiAlert>
       </Snackbar>
 
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Container maxWidth="xl" sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', gap: 3 }}>
           <Sidebar />
-          <Box sx={{ flex: 1 }}>
-            <Paper sx={{ p: 4, borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }}>
+          
+          <Box sx={{ flex: 1, backgroundColor: '#f8fafc', borderRadius: '12px', p: 4, border: '1px solid #eaeef2' }}>
+            <PaymentContainer
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              {/* Header */}
+              <PaymentHeader
+                paymentType={paymentType}
+                companyName={organization.company_name}
+                onBack={() => navigate('/dashboard')}
+              />
+
+              {/* Status Card */}
+              <PaymentStatusCard
+                paymentType={paymentType}
+                paymentAmount={paymentAmount}
+                isFirstPayment={isFirstPayment}
+                isRenewal={isRenewal}
+                isNotDue={isNotDue}
+              />
+
+              {/* Payment Summary */}
               <PaymentSummary 
                 organization={organization} 
                 amount={paymentAmount} 
@@ -300,149 +448,104 @@ const Payment = () => {
                 nextRenewalDate={nextRenewalDate}
                 isRenewalDue={isRenewalDue}
               />
+
+              {/* Payment Process Stepper */}
+              {!isNotDue && (
+                <PaymentStepper
+                  activeStep={activeStep}
+                  steps={PAYMENT_STEPS}
+                  isMobile={isMobile}
+                />
+              )}
               
-              {paymentType !== 'not_due' ? (
-                <Box sx={{ mt: 4 }}>
-                  <Typography variant="h5" sx={{ color: '#15e420', fontWeight: 600, mb: 3 }}>
-                    {paymentType === 'first' ? 'First Time Payment' : 'Annual Renewal Payment'}
-                  </Typography>
-                  
-                  <Paper sx={{ p: 3, bgcolor: '#f8f9fa', borderRadius: '12px', mb: 4 }}>
-                    <Typography variant="h6" sx={{ color: '#333', mb: 2 }}>
-                      KACCIMA Bank Details
-                    </Typography>
-                    <Box sx={{ display: 'grid', gap: 2 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Typography sx={{ minWidth: 120, fontWeight: 600, color: '#666' }}>Bank Name:</Typography>
-                        <Typography sx={{ color: '#333' }}>Jaiz Bank</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Typography sx={{ minWidth: 120, fontWeight: 600, color: '#666' }}>Account Name:</Typography>
-                        <Typography sx={{ color: '#333' }}>KANO CHAMBER OF COMMERCE, INDUSTRY, MINES AND AGRICULTURE</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Typography sx={{ minWidth: 120, fontWeight: 600, color: '#666' }}>Account Number:</Typography>
-                        <Typography sx={{ color: '#333' }}>0000374891</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Typography sx={{ minWidth: 120, fontWeight: 600, color: '#666' }}>Amount:</Typography>
-                        <Typography sx={{ color: '#15e420', fontWeight: 700, fontSize: '1.2rem' }}>
-                          ₦{paymentAmount.toLocaleString()}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </Paper>
+              {/* Payment Form or Active Membership View */}
+              {!isNotDue ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  {/* Bank Details */}
+                  <BankDetailsCard
+                    bankName="Jaiz Bank"
+                    accountName="KANO CHAMBER OF COMMERCE, INDUSTRY, MINES AND AGRICULTURE"
+                    accountNumber="0000374891"
+                    amount={paymentAmount}
+                  />
                   
                   <form onSubmit={handleSubmit}>
-                    <Box sx={{ mb: 3 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
-                        Upload Payment Receipt <span style={{ color: '#dc3545' }}>*</span>
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: '#666', mb: 2 }}>
-                        After making the transfer, upload your payment receipt here.
-                        <br />
-                        <small>Accepted formats: JPG, PNG, PDF (Max size: 5MB)</small>
-                      </Typography>
-                      
-                      <Box sx={{ 
-                        border: '2px dashed #ccc', 
-                        borderRadius: '8px', 
-                        p: 3, 
-                        textAlign: 'center',
-                        bgcolor: '#fafafa',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s',
-                        '&:hover': {
-                          borderColor: '#15e420',
-                          bgcolor: '#e8f5e9'
-                        }
-                      }}>
-                        <input
-                          type="file"
-                          id="paymentReceipt"
-                          accept=".jpg,.jpeg,.png,.pdf"
-                          onChange={handleFileChange}
-                          required
-                          style={{ display: 'none' }}
-                        />
-                        <label htmlFor="paymentReceipt" style={{ cursor: 'pointer', width: '100%', display: 'block' }}>
-                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                            <Box component="span" sx={{ fontSize: '48px', mb: 1 }}>📎</Box>
-                            <Typography variant="body1" sx={{ fontWeight: 500, mb: 1 }}>
-                              Click to select file
-                            </Typography>
-                            {fileName && (
-                              <Typography variant="body2" sx={{ color: '#15e420', mt: 1 }}>
-                                Selected: {fileName}
-                              </Typography>
-                            )}
-                          </Box>
-                        </label>
-                      </Box>
-                    </Box>
+                    <FileUploadArea
+                      fileName={fileName}
+                      filePreview={filePreview}
+                      onFileChange={handleFileChange}
+                    />
                     
-                    <Box sx={{ mt: 3 }}>
-                      <button 
-                        type="submit" 
-                        className="btn btn-primary"
-                        disabled={submitting || !receiptFile}
-                        style={{
-                          width: '100%',
-                          padding: '12px',
-                          backgroundColor: '#15e420',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '8px',
-                          fontSize: '16px',
-                          fontWeight: 600,
-                          cursor: submitting || !receiptFile ? 'not-allowed' : 'pointer',
-                          opacity: submitting || !receiptFile ? 0.7 : 1,
-                          transition: 'all 0.3s'
-                        }}
-                      >
-                        {submitting ? 'Processing...' : 'Submit Payment Proof'}
-                      </button>
-                    </Box>
+                    <ActionButton
+                      type="submit"
+                      className="primary"
+                      disabled={submitting || !receiptFile}
+                      fullWidth
+                      size="large"
+                      startIcon={submitting ? <CircularProgress size={20} color="inherit" /> : null}
+                    >
+                      {submitting ? 'Processing...' : 'Submit Payment Proof'}
+                    </ActionButton>
                   </form>
-                </Box>
+                </motion.div>
               ) : (
-                <Box sx={{ mt: 4, textAlign: 'center', p: 4 }}>
-                  <Typography variant="h5" sx={{ color: '#15e420', fontWeight: 600, mb: 2 }}>
-                    No Payment Due
-                  </Typography>
-                  <Typography variant="body1" sx={{ color: '#666', mb: 3 }}>
-                    Your membership is active until {nextRenewalDate?.toLocaleDateString('en-NG', { 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}.
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: '#999' }}>
-                    Your next renewal will be due on January 1, {(nextRenewalDate?.getFullYear() || new Date().getFullYear() + 1)}.
-                  </Typography>
-                  <button 
-                    onClick={() => navigate('/dashboard')}
-                    className="btn btn-primary"
-                    style={{
-                      marginTop: '20px',
-                      padding: '12px 30px',
-                      backgroundColor: '#15e420',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '16px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Return to Dashboard
-                  </button>
-                </Box>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  <Paper sx={{ p: 4, textAlign: 'center', borderRadius: '16px' }}>
+                    <VerifiedIcon sx={{ fontSize: 80, color: '#15e420', mb: 2 }} />
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#333', mb: 2 }}>
+                      Membership Active
+                    </Typography>
+                    <Typography variant="body1" sx={{ color: '#666', mb: 3 }}>
+                      Your membership is active until {
+                        nextRenewalDate?.toLocaleDateString('en-NG', { 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })
+                      }
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#999', mb: 3 }}>
+                      Your next renewal will be due on January 1, {(nextRenewalDate?.getFullYear() || new Date().getFullYear() + 1)}.
+                      You will receive a reminder 30 days before.
+                    </Typography>
+                    <ActionButton
+                      onClick={() => navigate('/dashboard')}
+                      className="primary"
+                    >
+                      Return to Dashboard
+                    </ActionButton>
+                  </Paper>
+                </motion.div>
               )}
-            </Paper>
+
+              {/* Payment History */}
+              {previousPayments.length > 0 && (
+                <PaymentHistory
+                  payments={previousPayments}
+                  onViewReceipt={handleViewReceipt}
+                  onDownloadReceipt={handleDownloadReceipt}
+                />
+              )}
+            </PaymentContainer>
           </Box>
         </Box>
       </Container>
+
+      {/* Receipt Modal */}
+      <ReceiptModal
+        open={historyModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+        payment={selectedHistoryPayment}
+        onDownload={handleDownloadReceipt}
+      />
     </>
   );
 };

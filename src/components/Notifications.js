@@ -301,23 +301,38 @@ const Notifications = () => {
             const rejectionField = `${field.key.replace('_path', '_rejection_reason')}`;
             const hasRejectionReason = orgData[rejectionField];
 
-            notificationsList.push({
-              id: `doc-upload-${field.key}-${Date.now()}`,
-              type: hasRejectionReason ? 'document_rejected' : 'info',
-              title: hasRejectionReason 
-                ? `Document Rejected: ${field.name}` 
-                : `Document Uploaded: ${field.name}`,
-              message: hasRejectionReason
-                ? `Your ${field.name} was rejected. Reason: ${orgData[rejectionField] || 'Please upload a corrected version.'}`
-                : `Your ${field.name} has been uploaded and is pending review.`,
-              timestamp: orgData.updated_at || new Date().toISOString(),
-              read: false,
-              category: 'document',
-              actionUrl: '/documents',
-              isFromAdmin: false,
-              documentField: field.key,
-              documentName: field.name
-            });
+            // Only show rejection notification if the document has been rejected AND the rejection reason exists
+            // This prevents showing rejection notification for documents that have been re-uploaded
+            if (hasRejectionReason) {
+              notificationsList.push({
+                id: `doc-rejected-${field.key}-${Date.now()}`,
+                type: 'document_rejected',
+                title: `Document Rejected: ${field.name}`,
+                message: `Your ${field.name} was rejected. Reason: ${orgData[rejectionField] || 'Please upload a corrected version.'}`,
+                timestamp: orgData.updated_at || new Date().toISOString(),
+                read: false,
+                category: 'document',
+                actionUrl: '/documents',
+                isFromAdmin: false,
+                documentField: field.key,
+                documentName: field.name
+              });
+            } else {
+              // Only show upload notification if document exists and hasn't been rejected
+              notificationsList.push({
+                id: `doc-upload-${field.key}-${Date.now()}`,
+                type: 'info',
+                title: `Document Uploaded: ${field.name}`,
+                message: `Your ${field.name} has been uploaded and is pending review.`,
+                timestamp: orgData.updated_at || new Date().toISOString(),
+                read: false,
+                category: 'document',
+                actionUrl: '/documents',
+                isFromAdmin: false,
+                documentField: field.key,
+                documentName: field.name
+              });
+            }
           }
         });
 
@@ -484,20 +499,43 @@ const Notifications = () => {
     });
   };
 
-const handleReuploadSuccess = (documentField, documentName) => {
-  showAlert('success', 'Document re-uploaded successfully');
-  
-  // Force a refresh of the organization data
-  if (organization?.id) {
-    // You might want to navigate to the organization detail page
-    // or refresh the current page
-    window.location.reload(); // Simple solution
-    // Or navigate to the organization detail page
-    // navigate(`/admin/organizations/${organization.id}`);
-  }
-  
-  showAlert('info', `Admin has been notified about your ${documentName} re-upload`);
-};
+  const handleReuploadSuccess = async (documentField, documentName) => {
+    showAlert('success', 'Document re-uploaded successfully');
+    
+    // Find and delete the rejected document notification
+    const rejectedNotification = notifications.find(n => 
+      n.type === 'document_rejected' && 
+      n.documentField === documentField &&
+      n.title.includes(documentName)
+    );
+    
+    if (rejectedNotification) {
+      // Delete the notification from the database if it's a database notification
+      if (!rejectedNotification.id.startsWith('doc-rejected-')) {
+        try {
+          await supabase
+            .from('organization_notifications')
+            .delete()
+            .eq('id', rejectedNotification.id);
+        } catch (error) {
+          console.error('Error deleting rejected notification:', error);
+        }
+      }
+      
+      // Remove from local state
+      const updatedNotifications = notifications.filter(n => n.id !== rejectedNotification.id);
+      setNotifications(updatedNotifications);
+      setUnreadCount(updatedNotifications.filter(n => !n.read).length);
+    }
+    
+    // Close the dialog
+    setReuploadDialog({ open: false, notification: null });
+    
+    // Refresh organization data to get updated document status
+    await fetchOrganizationData();
+    
+    showAlert('info', `Your ${documentName} has been re-uploaded and is pending review.`);
+  };
 
   const filteredNotifications = notifications.filter(notif => {
     if (tabValue === 0) return true;

@@ -242,7 +242,7 @@ const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
       ) 
     },
     { path: '/payment', label: 'Payment', icon: <PaymentIcon /> },
-    { path: '/documents', label: 'Documents', icon: <DescriptionIcon /> },
+   
     { path: '/settings', label: 'Settings', icon: <SettingsIcon /> }
   ];
 
