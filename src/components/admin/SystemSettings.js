@@ -1,43 +1,38 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
   Grid,
   TextField,
-  Switch,
+  Button,
   FormControlLabel,
-  Button
+  Switch
 } from '@mui/material';
 
-const SystemSettings = ({ settings, onSettingsChange, onSave }) => {
-  // CRITICAL FIX: Check if settings is undefined and provide default
-  if (!settings) {
-    console.warn('Settings is undefined, using default values');
-    // Return a loading state or use default values
-    settings = {
-      emailNotifications: true,
-      autoApprovePayments: false,
-      requireDocumentVerification: true,
-      renewalReminderDays: 30,
-      sessionTimeout: 60,
-      twoFactorAuth: false
-    };
-  }
+const SystemSettings = ({ showAlert }) => {
+  const [settings, setSettings] = useState({
+    emailNotifications: true,
+    autoApprovePayments: false,
+    requireDocumentVerification: true,
+    renewalReminderDays: 30,
+    sessionTimeout: 60,
+    twoFactorAuth: false
+  });
 
-  // Additional safety: ensure all required properties exist
-  const safeSettings = {
-    emailNotifications: settings.emailNotifications ?? true,
-    autoApprovePayments: settings.autoApprovePayments ?? false,
-    requireDocumentVerification: settings.requireDocumentVerification ?? true,
-    renewalReminderDays: settings.renewalReminderDays ?? 30,
-    sessionTimeout: settings.sessionTimeout ?? 60,
-    twoFactorAuth: settings.twoFactorAuth ?? false
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = () => {
+    const savedSettings = localStorage.getItem('adminSettings');
+    if (savedSettings) {
+      setSettings(JSON.parse(savedSettings));
+    }
   };
 
-  const handleChange = (field, value) => {
-    if (onSettingsChange) {
-      onSettingsChange({ ...safeSettings, [field]: value });
-    }
+  const saveSettings = () => {
+    localStorage.setItem('adminSettings', JSON.stringify(settings));
+    showAlert('success', 'Settings saved successfully');
   };
 
   return (
@@ -51,8 +46,8 @@ const SystemSettings = ({ settings, onSettingsChange, onSave }) => {
           <FormControlLabel
             control={
               <Switch
-                checked={safeSettings.emailNotifications}
-                onChange={(e) => handleChange('emailNotifications', e.target.checked)}
+                checked={settings.emailNotifications}
+                onChange={(e) => setSettings({ ...settings, emailNotifications: e.target.checked })}
                 sx={{
                   '& .MuiSwitch-switchBase.Mui-checked': {
                     color: '#15e420',
@@ -71,8 +66,8 @@ const SystemSettings = ({ settings, onSettingsChange, onSave }) => {
           <FormControlLabel
             control={
               <Switch
-                checked={safeSettings.autoApprovePayments}
-                onChange={(e) => handleChange('autoApprovePayments', e.target.checked)}
+                checked={settings.autoApprovePayments}
+                onChange={(e) => setSettings({ ...settings, autoApprovePayments: e.target.checked })}
               />
             }
             label="Auto-approve Payments (Not Recommended)"
@@ -83,8 +78,8 @@ const SystemSettings = ({ settings, onSettingsChange, onSave }) => {
           <FormControlLabel
             control={
               <Switch
-                checked={safeSettings.requireDocumentVerification}
-                onChange={(e) => handleChange('requireDocumentVerification', e.target.checked)}
+                checked={settings.requireDocumentVerification}
+                onChange={(e) => setSettings({ ...settings, requireDocumentVerification: e.target.checked })}
               />
             }
             label="Require Document Verification"
@@ -95,8 +90,8 @@ const SystemSettings = ({ settings, onSettingsChange, onSave }) => {
           <FormControlLabel
             control={
               <Switch
-                checked={safeSettings.twoFactorAuth}
-                onChange={(e) => handleChange('twoFactorAuth', e.target.checked)}
+                checked={settings.twoFactorAuth}
+                onChange={(e) => setSettings({ ...settings, twoFactorAuth: e.target.checked })}
               />
             }
             label="Require Two-Factor Authentication for Admins"
@@ -108,8 +103,8 @@ const SystemSettings = ({ settings, onSettingsChange, onSave }) => {
             fullWidth
             type="number"
             label="Renewal Reminder (days before)"
-            value={safeSettings.renewalReminderDays}
-            onChange={(e) => handleChange('renewalReminderDays', parseInt(e.target.value) || 0)}
+            value={settings.renewalReminderDays}
+            onChange={(e) => setSettings({ ...settings, renewalReminderDays: parseInt(e.target.value) })}
           />
         </Grid>
 
@@ -118,15 +113,15 @@ const SystemSettings = ({ settings, onSettingsChange, onSave }) => {
             fullWidth
             type="number"
             label="Session Timeout (minutes)"
-            value={safeSettings.sessionTimeout}
-            onChange={(e) => handleChange('sessionTimeout', parseInt(e.target.value) || 0)}
+            value={settings.sessionTimeout}
+            onChange={(e) => setSettings({ ...settings, sessionTimeout: parseInt(e.target.value) })}
           />
         </Grid>
 
         <Grid item xs={12}>
           <Button
             variant="contained"
-            onClick={onSave}
+            onClick={saveSettings}
             sx={{ bgcolor: '#15e420', '&:hover': { bgcolor: '#12c21e' } }}
           >
             Save Settings
