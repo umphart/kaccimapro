@@ -30,7 +30,6 @@ const PaymentsTable = ({ payments }) => {
             <TableCell>Amount</TableCell>
             <TableCell>Status</TableCell>
             <TableCell>Date</TableCell>
-            <TableCell>Reference</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -52,7 +51,6 @@ const PaymentsTable = ({ payments }) => {
                 />
               </TableCell>
               <TableCell>{new Date(payment.created_at).toLocaleDateString()}</TableCell>
-              <TableCell>{payment.reference?.substring(0, 8)}...</TableCell>
             </TableRow>
           ))}
         </TableBody>
