@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react'; // Add useEffect import
+import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 
-// Define document fields here or import from a shared constants file
 const documentFields = [
   { key: 'cover_letter_path', name: 'Cover Letter' },
   { key: 'memorandum_path', name: 'Memorandum' },
@@ -23,10 +22,8 @@ export const useDocumentManagement = (organizationId, showAlert) => {
   const [rejectDialog, setRejectDialog] = useState({ open: false, doc: null });
   const [rejectReason, setRejectReason] = useState('');
 
-  // Function to check for reuploaded documents
   const checkReuploadStatus = async () => {
     try {
-      // Fetch recent notifications for this organization
       const { data: notifications, error } = await supabase
         .from('organization_notifications')
         .select('*')
@@ -38,9 +35,7 @@ export const useDocumentManagement = (organizationId, showAlert) => {
 
       const reuploadMap = {};
       notifications?.forEach(notif => {
-        // Extract document name from notification title
         const docName = notif.title.replace('Re-uploaded: ', '');
-        // Map document name to document key
         const docField = documentFields.find(f => f.name === docName)?.key;
         if (docField) {
           reuploadMap[docField] = true;
@@ -53,33 +48,76 @@ export const useDocumentManagement = (organizationId, showAlert) => {
     }
   };
 
-  // Handle view document
+  // Handle view document - FIXED
   const handleViewDocument = async (doc) => {
     try {
-      const bucket = doc.path.includes('companyLogo') ? 'logos' : 'documents';
-      const { data } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(doc.path);
+      console.log('handleViewDocument called with:', doc);
+      
+      // Determine the bucket
+      // All documents are in 'documents' bucket except company logos which might be in 'logos'
+      let bucket = 'documents';
+      let path = doc.path;
+      
+      // Clean the path if it contains bucket name
+      if (path && path.includes('/')) {
+        // Path format: bucket/path or userId/folder/filename
+        // Just use as-is with documents bucket
+      }
+      
+      console.log('Using bucket:', bucket, 'path:', path);
+      
+      // For private buckets, create a signed URL (valid for 1 hour)
+      if (bucket === 'documents' || bucket === 'receipts') {
+        const { data, error } = await supabase.storage
+          .from(bucket)
+          .createSignedUrl(path, 3600); // 1 hour expiry
+          
+        if (error) {
+          console.error('Error creating signed URL:', error);
+          throw error;
+        }
+        
+        console.log('Signed URL created:', data.signedUrl);
+        setDocumentUrl(data.signedUrl);
+      } else {
+        // For public buckets like 'logos', use getPublicUrl
+        const { data } = supabase.storage
+          .from(bucket)
+          .getPublicUrl(path);
+          
+        console.log('Public URL:', data.publicUrl);
+        setDocumentUrl(data.publicUrl);
+      }
       
       setViewDocument(doc);
-      setDocumentUrl(data.publicUrl);
     } catch (error) {
       console.error('Error getting document URL:', error);
-      showAlert('error', 'Could not load document');
+      showAlert('error', 'Could not load document: ' + error.message);
     }
   };
 
-  // Handle download document
+  // Handle download document - FIXED
   const handleDownloadDocument = async (doc) => {
     try {
-      const bucket = doc.path.includes('companyLogo') ? 'logos' : 'documents';
+      console.log('handleDownloadDocument called with:', doc);
+      
+      let bucket = 'documents';
+      let path = doc.path;
+      
+      console.log('Downloading from bucket:', bucket, 'path:', path);
+      
       const { data, error } = await supabase.storage
         .from(bucket)
-        .download(doc.path);
+        .download(path);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Download error:', error);
+        throw error;
+      }
 
-      const url = URL.createObjectURL(data);
+      // Create download link
+      const blob = new Blob([data]);
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `${doc.name}.${doc.path.split('.').pop()}`;
@@ -87,9 +125,11 @@ export const useDocumentManagement = (organizationId, showAlert) => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      
+      console.log('Download successful');
     } catch (error) {
       console.error('Error downloading document:', error);
-      showAlert('error', 'Failed to download document');
+      showAlert('error', 'Failed to download document: ' + error.message);
     }
   };
 
@@ -97,7 +137,6 @@ export const useDocumentManagement = (organizationId, showAlert) => {
   const handleApproveDocument = async (doc) => {
     setProcessing(true);
     try {
-      // Create approval notification
       const { error: notificationError } = await supabase
         .from('organization_notifications')
         .insert([{
@@ -112,14 +151,12 @@ export const useDocumentManagement = (organizationId, showAlert) => {
 
       if (notificationError) throw notificationError;
 
-      // Clear reupload status if it exists
       setReuploadStatus(prev => {
         const newStatus = { ...prev };
         delete newStatus[doc.key];
         return newStatus;
       });
 
-      // Update document status
       setDocumentStatus(prev => ({ ...prev, [doc.key]: 'approved' }));
 
       showAlert('success', `${doc.name} approved successfully`);
@@ -139,7 +176,6 @@ export const useDocumentManagement = (organizationId, showAlert) => {
     try {
       const doc = rejectDialog.doc;
       
-      // Create rejection notification
       const { error: notificationError } = await supabase
         .from('organization_notifications')
         .insert([{
@@ -154,14 +190,12 @@ export const useDocumentManagement = (organizationId, showAlert) => {
 
       if (notificationError) throw notificationError;
 
-      // Clear reupload status if it exists
       setReuploadStatus(prev => {
         const newStatus = { ...prev };
         delete newStatus[doc.key];
         return newStatus;
       });
 
-      // Update document status to rejected
       setDocumentStatus(prev => ({ ...prev, [doc.key]: 'rejected' }));
       setRejectionReasons(prev => ({ ...prev, [doc.key]: rejectReason }));
 
@@ -176,14 +210,12 @@ export const useDocumentManagement = (organizationId, showAlert) => {
     }
   };
 
-  // Call checkReuploadStatus when component mounts or when organizationId changes
   useEffect(() => {
     if (organizationId) {
       checkReuploadStatus();
     }
   }, [organizationId]);
 
-  // Return all states and functions
   return {
     documentStatus,
     rejectionReasons,

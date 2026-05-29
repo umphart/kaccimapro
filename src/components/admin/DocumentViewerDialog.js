@@ -44,66 +44,77 @@ const DocumentViewerDialog = ({
     };
   }, [open, document]);
 
-  const getDocumentUrl = () => {
-    // If documentUrl is provided directly
+const getDocumentUrl = () => {
+    console.log('Getting URL for document:', {
+      name: document?.name,
+      bucket: document?.bucket,
+      path: document?.path,
+      fullUrl: document?.fullUrl
+    });
+
+    // 1. If documentUrl is provided directly (from hook)
     if (documentUrl) {
+      console.log('Using provided documentUrl:', documentUrl);
       return documentUrl;
     }
 
-    // If we have fullUrl from the document object
-    if (document.fullUrl) {
+    // 2. If we have fullUrl from the document object
+    if (document?.fullUrl && document.fullUrl.includes('supabase')) {
+      console.log('Using fullUrl:', document.fullUrl);
       return document.fullUrl;
     }
 
-    // If it's already a full URL
-    if (document.path?.startsWith('http')) {
+    // 3. If path is already a full URL
+    if (document?.path?.startsWith('http')) {
+      console.log('Path is already a URL:', document.path);
       return document.path;
     }
 
-    // If we have bucket and path, construct the public URL
-    if (document.bucket && document.path) {
+    // 4. Construct URL from bucket and path
+    if (document?.bucket && document?.path) {
+      console.log('Constructing URL - bucket:', document.bucket, 'path:', document.path);
+      
+      // Try with the provided bucket
       const { data } = supabase.storage
         .from(document.bucket)
         .getPublicUrl(document.path);
       
       if (data?.publicUrl) {
+        console.log('Generated public URL:', data.publicUrl);
         return data.publicUrl;
       }
     }
 
+    // 5. Fallback: try 'documents' bucket
+    if (document?.path) {
+      console.log('Fallback: trying documents bucket');
+      const { data } = supabase.storage
+        .from('documents')
+        .getPublicUrl(document.path);
+      
+      if (data?.publicUrl) {
+        console.log('Fallback URL:', data.publicUrl);
+        return data.publicUrl;
+      }
+    }
+
+    console.error('Could not generate URL for document');
     return null;
   };
-
-  const loadDocument = async () => {
+const loadDocument = async () => {
     setLoading(true);
     setError(null);
     
     try {
-      console.log('Loading document details:', {
-        name: document.name,
-        bucket: document.bucket,
-        path: document.path,
-        hasFullUrl: !!document.fullUrl
-      });
-
       const url = getDocumentUrl();
       
       if (!url) {
-        throw new Error('Could not generate document URL');
+        throw new Error('Could not generate document URL. Bucket: ' + (document?.bucket || 'unknown') + ', Path: ' + (document?.path || 'unknown'));
       }
 
-      console.log('Using URL:', url);
+      console.log('Final URL to load:', url);
       
-      // Test if the URL is accessible
-      try {
-        const response = await fetch(url, { method: 'HEAD' });
-        if (!response.ok) {
-          throw new Error(`Document not accessible (${response.status})`);
-        }
-      } catch (fetchError) {
-        console.warn('URL test failed, but will try to load anyway:', fetchError);
-      }
-
+      // Don't test with HEAD - just use the URL directly
       setViewerUrl(url);
       
     } catch (err) {
@@ -113,7 +124,6 @@ const DocumentViewerDialog = ({
       setLoading(false);
     }
   };
-
   const handleClose = () => {
     if (viewerUrl && !viewerUrl.startsWith('http')) {
       URL.revokeObjectURL(viewerUrl);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import {
   Box,
@@ -23,7 +23,16 @@ import {
   Snackbar,
   CircularProgress,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
+  Drawer,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  ListItemButton,
+  Divider,
+  AppBar,
+  Toolbar
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -34,10 +43,19 @@ import {
   Visibility as VisibilityIcon,
   Warning as WarningIcon,
   Business as BusinessIcon,
-  Receipt as ReceiptIcon
+  Receipt as ReceiptIcon,
+  Dashboard as DashboardIcon,
+  Description as DescriptionIcon,
+  AttachMoney as AttachMoneyIcon,
+  Assessment as AssessmentIcon,
+  Notifications as NotificationsIcon,
+  Settings as SettingsIcon,
+  Logout as LogoutIcon,
+  Menu as MenuIcon,
+  AdminPanelSettings as AdminPanelSettingsIcon,
+  Security as SecurityIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import AdminSidebar from './AdminSidebar';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -62,6 +80,8 @@ ChartJS.register(
   ArcElement
 );
 
+const drawerWidth = 260;
+
 const StyledCard = styled(Card)(({ theme }) => ({
   height: '100%',
   borderRadius: '12px',
@@ -73,7 +93,6 @@ const StyledCard = styled(Card)(({ theme }) => ({
   }
 }));
 
-// Responsive StatCard component
 const StatCard = ({ title, value, icon, color }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -126,7 +145,7 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [adminData, setAdminData] = useState(null);
   const [stats, setStats] = useState({
@@ -183,6 +202,9 @@ const AdminDashboard = () => {
       }
 
       setAdminData(data);
+      // Store admin data
+      sessionStorage.setItem('adminData', JSON.stringify(data));
+      sessionStorage.setItem('adminRole', data.admin_type);
     } catch (error) {
       console.error('Error checking admin:', error);
       navigate('/admin/login');
@@ -197,38 +219,32 @@ const AdminDashboard = () => {
 
   const fetchStats = async () => {
     try {
-      // Fetch all organizations
       const { data: allOrgs, error: orgsError } = await supabase
         .from('organizations')
         .select('*');
       
       if (orgsError) throw orgsError;
       
-      // Calculate org stats with case-insensitive status
       const totalOrgs = allOrgs?.length || 0;
       const pendingOrgs = allOrgs?.filter(o => o.status?.toLowerCase() === 'pending').length || 0;
       const approvedOrgs = allOrgs?.filter(o => o.status?.toLowerCase() === 'approved').length || 0;
       const rejectedOrgs = allOrgs?.filter(o => o.status?.toLowerCase() === 'rejected').length || 0;
 
-      // Fetch all payments
       const { data: allPayments, error: paymentsError } = await supabase
         .from('payments')
         .select('*');
       
       if (paymentsError) throw paymentsError;
       
-      // Calculate payment stats with case-insensitive status
       const totalPayments = allPayments?.length || 0;
       const pendingPayments = allPayments?.filter(p => p.status?.toLowerCase() === 'pending').length || 0;
       const approvedPayments = allPayments?.filter(p => p.status?.toLowerCase() === 'approved').length || 0;
       const rejectedPayments = allPayments?.filter(p => p.status?.toLowerCase() === 'rejected').length || 0;
       
-      // Calculate total revenue from approved payments
       const totalRevenue = allPayments
         ?.filter(p => p.status?.toLowerCase() === 'approved')
         .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) || 0;
 
-      // Fetch monthly registrations (last 6 months)
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
@@ -238,7 +254,6 @@ const AdminDashboard = () => {
         .gte('created_at', sixMonthsAgo.toISOString())
         .order('created_at');
 
-      // Group by month
       const monthlyData = {};
       registrations?.forEach(reg => {
         const date = new Date(reg.created_at);
@@ -308,6 +323,14 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    sessionStorage.removeItem('adminData');
+    sessionStorage.removeItem('adminRole');
+    sessionStorage.removeItem('adminPermissions');
+    navigate('/admin/login');
+  };
+
   const getStatusChip = (status) => {
     const normalizedStatus = status?.toLowerCase() || 'pending';
     
@@ -325,12 +348,11 @@ const AdminDashboard = () => {
         label={statusConfig.label}
         size="small"
         color={statusConfig.color}
-        sx={{ fontFamily: '"Inter", sans-serif', height: isMobile ? '20px' : '24px', fontSize: isMobile ? '0.65rem' : '0.75rem' }}
+        sx={{ fontFamily: '"Inter", sans-serif', height: '24px', fontSize: '0.75rem' }}
       />
     );
   };
 
-  // Responsive chart options
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -338,79 +360,161 @@ const AdminDashboard = () => {
       legend: {
         position: 'bottom',
         labels: {
-          font: {
-            family: '"Inter", sans-serif',
-            size: isMobile ? 8 : 10
-          },
-          boxWidth: isMobile ? 8 : 10,
-          padding: isMobile ? 4 : 8
+          font: { family: '"Inter", sans-serif', size: 10 },
+          boxWidth: 10,
+          padding: 8
         }
-      },
-      tooltip: {
-        enabled: true,
-        titleFont: { size: isMobile ? 10 : 12 },
-        bodyFont: { size: isMobile ? 9 : 11 }
       }
     },
     scales: {
       y: {
         beginAtZero: true,
-        grid: {
-          color: 'rgba(0, 0, 0, 0.05)'
-        },
-        ticks: {
-          font: {
-            size: isMobile ? 8 : 9
-          },
-          stepSize: isMobile ? 1 : undefined
-        }
+        grid: { color: 'rgba(0, 0, 0, 0.05)' },
+        ticks: { font: { size: 9 } }
       },
       x: {
-        grid: {
-          display: false
-        },
-        ticks: {
-          font: {
-            size: isMobile ? 8 : 9
-          },
-          maxRotation: isMobile ? 45 : 0,
-          minRotation: isMobile ? 45 : 0
-        }
+        grid: { display: false },
+        ticks: { font: { size: 9 } }
       }
     }
   };
 
   const chartData = {
     labels: stats.monthlyRegistrations.map(d => d.month),
-    datasets: [
-      {
-        label: 'Registrations',
-        data: stats.monthlyRegistrations.map(d => d.count),
-        borderColor: '#15e420',
-        backgroundColor: 'rgba(21, 228, 32, 0.1)',
-        tension: 0.4,
-        fill: true,
-        pointRadius: isMobile ? 2 : 3,
-        pointHoverRadius: isMobile ? 4 : 5
-      }
-    ]
+    datasets: [{
+      label: 'Registrations',
+      data: stats.monthlyRegistrations.map(d => d.count),
+      borderColor: '#15e420',
+      backgroundColor: 'rgba(21, 228, 32, 0.1)',
+      tension: 0.4,
+      fill: true,
+      pointRadius: 3,
+      pointHoverRadius: 5
+    }]
   };
 
   const doughnutData = {
     labels: ['Pending', 'Approved', 'Rejected'],
-    datasets: [
-      {
-        data: [
-          stats.pendingOrganizations,
-          stats.approvedOrganizations,
-          stats.rejectedOrganizations
-        ],
-        backgroundColor: ['#ffc107', '#15e420', '#dc3545'],
-        borderWidth: 0,
-        hoverOffset: 4
-      }
-    ]
+    datasets: [{
+      data: [
+        stats.pendingOrganizations,
+        stats.approvedOrganizations,
+        stats.rejectedOrganizations
+      ],
+      backgroundColor: ['#ffc107', '#15e420', '#dc3545'],
+      borderWidth: 0,
+      hoverOffset: 4
+    }]
   };
+
+  // Sidebar content
+  const sidebarContent = (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ p: 2, textAlign: 'center' }}>
+        <img src="/static/logo.png" alt="KACCIMA" style={{ width: '60px', height: '60px', marginBottom: '8px' }} />
+        <Typography variant="subtitle1" sx={{ fontFamily: '"Poppins", sans-serif', fontWeight: 600, color: '#15e420' }}>
+          Admin Panel
+        </Typography>
+        {adminData && (
+          <Chip
+            label={adminData.admin_type?.replace('_', ' ')}
+            size="small"
+            sx={{ 
+              mt: 1, 
+              backgroundColor: adminData.admin_type === 'super_admin' ? '#dc3545' : 
+                              adminData.admin_type === 'approver' ? '#667eea' : '#f093fb',
+              color: 'white',
+              textTransform: 'capitalize'
+            }}
+          />
+        )}
+      </Box>
+      
+      <Divider />
+      
+      <List sx={{ flex: 1, px: 1 }}>
+        <ListItemButton 
+          onClick={() => { navigate('/admin/dashboard'); setMobileOpen(false); }}
+          selected={window.location.pathname === '/admin/dashboard'}
+          sx={{ borderRadius: '8px', mb: 0.5 }}
+        >
+          <ListItemIcon><DashboardIcon sx={{ color: '#15e420' }} /></ListItemIcon>
+          <ListItemText primary="Dashboard" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+        </ListItemButton>
+
+        <ListItemButton 
+          onClick={() => { navigate('/admin/organizations'); setMobileOpen(false); }}
+          selected={window.location.pathname.includes('/admin/organizations')}
+          sx={{ borderRadius: '8px', mb: 0.5 }}
+        >
+          <ListItemIcon><BusinessIcon sx={{ color: '#15e420' }} /></ListItemIcon>
+          <ListItemText primary="Organizations" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+        </ListItemButton>
+
+        <ListItemButton 
+          onClick={() => { navigate('/admin/payments'); setMobileOpen(false); }}
+          selected={window.location.pathname.includes('/admin/payments')}buck
+          sx={{ borderRadius: '8px', mb: 0.5 }}
+        >
+          <ListItemIcon><AttachMoneyIcon sx={{ color: '#15e420' }} /></ListItemIcon>
+          <ListItemText primary="Payments" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+        </ListItemButton>
+
+        <ListItemButton 
+          onClick={() => { navigate('/admin/documents'); setMobileOpen(false); }}
+          selected={window.location.pathname === '/admin/documents'}
+          sx={{ borderRadius: '8px', mb: 0.5 }}
+        >
+          <ListItemIcon><DescriptionIcon sx={{ color: '#15e420' }} /></ListItemIcon>
+          <ListItemText primary="Documents" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+        </ListItemButton>
+
+        <ListItemButton 
+          onClick={() => { navigate('/admin/reports'); setMobileOpen(false); }}
+          selected={window.location.pathname === '/admin/reports'}
+          sx={{ borderRadius: '8px', mb: 0.5 }}
+        >
+          <ListItemIcon><AssessmentIcon sx={{ color: '#15e420' }} /></ListItemIcon>
+          <ListItemText primary="Reports" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+        </ListItemButton>
+
+        <ListItemButton 
+          onClick={() => { navigate('/admin/notifications'); setMobileOpen(false); }}
+          selected={window.location.pathname === '/admin/notifications'}
+          sx={{ borderRadius: '8px', mb: 0.5 }}
+        >
+          <ListItemIcon><NotificationsIcon sx={{ color: '#15e420' }} /></ListItemIcon>
+          <ListItemText primary="Notifications" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+        </ListItemButton>
+
+ 
+
+        <ListItemButton 
+          onClick={() => { navigate('/admin/settings'); setMobileOpen(false); }}
+          selected={window.location.pathname === '/admin/settings'}
+          sx={{ borderRadius: '8px', mb: 0.5 }}
+        >
+          <ListItemIcon><SettingsIcon sx={{ color: '#15e420' }} /></ListItemIcon>
+          <ListItemText primary="Settings" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+        </ListItemButton>
+      </List>
+
+      <Divider />
+      
+      <Box sx={{ p: 2 }}>
+        <Button
+          fullWidth
+          variant="outlined"
+          color="error"
+          startIcon={<LogoutIcon />}
+          onClick={handleLogout}
+          sx={{ textTransform: 'none' }}
+        >
+          Logout
+        </Button>
+      </Box>
+    </Box>
+  );
 
   if (loading) {
     return (
@@ -433,31 +537,58 @@ const AdminDashboard = () => {
         </Alert>
       </Snackbar>
 
-      <Container maxWidth="xl" sx={{ py: isMobile ? 1 : 3, px: isMobile ? 1 : 2 }}>
-        <Box sx={{ 
-          display: 'flex', 
-          flexDirection: isMobile ? 'column' : 'row',
-          gap: isMobile ? 1 : 2 
-        }}>
-          <AdminSidebar />
-          
-          <Box sx={{ 
-            flex: 1, 
-            bgcolor: '#f8f9fa', 
-            p: isMobile ? 1.5 : 2.5, 
-            borderRadius: '12px',
-            minWidth: 0 // Prevent overflow
-          }}>
+      <Box sx={{ display: 'flex' }}>
+        {/* Mobile drawer */}
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            display: { xs: 'block', md: 'none' },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth }
+          }}
+        >
+          {sidebarContent}
+        </Drawer>
+
+        {/* Desktop drawer */}
+        <Drawer
+          variant="permanent"
+          sx={{
+            display: { xs: 'none', md: 'block' },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth }
+          }}
+          open
+        >
+          {sidebarContent}
+        </Drawer>
+
+        {/* Main content */}
+        <Box sx={{ flex: 1, bgcolor: '#f8f9fa', minHeight: '100vh' }}>
+          {/* Top bar for mobile */}
+          <AppBar position="sticky" sx={{ display: { xs: 'block', md: 'none' }, bgcolor: 'white', boxShadow: 1 }}>
+            <Toolbar>
+              <IconButton onClick={() => setMobileOpen(true)}>
+                <MenuIcon />
+              </IconButton>
+              <Typography variant="h6" sx={{ flex: 1, color: '#333', fontFamily: '"Poppins", sans-serif' }}>
+                Admin Dashboard
+              </Typography>
+            </Toolbar>
+          </AppBar>
+
+          <Container maxWidth="xl" sx={{ py: 3, px: { xs: 1, sm: 2, md: 3 } }}>
             {/* Header */}
-            <Box sx={{ mb: isMobile ? 2 : 3 }}>
+            <Box sx={{ mb: 3 }}>
               <Typography 
-                variant={isMobile ? "h6" : "h5"} 
+                variant="h5" 
                 sx={{ 
                   fontFamily: '"Poppins", sans-serif',
                   fontWeight: 600,
                   color: '#333',
                   mb: 0.5,
-                  fontSize: isMobile ? '1.1rem' : undefined
+                  fontSize: { xs: '1.1rem', sm: '1.5rem' }
                 }}
               >
                 Welcome back, {adminData?.full_name}!
@@ -467,15 +598,15 @@ const AdminDashboard = () => {
                 sx={{ 
                   fontFamily: '"Inter", sans-serif',
                   color: '#666',
-                  fontSize: isMobile ? '0.75rem' : '0.875rem'
+                  fontSize: { xs: '0.75rem', sm: '0.875rem' }
                 }}
               >
                 Here's what's happening with your platform today.
               </Typography>
             </Box>
 
-            {/* Stats Cards - Responsive grid */}
-            <Grid container spacing={isMobile ? 1 : 2} sx={{ mb: isMobile ? 1 : 3 }}>
+            {/* Stats Cards */}
+            <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: { xs: 1, sm: 3 } }}>
               <Grid item xs={6} sm={6} md={3}>
                 <StatCard
                   title="Total Organizations"
@@ -510,8 +641,8 @@ const AdminDashboard = () => {
               </Grid>
             </Grid>
 
-            {/* Second Row of Stats - Payments */}
-            <Grid container spacing={isMobile ? 1 : 2} sx={{ mb: isMobile ? 1 : 3 }}>
+            {/* Payment Stats */}
+            <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: { xs: 1, sm: 3 } }}>
               <Grid item xs={6} sm={6} md={3}>
                 <StatCard
                   title="Total Payments"
@@ -546,27 +677,27 @@ const AdminDashboard = () => {
               </Grid>
             </Grid>
 
-            {/* Charts - Responsive layout */}
-            <Grid container spacing={isMobile ? 1 : 2} sx={{ mb: isMobile ? 1 : 3 }}>
+            {/* Charts */}
+            <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: { xs: 1, sm: 3 } }}>
               <Grid item xs={12} md={8}>
-                <Paper sx={{ p: isMobile ? 1.5 : 2, borderRadius: '12px', bgcolor: 'white' }}>
+                <Paper sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: '12px', bgcolor: 'white' }}>
                   <Typography 
-                    variant={isMobile ? "body2" : "subtitle1"} 
+                    variant="subtitle1" 
                     sx={{ 
                       fontFamily: '"Poppins", sans-serif',
                       fontWeight: 600,
-                      mb: isMobile ? 1 : 2,
-                      fontSize: isMobile ? '0.9rem' : '1rem'
+                      mb: { xs: 1, sm: 2 },
+                      fontSize: { xs: '0.9rem', sm: '1rem' }
                     }}
                   >
                     Registration Trends (Last 6 Months)
                   </Typography>
-                  <Box sx={{ height: isMobile ? 180 : 220 }}>
+                  <Box sx={{ height: { xs: 180, sm: 220 } }}>
                     {stats.monthlyRegistrations.length > 0 ? (
                       <Line data={chartData} options={chartOptions} />
                     ) : (
                       <Box display="flex" justifyContent="center" alignItems="center" height="100%">
-                        <Typography variant="body2" color="textSecondary" sx={{ fontSize: isMobile ? '0.75rem' : '0.875rem' }}>
+                        <Typography variant="body2" color="textSecondary">
                           No registration data available
                         </Typography>
                       </Box>
@@ -576,29 +707,29 @@ const AdminDashboard = () => {
               </Grid>
               <Grid item xs={12} md={4}>
                 <Paper sx={{ 
-                  p: isMobile ? 1.5 : 2, 
+                  p: { xs: 1.5, sm: 2 }, 
                   borderRadius: '12px', 
                   height: '100%', 
                   bgcolor: 'white',
-                  minHeight: isMobile ? 200 : 'auto'
+                  minHeight: { xs: 200, md: 'auto' }
                 }}>
                   <Typography 
-                    variant={isMobile ? "body2" : "subtitle1"} 
+                    variant="subtitle1" 
                     sx={{ 
                       fontFamily: '"Poppins", sans-serif',
                       fontWeight: 600,
-                      mb: isMobile ? 1 : 2,
-                      fontSize: isMobile ? '0.9rem' : '1rem'
+                      mb: { xs: 1, sm: 2 },
+                      fontSize: { xs: '0.9rem', sm: '1rem' }
                     }}
                   >
                     Organization Status
                   </Typography>
-                  <Box sx={{ height: isMobile ? 140 : 180 }}>
+                  <Box sx={{ height: { xs: 140, sm: 180 } }}>
                     {stats.totalOrganizations > 0 ? (
                       <Doughnut data={doughnutData} options={chartOptions} />
                     ) : (
                       <Box display="flex" justifyContent="center" alignItems="center" height="100%">
-                        <Typography variant="body2" color="textSecondary" sx={{ fontSize: isMobile ? '0.75rem' : '0.875rem' }}>
+                        <Typography variant="body2" color="textSecondary">
                           No data available
                         </Typography>
                       </Box>
@@ -608,22 +739,22 @@ const AdminDashboard = () => {
               </Grid>
             </Grid>
 
-            {/* Recent Activities - Responsive table */}
-            <Paper sx={{ p: isMobile ? 1.5 : 2, borderRadius: '12px', bgcolor: 'white', overflow: 'hidden' }}>
+            {/* Recent Activities */}
+            <Paper sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: '12px', bgcolor: 'white', overflow: 'hidden' }}>
               <Box sx={{ 
                 display: 'flex', 
-                flexDirection: isMobile ? 'column' : 'row',
+                flexDirection: { xs: 'column', sm: 'row' },
                 justifyContent: 'space-between', 
-                alignItems: isMobile ? 'flex-start' : 'center', 
+                alignItems: { xs: 'flex-start', sm: 'center' }, 
                 mb: 2,
-                gap: isMobile ? 1 : 0
+                gap: { xs: 1, sm: 0 }
               }}>
                 <Typography 
-                  variant={isMobile ? "body2" : "subtitle1"} 
+                  variant="subtitle1" 
                   sx={{ 
                     fontFamily: '"Poppins", sans-serif',
                     fontWeight: 600,
-                    fontSize: isMobile ? '0.9rem' : '1rem'
+                    fontSize: { xs: '0.9rem', sm: '1rem' }
                   }}
                 >
                   Recent Registrations
@@ -635,10 +766,10 @@ const AdminDashboard = () => {
                   sx={{
                     borderColor: '#15e420',
                     color: '#15e420',
-                    fontSize: isMobile ? '0.7rem' : '0.75rem',
+                    fontSize: '0.75rem',
                     py: 0.5,
                     px: 1.5,
-                    alignSelf: isMobile ? 'flex-end' : 'auto',
+                    alignSelf: { xs: 'flex-end', sm: 'auto' },
                     '&:hover': {
                       borderColor: '#12c21e',
                       backgroundColor: '#e8f5e9'
@@ -650,53 +781,22 @@ const AdminDashboard = () => {
               </Box>
 
               <TableContainer sx={{ overflowX: 'auto' }}>
-                <Table size={isMobile ? "small" : "small"}>
+                <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ 
-                        fontFamily: '"Inter", sans-serif', 
-                        fontWeight: 600, 
-                        fontSize: isMobile ? '0.7rem' : '0.8rem', 
-                        py: 1,
-                        px: isMobile ? 0.5 : 1
-                      }}>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>
                         Company
                       </TableCell>
-                      {!isMobile && (
-                        <TableCell sx={{ 
-                          fontFamily: '"Inter", sans-serif', 
-                          fontWeight: 600, 
-                          fontSize: isMobile ? '0.7rem' : '0.8rem', 
-                          py: 1 
-                        }}>
-                          Date
-                        </TableCell>
-                      )}
-                      <TableCell sx={{ 
-                        fontFamily: '"Inter", sans-serif', 
-                        fontWeight: 600, 
-                        fontSize: isMobile ? '0.7rem' : '0.8rem', 
-                        py: 1,
-                        px: isMobile ? 0.5 : 1
-                      }}>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1, display: { xs: 'none', sm: 'table-cell' } }}>
+                        Date
+                      </TableCell>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>
                         Status
                       </TableCell>
-                      <TableCell sx={{ 
-                        fontFamily: '"Inter", sans-serif', 
-                        fontWeight: 600, 
-                        fontSize: isMobile ? '0.7rem' : '0.8rem', 
-                        py: 1,
-                        px: isMobile ? 0.5 : 1
-                      }}>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>
                         Payment
                       </TableCell>
-                      <TableCell sx={{ 
-                        fontFamily: '"Inter", sans-serif', 
-                        fontWeight: 600, 
-                        fontSize: isMobile ? '0.7rem' : '0.8rem', 
-                        py: 1,
-                        px: isMobile ? 0.5 : 1
-                      }}>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>
                         Actions
                       </TableCell>
                     </TableRow>
@@ -707,42 +807,34 @@ const AdminDashboard = () => {
                         <TableRow key={activity.id} hover>
                           <TableCell sx={{ 
                             fontFamily: '"Inter", sans-serif', 
-                            fontSize: isMobile ? '0.7rem' : '0.8rem', 
+                            fontSize: '0.8rem', 
                             py: 1,
-                            px: isMobile ? 0.5 : 1,
-                            maxWidth: isMobile ? 100 : 'none',
+                            maxWidth: { xs: 100, sm: 'none' },
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap'
                           }}>
                             {activity.company}
                           </TableCell>
-                          {!isMobile && (
-                            <TableCell sx={{ 
-                              fontFamily: '"Inter", sans-serif', 
-                              fontSize: '0.8rem', 
-                              py: 1 
-                            }}>
-                              {new Date(activity.date).toLocaleDateString()}
-                            </TableCell>
-                          )}
-                          <TableCell sx={{ py: 1, px: isMobile ? 0.5 : 1 }}>
+                          <TableCell sx={{ 
+                            fontFamily: '"Inter", sans-serif', 
+                            fontSize: '0.8rem', 
+                            py: 1,
+                            display: { xs: 'none', sm: 'table-cell' }
+                          }}>
+                            {new Date(activity.date).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell sx={{ py: 1 }}>
                             {getStatusChip(activity.status)}
                           </TableCell>
-                          <TableCell sx={{ py: 1, px: isMobile ? 0.5 : 1 }}>
+                          <TableCell sx={{ py: 1 }}>
                             {activity.hasPayment ? (
                               <Chip
                                 icon={<CheckCircleIcon />}
                                 label={activity.paymentStatus === 'approved' ? 'Paid' : 'Pending'}
                                 size="small"
                                 color={activity.paymentStatus === 'approved' ? 'success' : 'warning'}
-                                sx={{ 
-                                  height: isMobile ? '20px' : '24px', 
-                                  fontSize: isMobile ? '0.6rem' : '0.7rem',
-                                  '& .MuiChip-icon': {
-                                    fontSize: isMobile ? '0.7rem' : '0.9rem'
-                                  }
-                                }}
+                                sx={{ height: '24px', fontSize: '0.7rem' }}
                               />
                             ) : (
                               <Chip
@@ -750,31 +842,25 @@ const AdminDashboard = () => {
                                 label="No Payment"
                                 size="small"
                                 color="default"
-                                sx={{ 
-                                  height: isMobile ? '20px' : '24px', 
-                                  fontSize: isMobile ? '0.6rem' : '0.7rem',
-                                  '& .MuiChip-icon': {
-                                    fontSize: isMobile ? '0.7rem' : '0.9rem'
-                                  }
-                                }}
+                                sx={{ height: '24px', fontSize: '0.7rem' }}
                               />
                             )}
                           </TableCell>
-                          <TableCell sx={{ py: 1, px: isMobile ? 0.5 : 1 }}>
+                          <TableCell sx={{ py: 1 }}>
                             <IconButton
                               size="small"
                               onClick={() => navigate(`/admin/organizations/${activity.id}`)}
                               sx={{ color: '#15e420', p: 0.5 }}
                             >
-                              <VisibilityIcon fontSize={isMobile ? "small" : "small"} />
+                              <VisibilityIcon fontSize="small" />
                             </IconButton>
                           </TableCell>
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={isMobile ? 4 : 5} align="center" sx={{ py: 3 }}>
-                          <Typography variant="body2" sx={{ color: '#666', fontSize: isMobile ? '0.75rem' : '0.875rem' }}>
+                        <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                          <Typography variant="body2" sx={{ color: '#666' }}>
                             No recent activities found
                           </Typography>
                         </TableCell>
@@ -784,9 +870,9 @@ const AdminDashboard = () => {
                 </Table>
               </TableContainer>
             </Paper>
-          </Box>
+          </Container>
         </Box>
-      </Container>
+      </Box>
     </>
   );
 };

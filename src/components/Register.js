@@ -97,7 +97,7 @@ const Register = () => {
     try {
       // Get the current site URL (works in both development and production)
       const siteUrl = process.env.NODE_ENV === 'production' 
-        ? 'https://kaccimapro.vercel.app' 
+        ? 'http://localhost:3000' 
         : window.location.origin;
 
       const { data, error } = await supabase.auth.signUp({
