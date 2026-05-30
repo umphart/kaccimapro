@@ -49,87 +49,52 @@ export const useDocumentManagement = (organizationId, showAlert) => {
   };
 
   // Handle view document - FIXED
-  const handleViewDocument = async (doc) => {
+// In useDocumentManagement.js, update handleViewDocument:
+
+const handleViewDocument = async (doc) => {
     try {
-      console.log('handleViewDocument called with:', doc);
+      // All documents are now in the public 'documents' bucket
+      const bucket = 'documents';
+      const path = doc.path;
       
-      // Determine the bucket
-      // All documents are in 'documents' bucket except company logos which might be in 'logos'
-      let bucket = 'documents';
-      let path = doc.path;
+      console.log('Getting public URL for:', { bucket, path });
       
-      // Clean the path if it contains bucket name
-      if (path && path.includes('/')) {
-        // Path format: bucket/path or userId/folder/filename
-        // Just use as-is with documents bucket
-      }
+      const { data } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(path);
       
-      console.log('Using bucket:', bucket, 'path:', path);
-      
-      // For private buckets, create a signed URL (valid for 1 hour)
-      if (bucket === 'documents' || bucket === 'receipts') {
-        const { data, error } = await supabase.storage
-          .from(bucket)
-          .createSignedUrl(path, 3600); // 1 hour expiry
-          
-        if (error) {
-          console.error('Error creating signed URL:', error);
-          throw error;
-        }
-        
-        console.log('Signed URL created:', data.signedUrl);
-        setDocumentUrl(data.signedUrl);
-      } else {
-        // For public buckets like 'logos', use getPublicUrl
-        const { data } = supabase.storage
-          .from(bucket)
-          .getPublicUrl(path);
-          
-        console.log('Public URL:', data.publicUrl);
-        setDocumentUrl(data.publicUrl);
-      }
+      console.log('Public URL:', data.publicUrl);
       
       setViewDocument(doc);
+      setDocumentUrl(data.publicUrl);
     } catch (error) {
       console.error('Error getting document URL:', error);
-      showAlert('error', 'Could not load document: ' + error.message);
+      showAlert('error', 'Could not load document');
     }
   };
 
-  // Handle download document - FIXED
   const handleDownloadDocument = async (doc) => {
     try {
-      console.log('handleDownloadDocument called with:', doc);
-      
-      let bucket = 'documents';
-      let path = doc.path;
-      
-      console.log('Downloading from bucket:', bucket, 'path:', path);
+      const bucket = 'documents';
+      const path = doc.path;
       
       const { data, error } = await supabase.storage
         .from(bucket)
         .download(path);
 
-      if (error) {
-        console.error('Download error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      // Create download link
-      const blob = new Blob([data]);
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${doc.name}.${doc.path.split('.').pop()}`;
+      a.download = `${doc.name}.${path.split('.').pop()}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
-      console.log('Download successful');
     } catch (error) {
       console.error('Error downloading document:', error);
-      showAlert('error', 'Failed to download document: ' + error.message);
+      showAlert('error', 'Failed to download document');
     }
   };
 

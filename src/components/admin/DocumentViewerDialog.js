@@ -44,6 +44,8 @@ const DocumentViewerDialog = ({
     };
   }, [open, document]);
 
+
+
 const getDocumentUrl = () => {
     console.log('Getting URL for document:', {
       name: document?.name,
@@ -70,30 +72,16 @@ const getDocumentUrl = () => {
       return document.path;
     }
 
-    // 4. Construct URL from bucket and path
-    if (document?.bucket && document?.path) {
-      console.log('Constructing URL - bucket:', document.bucket, 'path:', document.path);
-      
-      // Try with the provided bucket
-      const { data } = supabase.storage
-        .from(document.bucket)
-        .getPublicUrl(document.path);
-      
-      if (data?.publicUrl) {
-        console.log('Generated public URL:', data.publicUrl);
-        return data.publicUrl;
-      }
-    }
-
-    // 5. Fallback: try 'documents' bucket
+    // 4. Construct public URL from 'documents' bucket
     if (document?.path) {
-      console.log('Fallback: trying documents bucket');
+      console.log('Constructing public URL for documents bucket, path:', document.path);
+      
       const { data } = supabase.storage
         .from('documents')
         .getPublicUrl(document.path);
       
       if (data?.publicUrl) {
-        console.log('Fallback URL:', data.publicUrl);
+        console.log('Generated public URL:', data.publicUrl);
         return data.publicUrl;
       }
     }

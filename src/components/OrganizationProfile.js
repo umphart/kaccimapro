@@ -575,7 +575,9 @@ const OrganizationProfile = () => {
     }
   };
 
-  const getDocumentUrl = (path) => {
+// In OrganizationProfile.js, update getDocumentUrl:
+
+const getDocumentUrl = (path) => {
     if (!path) return null;
     
     // If it's already a full URL, use it directly
@@ -583,11 +585,10 @@ const OrganizationProfile = () => {
       return path;
     }
     
-    // Otherwise, construct the public URL
+    // Construct public URL from documents bucket (now public)
     try {
-      const bucket = path.includes('companyLogo') ? 'logos' : 'documents';
       const { data } = supabase.storage
-        .from(bucket)
+        .from('documents')
         .getPublicUrl(path);
       
       return data?.publicUrl || null;
@@ -596,7 +597,6 @@ const OrganizationProfile = () => {
       return null;
     }
   };
-
   const getDocumentsList = (orgData) => {
     return [
       { key: 'cover_letter_path', name: 'Covering Letter', icon: 'description' },
