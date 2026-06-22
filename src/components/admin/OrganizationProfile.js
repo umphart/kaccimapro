@@ -6,21 +6,18 @@ import {
   Container,
   Paper,
   Typography,
-  Grid,
-  Chip,
-  Button,
-  IconButton,
-  Avatar,
+  CircularProgress,
   Alert,
   Snackbar,
-  CircularProgress,
-  Tooltip,
-  Divider,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
+  Button,
+  Grid,
+  Chip,
   Card,
   CardContent,
+  Avatar,
+  Divider,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -37,10 +34,6 @@ import {
   CheckCircle as CheckCircleIcon,
   Pending as PendingIcon,
   Cancel as CancelIcon,
-  ExpandMore as ExpandMoreIcon,
-  People as PeopleIcon,
-  ContactMail as ContactMailIcon,
-  Warning as WarningIcon,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminSidebar from './AdminSidebar';
@@ -101,7 +94,7 @@ const DocumentCard = styled(Paper)(({ theme }) => ({
   }
 }));
 
-const AdminOrganizationDetail = () => {
+const OrganizationProfile = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -497,7 +490,7 @@ const AdminOrganizationDetail = () => {
               <Grid item xs={12} md={6}>
                 <Paper sx={{ p: 3, borderRadius: '12px' }}>
                   <Typography variant="h6" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                    <PeopleIcon sx={{ color: '#15e420' }} /> Staff Information
+                    <PersonIcon sx={{ color: '#15e420' }} /> Staff Information
                   </Typography>
                   <Grid container spacing={2}>
                     <Grid item xs={6}>
@@ -579,7 +572,7 @@ const AdminOrganizationDetail = () => {
                         return (
                           <DocumentCard key={field.key}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                              {doc ? getDocumentIcon(field.key) : <WarningIcon sx={{ color: '#ff9800' }} />}
+                              {doc ? getDocumentIcon(field.key) : null}
                               <Box>
                                 <Typography variant="body2" sx={{ fontWeight: 500 }}>
                                   {field.name}
@@ -640,4 +633,4 @@ const AdminOrganizationDetail = () => {
   );
 };
 
-export default AdminOrganizationDetail;
+export default OrganizationProfile;

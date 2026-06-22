@@ -84,57 +84,31 @@ export const documentStatusIcons = {
   reuploaded: { icon: RefreshIcon, color: 'info' }
 };
 
-export const tableColumns = {
-  all: ['Company', 'Email', 'Phone', 'CAC', 'Status', 'Documents', 'Payment', 'Actions'],
-  pending: ['Company', 'Email', 'Phone', 'CAC', 'Documents', 'Status', 'Actions'],
-  approved: ['Company', 'Email', 'Phone', 'CAC', 'Status', 'Actions'],
-  rejected: ['Company', 'Email', 'Phone', 'CAC', 'Status', 'Actions']
-};
-
 // Helper function to get document status from organization_documents
 export const getDocumentStatus = (documents, docKey) => {
   if (!documents || !Array.isArray(documents)) return 'missing';
   const doc = documents.find(d => d.document_type === docKey);
   if (!doc) return 'missing';
-  // Check if document exists - since there's no is_verified column, 
-  // consider any uploaded document as 'pending' until verified
-  return 'pending';
-};
-
-// Helper function to check if all required documents are approved
-export const areAllRequiredDocumentsApproved = (documents) => {
-  if (!documents || !Array.isArray(documents)) return false;
-  const requiredKeys = documentFields.filter(f => f.required).map(f => f.key);
-  return requiredKeys.every(key => {
-    const doc = documents.find(d => d.document_type === key);
-    return doc && doc.status === 'approved';
-  });
+  return doc.status === 'approved' ? 'approved' : 'pending';
 };
 
 // Helper to get document summary - ONLY counts required documents
 export const getDocumentSummary = (documents) => {
-  // Initialize with all required documents as missing
   const summary = { approved: 0, pending: 0, missing: 0, total: 0 };
   
-  // If no documents, all required documents are missing
   if (!documents || !Array.isArray(documents) || documents.length === 0) {
     summary.missing = requiredDocumentKeys.length;
     summary.total = requiredDocumentKeys.length;
     return summary;
   }
   
-  // Check each required document type
   requiredDocumentKeys.forEach(key => {
     const doc = documents.find(d => d.document_type === key);
     if (doc) {
-      // Document exists - check its status
       if (doc.status === 'approved') {
         summary.approved++;
-      } else if (doc.status === 'rejected') {
-        // Rejected documents still count as uploaded but not approved
-        summary.pending++;
       } else {
-        summary.pending++; // pending or any other status
+        summary.pending++;
       }
     } else {
       summary.missing++;

@@ -89,11 +89,20 @@ function App() {
 } />
 
           
-          <Route path="/admin/organizations/:id" element={
-            <AdminRoute>
-              <AdminOrganizationDetail />
-            </AdminRoute>
-          } />
+
+{/* Admin routes - use admin components */}
+<Route path="/admin/organizations/:id" element={
+  <AdminRoute>
+    <AdminOrganizationDetail />
+  </AdminRoute>
+} />
+
+{/* User routes - use user components */}
+<Route path="/organization" element={
+  <ProtectedRoute>
+    <OrganizationProfile /> {/* This is the user's OrganizationProfile from components/OrganizationProfile.js */}
+  </ProtectedRoute>
+} />
           
           <Route path="/admin/payments" element={
             <AdminRoute>
