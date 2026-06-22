@@ -1,0 +1,242 @@
+import React from 'react';
+import {
+  Grid,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Typography,
+  OutlinedInput,
+  Box,
+  Chip,
+  Checkbox,
+} from '@mui/material';
+import { styled } from '@mui/material/styles';
+import { Business as BusinessIcon, LocationOn as LocationOnIcon } from '@mui/icons-material';
+import { states, getLgasByState } from './nigerianStates';
+
+const FormSection = styled(Box)(({ theme }) => ({
+  padding: theme.spacing(3),
+  marginBottom: theme.spacing(3),
+  backgroundColor: '#fafafa',
+  borderRadius: '12px',
+  border: '1px solid #e0e0e0'
+}));
+
+const SectionTitle = styled(Typography)(({ theme }) => ({
+  fontWeight: 600,
+  fontSize: '1rem',
+  color: '#333',
+  marginBottom: theme.spacing(2),
+  display: 'flex',
+  alignItems: 'center',
+  gap: theme.spacing(1)
+}));
+
+const businessNatureOptions = [
+  'Manufacturing and Small-Scale/Cottage Industries',
+  'Banking, Insurance, and Financial Institutions',
+  'Distributive Trade and Commerce',
+  'Construction, Engineering, Real Estate, Furniture, and Contractors',
+  'Medical, Pharmaceuticals, and Allied Products',
+  'Agricultural and Agro-Allied Products',
+  'Automobile, Transport, Oil & Gas, and Allied Products',
+  'Hotel, Trade Agencies, Tourism, Clearing & Forwarding, Air Courier Services',
+  'Solid Minerals and Natural Resources',
+  'Interrelationship, Business Promotion, Printing, and Publicity',
+  'Women/Youth Development and Entrepreneurship Associations',
+  'ICT, Telecommunications, and Digital Innovation'
+];
+
+const BasicInfoTab = ({ 
+  formData, 
+  formErrors, 
+  availableLgas,
+  onFormChange,
+  onBusinessNatureChange,
+  onStateChange
+}) => {
+  return (
+    <>
+      <FormSection>
+        <SectionTitle>
+          <BusinessIcon sx={{ color: '#15e420' }} />
+          Company Information
+        </SectionTitle>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={8}>
+            <TextField
+              fullWidth
+              label="Company Name *"
+              name="company_name"
+              value={formData.company_name}
+              onChange={onFormChange}
+              required
+              error={!!formErrors.company_name}
+              helperText={formErrors.company_name}
+              size="small"
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              label="Registration Number *"
+              name="registration_number"
+              value={formData.registration_number}
+              onChange={onFormChange}
+              required
+              error={!!formErrors.registration_number}
+              helperText={formErrors.registration_number}
+              size="small"
+              InputProps={{
+                readOnly: true,
+                sx: { bgcolor: '#f5f5f5' }
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="CAC Number"
+              name="cac_number"
+              value={formData.cac_number}
+              onChange={onFormChange}
+              size="small"
+              placeholder="e.g. RC 1234567"
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="Registration Date"
+              name="registration_date"
+              type="date"
+              value={formData.registration_date}
+              onChange={onFormChange}
+              size="small"
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth size="small" error={!!formErrors.business_nature}>
+              <InputLabel>Nature of Business *</InputLabel>
+              <Select
+                multiple
+                name="business_nature"
+                value={formData.business_nature}
+                onChange={onBusinessNatureChange}
+                input={<OutlinedInput label="Nature of Business *" />}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {selected.map((value) => (
+                      <Chip key={value} label={value} size="small" />
+                    ))}
+                  </Box>
+                )}
+              >
+                {businessNatureOptions.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    <Checkbox checked={formData.business_nature.indexOf(option) > -1} />
+                    {option}
+                  </MenuItem>
+                ))}
+              </Select>
+              {formErrors.business_nature && (
+                <Typography variant="caption" color="error">{formErrors.business_nature}</Typography>
+              )}
+            </FormControl>
+          </Grid>
+        </Grid>
+      </FormSection>
+
+      <FormSection>
+        <SectionTitle>
+          <LocationOnIcon sx={{ color: '#15e420' }} />
+          Address Information
+        </SectionTitle>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              label="House Number *"
+              name="house_number"
+              value={formData.house_number}
+              onChange={onFormChange}
+              required
+              error={!!formErrors.house_number}
+              helperText={formErrors.house_number}
+              size="small"
+              placeholder="e.g. 42"
+            />
+          </Grid>
+          <Grid item xs={12} md={8}>
+            <TextField
+              fullWidth
+              label="Street *"
+              name="street"
+              value={formData.street}
+              onChange={onFormChange}
+              required
+              error={!!formErrors.street}
+              helperText={formErrors.street}
+              size="small"
+              placeholder="e.g. Ahmadu Bello Way"
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth size="small" error={!!formErrors.state}>
+              <InputLabel>State *</InputLabel>
+              <Select
+                value={formData.state}
+                onChange={onStateChange}
+                label="State *"
+              >
+                <MenuItem value="">Select State</MenuItem>
+                {states.map((state) => (
+                  <MenuItem key={state} value={state}>{state}</MenuItem>
+                ))}
+              </Select>
+              {formErrors.state && (
+                <Typography variant="caption" color="error">{formErrors.state}</Typography>
+              )}
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth size="small" error={!!formErrors.lga}>
+              <InputLabel>Local Government Area *</InputLabel>
+              <Select
+                value={formData.lga}
+                onChange={onFormChange}
+                name="lga"
+                label="Local Government Area *"
+                disabled={!formData.state}
+              >
+                <MenuItem value="">Select LGA</MenuItem>
+                {availableLgas.map((lga) => (
+                  <MenuItem key={lga} value={lga}>{lga}</MenuItem>
+                ))}
+              </Select>
+              {formErrors.lga && (
+                <Typography variant="caption" color="error">{formErrors.lga}</Typography>
+              )}
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Landmark"
+              name="landmark"
+              value={formData.landmark}
+              onChange={onFormChange}
+              size="small"
+              placeholder="e.g. Opposite First Bank, Near the Market"
+            />
+          </Grid>
+        </Grid>
+      </FormSection>
+    </>
+  );
+};
+
+export default BasicInfoTab;

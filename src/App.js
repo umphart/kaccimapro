@@ -28,6 +28,7 @@ import AdminNotifications from './components/admin/AdminNotifications';
 import AdminSettings from './components/admin/AdminSettings';
 import EmailConfirmed from './components/EmailConfirmed';
 import AdminDocumentReview from './components/admin/AdminDocumentReview';
+import AdminManageOrganizations from './components/admin/AdminManageOrganizations';
 import { Box } from '@mui/material';
 import './App.css';
 
@@ -68,6 +69,7 @@ function App() {
             </AdminRoute>
           } />
           
+          
           {/* Organization routes with filter parameter */}
           <Route path="/admin/organizations" element={
             <AdminRoute>
@@ -80,6 +82,12 @@ function App() {
               <AdminOrganizations />
             </AdminRoute>
           } />
+          <Route path="/admin/manage-organizations" element={
+  <AdminRoute>
+    <AdminManageOrganizations />
+  </AdminRoute>
+} />
+
           
           <Route path="/admin/organizations/:id" element={
             <AdminRoute>

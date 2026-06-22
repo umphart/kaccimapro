@@ -20,10 +20,14 @@ import {
   Cancel as CancelIcon,
   Verified as VerifiedIcon,
   Warning as WarningIcon,
-  Pending as PendingIcon,
-  Description as DescriptionIcon
+  Pending as PendingIcon
 } from '@mui/icons-material';
-import { documentFields } from './organizationConstants';
+import { 
+  documentFields, 
+  areAllRequiredDocumentsApproved, 
+  getDocumentSummary,
+  statusConfig 
+} from './organizationConstants';
 
 const OrganizationTable = ({
   organizations,
@@ -35,74 +39,70 @@ const OrganizationTable = ({
   onViewDetails,
   onApproveClick,
   onReject,
-  statusFilter,
-  checkAllDocumentsApproved,
-  getDocumentStatusSummary
+  statusFilter
 }) => {
   
   const getStatusChip = (status) => {
-    const config = {
-      pending: { color: 'warning', icon: <PendingIcon sx={{ fontSize: '12px !important' }} />, label: 'Pending' },
-      approved: { color: 'success', icon: <CheckCircleIcon sx={{ fontSize: '12px !important' }} />, label: 'Approved' },
-      rejected: { color: 'error', icon: <CancelIcon sx={{ fontSize: '12px !important' }} />, label: 'Rejected' }
-    };
-    const statusConfig = config[status] || config.pending;
-
+    const config = statusConfig[status?.toLowerCase()] || statusConfig.pending;
+    const Icon = config.icon;
+    
     return (
       <Chip
-        icon={statusConfig.icon}
-        label={statusConfig.label}
+        icon={<Icon sx={{ fontSize: '12px !important' }} />}
+        label={config.label}
         size="small"
-        color={statusConfig.color}
+        color={config.color}
         sx={{ height: 22, fontSize: '10px' }}
       />
     );
   };
 
-  const renderDocumentChips = (docSummary, allApproved) => {
+  const renderDocumentChips = (documents) => {
+    const summary = getDocumentSummary(documents || []);
+    
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3, flexWrap: 'wrap' }}>
-        {docSummary.rejected > 0 && (
+        {summary.rejected > 0 && (
           <Chip
             size="small"
             icon={<CancelIcon sx={{ fontSize: '10px !important' }} />}
-            label={docSummary.rejected}
+            label={summary.rejected}
             color="error"
             sx={{ height: 18, fontSize: '9px', '& .MuiChip-icon': { ml: 0.3, mr: -0.3 } }}
           />
         )}
-        {docSummary.missing > 0 && (
+        {summary.missing > 0 && (
           <Chip
             size="small"
             icon={<WarningIcon sx={{ fontSize: '10px !important' }} />}
-            label={docSummary.missing}
+            label={summary.missing}
             color="default"
             sx={{ height: 18, fontSize: '9px', '& .MuiChip-icon': { ml: 0.3, mr: -0.3 } }}
           />
         )}
-        {docSummary.pending > 0 && (
+        {summary.pending > 0 && (
           <Chip
             size="small"
             icon={<PendingIcon sx={{ fontSize: '10px !important' }} />}
-            label={docSummary.pending}
+            label={summary.pending}
             color="warning"
             sx={{ height: 18, fontSize: '9px', '& .MuiChip-icon': { ml: 0.3, mr: -0.3 } }}
           />
         )}
-        {allApproved && (
+        {summary.approved > 0 && (
           <Chip
             size="small"
-            icon={<VerifiedIcon sx={{ fontSize: '10px !important' }} />}
-            label="✓"
+            icon={<CheckCircleIcon sx={{ fontSize: '10px !important' }} />}
+            label={summary.approved}
             color="success"
             sx={{ height: 18, fontSize: '9px', '& .MuiChip-icon': { ml: 0.3, mr: -0.3 } }}
           />
         )}
-        {!allApproved && docSummary.approved > 0 && (
+        {summary.approved === documentFields.length && summary.missing === 0 && (
           <Chip
             size="small"
-            icon={<CheckCircleIcon sx={{ fontSize: '10px !important' }} />}
-            label={docSummary.approved}
+            icon={<VerifiedIcon sx={{ fontSize: '10px !important' }} />}
+            label="All ✓"
             color="success"
             sx={{ height: 18, fontSize: '9px', '& .MuiChip-icon': { ml: 0.3, mr: -0.3 } }}
           />
@@ -111,31 +111,51 @@ const OrganizationTable = ({
     );
   };
 
-  const renderDocumentTooltip = (docSummary) => (
-    <Box sx={{ p: 0.5 }}>
-      <Typography variant="caption" display="block" sx={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
-        ✅ Approved: {docSummary.approved}
-      </Typography>
-      <Typography variant="caption" display="block" sx={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
-        ⏳ Pending: {docSummary.pending}
-      </Typography>
-      <Typography variant="caption" display="block" sx={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
-        ❌ Rejected: {docSummary.rejected}
-      </Typography>
-      <Typography variant="caption" display="block" sx={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
-        📄 Missing: {docSummary.missing}
-      </Typography>
-    </Box>
-  );
-
-  const getTableColumns = () => {
-    if (statusFilter === 'pending') {
-      return ['Company', 'Email', 'CAC', 'Date', 'Documents', 'Status', 'Actions'];
-    }
-    return ['Company', 'Email',  'CAC', 'Date', 'Status'];
+  const renderDocumentTooltip = (documents) => {
+    const summary = getDocumentSummary(documents || []);
+    return (
+      <Box sx={{ p: 0.5 }}>
+        <Typography variant="caption" display="block" sx={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+          ✅ Approved: {summary.approved}
+        </Typography>
+        <Typography variant="caption" display="block" sx={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+          ⏳ Pending: {summary.pending}
+        </Typography>
+        <Typography variant="caption" display="block" sx={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+          ❌ Rejected: {summary.rejected}
+        </Typography>
+        <Typography variant="caption" display="block" sx={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+          📄 Missing: {summary.missing}
+        </Typography>
+      </Box>
+    );
   };
 
-  const columns = getTableColumns();
+  // Define columns based on status filter
+  const getColumns = () => {
+    const baseColumns = [
+      { key: 'company_name', label: 'Company', width: '15%' },
+      { key: 'email', label: 'Email', width: '18%' },
+      { key: 'cac_number', label: 'CAC', width: '10%' },
+      { key: 'created_at', label: 'Date', width: '10%' }
+    ];
+
+    if (statusFilter === 'pending') {
+      return [
+        ...baseColumns,
+        { key: 'documents', label: 'Documents', width: '20%' },
+        { key: 'status', label: 'Status', width: '10%' },
+        { key: 'actions', label: 'Actions', width: '15%' }
+      ];
+    }
+
+    return [
+      ...baseColumns,
+      { key: 'status', label: 'Status', width: '10%' }
+    ];
+  };
+
+  const columns = getColumns();
 
   return (
     <Paper sx={{ borderRadius: '12px', overflow: 'hidden' }}>
@@ -143,78 +163,132 @@ const OrganizationTable = ({
         <Table size="small">
           <TableHead sx={{ backgroundColor: '#f8f9fa' }}>
             <TableRow>
-              {columns.map((column) => (
+              <TableCell sx={{ fontWeight: 600, py: 1, px: 1, width: '5%' }}>#</TableCell>
+              {columns.map((col) => (
                 <TableCell 
-                  key={column}
+                  key={col.key}
                   sx={{ 
-                    fontFamily: '"Inter", sans-serif', 
                     fontWeight: 600, 
                     py: 1, 
                     px: 1,
-                    width: column === 'Company' ? '15%' : 
-                           column === 'Email' ? '18%' :          
-                           column === 'CAC' ? '10%' : 
-                           column === 'Reg Date' ? '10%' :
-                           column === 'Documents' ? '20%' :
-                           column === 'Status' ? '10%' : '15%'
+                    width: col.width
                   }}
                 >
-                  {column}
+                  {col.label}
                 </TableCell>
               ))}
             </TableRow>
           </TableHead>
           <TableBody>
-            {organizations.map((org) => {
-              const docSummary = getDocumentStatusSummary(org.documentStatus);
-              const allApproved = checkAllDocumentsApproved(org.documentStatus);
-              
-              return (
-                <TableRow key={org.id} hover sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                  <TableCell sx={{ fontFamily: '"Inter", sans-serif', py: 0.75, px: 1 }}>
-                    <Tooltip title={org.company_name} arrow>
-                      <Typography variant="body2" noWrap sx={{ maxWidth: 120, fontSize: '0.8rem' }}>
-                        {org.company_name}
-                      </Typography>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell sx={{ fontFamily: '"Inter", sans-serif', py: 0.75, px: 1 }}>
-                    <Tooltip title={org.email} arrow>
-                      <Typography variant="body2" noWrap sx={{ maxWidth: 140, fontSize: '0.8rem' }}>
-                        {org.email}
-                      </Typography>
-                    </Tooltip>
-                  </TableCell>
-                  
-                  
-                  <TableCell sx={{ fontFamily: '"Inter", sans-serif', py: 0.75, px: 1 }}>
-                    <Typography variant="body2" noWrap sx={{ fontSize: '0.8rem' }}>
-                      {org.cac_number ? org.cac_number.substring(0, 8) + '...' : 'N/A'}
-                    </Typography>
-                  </TableCell>
-                  <TableCell sx={{ fontFamily: '"Inter", sans-serif', py: 0.75, px: 1 }}>
-                    <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                      {new Date(org.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-                    </Typography>
-                  </TableCell>
-                  
-                  {/* Documents column - only for pending */}
-                  {statusFilter === 'pending' && (
+            {organizations.length > 0 ? (
+              organizations.map((org, index) => {
+                const allApproved = areAllRequiredDocumentsApproved(org.documents);
+                const isPending = org.status?.toLowerCase() === 'pending';
+                
+                return (
+                  <TableRow 
+                    key={org.id} 
+                    hover 
+                    sx={{ 
+                      '&:nth-of-type(even)': { bgcolor: '#fafafa' },
+                      '&:hover': { bgcolor: '#e8f5e9' }
+                    }}
+                  >
+                    <TableCell sx={{ py: 0.75, px: 1, color: '#999', fontSize: '0.75rem' }}>
+                      {page * rowsPerPage + index + 1}
+                    </TableCell>
+                    
                     <TableCell sx={{ py: 0.75, px: 1 }}>
-                      <Tooltip title={renderDocumentTooltip(docSummary)} arrow>
-                        {renderDocumentChips(docSummary, allApproved)}
+                      <Tooltip title={org.company_name} arrow>
+                        <Typography variant="body2" noWrap sx={{ maxWidth: 120, fontSize: '0.8rem' }}>
+                          {org.company_name || 'N/A'}
+                        </Typography>
                       </Tooltip>
                     </TableCell>
-                  )}
-                  
-                  <TableCell sx={{ py: 0.75, px: 1 }}>
-                    {getStatusChip(org.status)}
-                  </TableCell>
-                  
-                  {/* Actions column - only for pending */}
-                  {statusFilter === 'pending' && (
+                    
                     <TableCell sx={{ py: 0.75, px: 1 }}>
-                      <Box sx={{ display: 'flex', gap: 0.3, justifyContent: 'flex-start' }}>
+                      <Tooltip title={org.email} arrow>
+                        <Typography variant="body2" noWrap sx={{ maxWidth: 140, fontSize: '0.8rem' }}>
+                          {org.email || 'N/A'}
+                        </Typography>
+                      </Tooltip>
+                    </TableCell>
+                    
+                    <TableCell sx={{ py: 0.75, px: 1 }}>
+                      <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
+                        {org.cac_number || 'N/A'}
+                      </Typography>
+                    </TableCell>
+                    
+                    <TableCell sx={{ py: 0.75, px: 1 }}>
+                      <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
+                        {new Date(org.created_at).toLocaleDateString('en-GB', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: '2-digit' 
+                        })}
+                      </Typography>
+                    </TableCell>
+                    
+                    {/* Documents column - only for pending */}
+                    {statusFilter === 'pending' && (
+                      <TableCell sx={{ py: 0.75, px: 1 }}>
+                        <Tooltip title={renderDocumentTooltip(org.documents)} arrow>
+                          {renderDocumentChips(org.documents)}
+                        </Tooltip>
+                      </TableCell>
+                    )}
+                    
+                    <TableCell sx={{ py: 0.75, px: 1 }}>
+                      {getStatusChip(org.status)}
+                    </TableCell>
+                    
+                    {/* Actions column - only for pending */}
+                    {statusFilter === 'pending' && isPending && (
+                      <TableCell sx={{ py: 0.75, px: 1 }}>
+                        <Box sx={{ display: 'flex', gap: 0.3, justifyContent: 'flex-start' }}>
+                          <Tooltip title="View Details" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => onViewDetails(org.id)}
+                              sx={{ color: '#15e420', p: 0.3 }}
+                            >
+                              <VisibilityIcon sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                          
+                          <Tooltip title={allApproved ? "Approve Organization" : "Check Documents First"} arrow>
+                            <span>
+                              <IconButton
+                                size="small"
+                                onClick={() => onApproveClick(org)}
+                                sx={{ 
+                                  color: allApproved ? '#28a745' : '#ffc107', 
+                                  p: 0.3,
+                                  opacity: allApproved ? 1 : 0.7
+                                }}
+                              >
+                                <CheckCircleIcon sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          
+                          <Tooltip title="Reject Organization" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => onReject(org)}
+                              sx={{ color: '#dc3545', p: 0.3 }}
+                            >
+                              <CancelIcon sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      </TableCell>
+                    )}
+                    
+                    {/* For non-pending status, show view only */}
+                    {statusFilter !== 'pending' && (
+                      <TableCell sx={{ py: 0.75, px: 1 }}>
                         <Tooltip title="View Details" arrow>
                           <IconButton
                             size="small"
@@ -224,41 +298,14 @@ const OrganizationTable = ({
                             <VisibilityIcon sx={{ fontSize: 16 }} />
                           </IconButton>
                         </Tooltip>
-                        
-                        <Tooltip title={allApproved ? "Approve Organization" : "Check Documents First"} arrow>
-                          <span>
-                            <IconButton
-                              size="small"
-                              onClick={() => onApproveClick(org)}
-                              sx={{ 
-                                color: allApproved ? '#28a745' : '#ffc107', 
-                                p: 0.3,
-                                opacity: allApproved ? 1 : 0.7
-                              }}
-                            >
-                              <CheckCircleIcon sx={{ fontSize: 16 }} />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                        
-                        <Tooltip title="Reject Organization" arrow>
-                          <IconButton
-                            size="small"
-                            onClick={() => onReject(org)}
-                            sx={{ color: '#dc3545', p: 0.3 }}
-                          >
-                            <CancelIcon sx={{ fontSize: 16 }} />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </TableCell>
-                  )}
-                </TableRow>
-              );
-            })}
-            {organizations.length === 0 && (
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })
+            ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} align="center" sx={{ py: 3 }}>
+                <TableCell colSpan={columns.length + 1} align="center" sx={{ py: 4 }}>
                   <Typography sx={{ color: '#666', fontSize: '0.9rem' }}>
                     No organizations found
                   </Typography>

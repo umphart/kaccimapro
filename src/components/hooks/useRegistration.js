@@ -66,17 +66,20 @@ export const useRegistration = () => {
   const [organizationId, setOrganizationId] = useState(null);
   const [paymentStep, setPaymentStep] = useState(false);
 
-  // Column name mapping
-  const columnNameMapping = {
-    coverLetter: 'cover_letter_path',
-    memorandum: 'memorandum_path',
-    registrationCert: 'registration_cert_path',
-    incorporationCert: 'incorporation_cert_path',
-    premisesCert: 'premises_cert_path',
-    companyLogo: 'company_logo_path',
-    formC07: 'form_c07_path',
-    idDocument: 'id_document_path'
+  // Document type mapping for the database
+  const documentTypeMapping = {
+    coverLetter: 'cover_letter',
+    memorandum: 'memorandum',
+    registrationCert: 'registration_cert',
+    incorporationCert: 'incorporation_cert',
+    premisesCert: 'premises_cert',
+    companyLogo: 'company_logo',
+    formC07: 'form_c07',
+    idDocument: 'id_document'
   };
+
+  // Required documents
+  const requiredDocuments = ['coverLetter', 'registrationCert', 'incorporationCert', 'companyLogo', 'idDocument'];
 
   useEffect(() => {
     checkUser();
@@ -144,26 +147,37 @@ export const useRegistration = () => {
     }
   };
 
-  const uploadFile = async (file, fieldName) => {
+  const uploadFile = async (file, documentType, organizationId) => {
     try {
       if (!user) throw new Error('You must be logged in to upload files');
 
+      // Validate file size
       const maxSize = file.type.startsWith('image/') ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
       if (file.size > maxSize) {
         throw new Error(`File ${file.name} is too large. Maximum size is ${maxSize/(1024*1024)}MB`);
       }
 
+      // Create unique filename
       const timestamp = Date.now();
       const cleanFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_').replace(/\s+/g, '_');
       const fileName = `${timestamp}_${cleanFileName}`;
-      const filePath = `${user.id}/${fieldName}/${fileName}`;
+      
+      // Determine folder structure: user_id/document_type/
+      const filePath = `${user.id}/${documentType}/${fileName}`;
+      
+      // Determine bucket based on file type
       const bucket = file.type.startsWith('image/') ? 'logos' : 'documents';
       
+      // Upload to Supabase Storage
       const { data, error } = await supabase.storage
         .from(bucket)
-        .upload(filePath, file, { cacheControl: '3600', upsert: false });
+        .upload(filePath, file, { 
+          cacheControl: '3600', 
+          upsert: false 
+        });
 
       if (error) throw error;
+      
       return filePath;
       
     } catch (error) {
@@ -188,36 +202,32 @@ export const useRegistration = () => {
   };
 
   const submitRegistration = async () => {
+    if (!user) {
+      showAlert('error', 'You must be logged in to register');
+      return null;
+    }
+
     setLoading(true);
+    setAlert(null);
+
     try {
+      // Check for existing registration
       const existingReg = await checkExistingRegistration(user.id);
       if (existingReg) {
         showAlert('error', `You have already submitted a registration. Status: ${existingReg.status}`);
         setTimeout(() => navigate('/dashboard'), 2000);
-        return;
+        return null;
       }
 
-      // Upload files
-      const filePaths = {};
-      let uploadErrors = [];
-      
-      for (const [key, file] of Object.entries(files)) {
-        if (file) {
-          try {
-            const path = await uploadFile(file, key);
-            const dbColumnName = columnNameMapping[key];
-            if (dbColumnName) filePaths[dbColumnName] = path;
-          } catch (uploadError) {
-            uploadErrors.push(`${key}: ${uploadError.message}`);
-          }
-        }
+      // Validate required files are present
+      const missingFiles = requiredDocuments.filter(key => !files[key]);
+      if (missingFiles.length > 0) {
+        const missingNames = missingFiles.map(key => key.replace(/([A-Z])/g, ' $1').trim());
+        showAlert('error', `Please upload all required documents: ${missingNames.join(', ')}`);
+        return null;
       }
 
-      if (uploadErrors.length > 0) {
-        throw new Error(`File upload errors: ${uploadErrors.join(', ')}`);
-      }
-
-      // Prepare organization data
+      // 1. First, insert the organization data
       const organizationData = {
         user_id: user.id,
         company_name: formData.companyName.trim(),
@@ -227,37 +237,109 @@ export const useRegistration = () => {
         non_nigerian_directors: parseInt(formData.nonNigerianDirectors) || 0,
         nigerian_employees: parseInt(formData.nigerianEmployees) || 0,
         non_nigerian_employees: parseInt(formData.nonNigerianEmployees) || 0,
-        bankers: formData.bankers.trim(),
-        contact_person: formData.contactPerson.trim(),
-        representative: formData.representative.trim(),
+        bankers: formData.bankers?.trim() || '',
+        contact_person: formData.contactPerson?.trim() || '',
+        representative: formData.representative?.trim() || '',
         email: formData.email.trim().toLowerCase(),
         cac_number: formData.cacNumber.trim(),
         phone_number: formData.phoneNumber.trim(),
-        referee1_name: formData.referee1Name.trim(),
-        referee1_business: formData.referee1Business.trim(),
-        referee1_phone: formData.referee1Phone.trim(),
-        referee1_reg_number: formData.referee1RegNumber.trim(),
-        referee2_name: formData.referee2Name.trim(),
-        referee2_business: formData.referee2Business.trim(),
-        referee2_phone: formData.referee2Phone.trim(),
-        referee2_reg_number: formData.referee2RegNumber.trim(),
-        id_type: formData.idType,
+        referee1_name: formData.referee1Name?.trim() || '',
+        referee1_business: formData.referee1Business?.trim() || '',
+        referee1_phone: formData.referee1Phone?.trim() || '',
+        referee1_reg_number: formData.referee1RegNumber?.trim() || '',
+        referee2_name: formData.referee2Name?.trim() || '',
+        referee2_business: formData.referee2Business?.trim() || '',
+        referee2_phone: formData.referee2Phone?.trim() || '',
+        referee2_reg_number: formData.referee2RegNumber?.trim() || '',
         status: 'pending',
-        ...filePaths
+        registration_date: new Date().toISOString()
       };
 
-      const { data, error: insertError } = await supabase
+      const { data: orgData, error: orgError } = await supabase
         .from('organizations')
         .insert([organizationData])
-        .select();
+        .select()
+        .single();
 
-      if (insertError) throw insertError;
+      if (orgError) {
+        console.error('Organization insert error:', orgError);
+        throw orgError;
+      }
 
-      const newOrganizationId = data[0].id;
+      const newOrganizationId = orgData.id;
       setOrganizationId(newOrganizationId);
+
+      // 2. Upload all files and create document records
+      const documentUploads = [];
+      let uploadErrors = [];
+
+      for (const [key, file] of Object.entries(files)) {
+        if (file) {
+          try {
+            const documentType = documentTypeMapping[key];
+            const filePath = await uploadFile(file, documentType, newOrganizationId);
+
+            // Create document record in organization_documents table
+            const docRecord = {
+              organization_id: newOrganizationId,
+              document_type: documentType,
+              file_path: filePath,
+              file_name: file.name,
+              file_size: file.size,
+              mime_type: file.type,
+              uploaded_by: user.id,
+              is_required: requiredDocuments.includes(key),
+              is_latest: true,
+              uploaded_at: new Date().toISOString()
+            };
+
+            documentUploads.push(docRecord);
+          } catch (uploadError) {
+            uploadErrors.push(`${key}: ${uploadError.message}`);
+          }
+        }
+      }
+
+      // If there were upload errors, throw them
+      if (uploadErrors.length > 0) {
+        throw new Error(`File upload errors: ${uploadErrors.join(', ')}`);
+      }
+
+      // Insert all document records
+      if (documentUploads.length > 0) {
+        const { error: docsError } = await supabase
+          .from('organization_documents')
+          .insert(documentUploads);
+
+        if (docsError) {
+          console.error('Document insert error:', docsError);
+          throw docsError;
+        }
+      }
+
+      // 3. Log the registration in audit log
+      const { error: auditError } = await supabase
+        .from('registration_audit_log')
+        .insert([{
+          organization_id: newOrganizationId,
+          user_id: user.id,
+          action: 'registration_submitted',
+          new_data: { 
+            status: 'pending',
+            company_name: formData.companyName.trim()
+          },
+          created_at: new Date().toISOString()
+        }]);
+
+      if (auditError) {
+        console.warn('Audit log error:', auditError);
+        // Don't fail the registration if audit fails
+      }
+
+      // 4. Clear saved form data
       localStorage.removeItem('registrationFormData');
 
-      // Send admin notification email about new registration
+      // 5. Send admin notification email
       try {
         const notificationData = {
           id: newOrganizationId,
@@ -275,11 +357,13 @@ export const useRegistration = () => {
         console.warn('⚠️ Failed to send admin notification:', emailError);
       }
       
+      showAlert('success', 'Registration submitted successfully!');
       return newOrganizationId;
       
     } catch (error) {
-      console.error('Error:', error);
-      throw error;
+      console.error('Registration error:', error);
+      showAlert('error', error.message || 'Failed to submit registration');
+      return null;
     } finally {
       setLoading(false);
     }

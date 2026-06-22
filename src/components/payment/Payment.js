@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '../../supabaseClient';
@@ -201,6 +201,7 @@ const Payment = () => {
 
       setPreviousPayments(data || []);
 
+      // Check for approved/active payments
       const approvedPayments = data?.filter(p => 
         p.status === PAYMENT_STATUS.APPROVED || p.status === PAYMENT_STATUS.ACCEPTED
       ) || [];
@@ -211,6 +212,7 @@ const Payment = () => {
         const lastPaymentDate = new Date(lastApproved.created_at);
         setLastPaymentDate(lastPaymentDate);
         
+        // Calculate renewal date (1 year from last payment)
         const paymentYear = lastPaymentDate.getFullYear();
         const renewalDate = new Date(paymentYear + 1, 0, 1);
         setNextRenewalDate(renewalDate);
@@ -227,6 +229,7 @@ const Payment = () => {
           setPaymentAmount(0);
         }
       } else {
+        // No approved payments found - first time registration
         setPaymentType(PAYMENT_TYPES.FIRST);
         setPaymentAmount(PAYMENT_CONSTANTS.FIRST_PAYMENT);
         setIsRenewalDue(false);
@@ -325,7 +328,7 @@ const Payment = () => {
     setSubmitting(true);
 
     try {
-      // Upload receipt
+      // Upload receipt to Supabase Storage
       const timestamp = Date.now();
       const cleanFileName = receiptFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
       const fileName = `${timestamp}_${cleanFileName}`;
@@ -339,18 +342,16 @@ const Payment = () => {
         throw new Error(`Upload failed: ${uploadError.message}`);
       }
 
-      const currentYear = new Date().getFullYear();
-      const paymentYear = isRenewal ? currentYear : currentYear;
-
+      // REMOVED: payment_type field - not in schema
+      // REMOVED: payment_year field - not in schema
       const paymentData = {
         organization_id: organization.id,
         user_id: user.id,
         amount: paymentAmount,
-        payment_type: paymentType,
         payment_method: 'Bank Transfer',
         receipt_path: filePath,
+        receipt_filename: receiptFile.name,
         status: PAYMENT_STATUS.PENDING,
-        payment_year: paymentYear,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -366,7 +367,12 @@ const Payment = () => {
       }
 
       // Send admin notification email about new payment
-      await sendAdminPaymentNotification(insertedPayment, organization);
+      try {
+        await sendAdminPaymentNotification(insertedPayment, organization);
+      } catch (emailError) {
+        console.warn('Email notification failed:', emailError);
+        // Don't block payment submission if email fails
+      }
 
       showAlert('success', 'Payment submitted successfully! Redirecting to dashboard...');
       

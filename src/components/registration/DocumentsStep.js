@@ -121,7 +121,6 @@ const DocumentsStep = ({
               onChange={handleInputChange}
               required
             >
-              <option value="">-- Select One --</option>
               <option value="national_id">National ID</option>
               <option value="driver_license">Driver's License</option>
               <option value="voter_card">Voter's Card</option>

@@ -1,524 +1,784 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Grid,
-  TextField,
-  Typography,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Paper,
   Box,
-  Avatar,
-  Chip,
-  Divider,
-  useTheme,
-  alpha,
-  InputAdornment,
-  Tooltip
+  Dialog,
+  DialogContent,
+  DialogActions,
+  Button,
+  Stepper,
+  Step,
+  StepLabel,
+  Paper,
+  Typography,
+  IconButton,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
-import {
-  BusinessCenter,
-  Email,
-  Phone,
-  AssignmentInd,
-  LocationCity,
-  AccountBalance,
-  People,
-  Badge,
-  Description,
-  Person,
-  Numbers,
-  Receipt,
-  Lock,
-  CheckCircle
-} from '@mui/icons-material';
+import { Close as CloseIcon, Save as SaveIcon } from '@mui/icons-material';
+import { styled } from '@mui/material/styles';
+import { supabase } from '../../supabaseClient';
+import BasicInfoTab from './BasicInfoTab';
+import ContactRefereesTab from './ContactRefereesTab';
+import DocumentsTab from './DocumentsTab';
+import { getLgasByState } from './nigerianStates';
 
-const OrganizationForm = ({ formData, setFormData, isEditing }) => {
-  const theme = useTheme();
-  
-  const handleChange = (field) => (e) => {
-    setFormData({ ...formData, [field]: e.target.value });
+// The bucket name that exists in your Supabase Storage
+// Based on your screenshot, it's 'organization-docs' (with a hyphen)
+const BUCKET_NAME = 'organization-docs';
+
+const DialogHeader = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: theme.spacing(2, 3),
+  borderBottom: '1px solid #e0e0e0',
+  backgroundColor: '#f8f9fa'
+}));
+
+const StyledStepper = styled(Stepper)(({ theme }) => ({
+  padding: theme.spacing(3, 3, 2, 3),
+  backgroundColor: 'transparent',
+  '& .MuiStepLabel-root': {
+    cursor: 'pointer'
+  }
+}));
+
+const StepContentContainer = styled(Box)(({ theme }) => ({
+  padding: theme.spacing(0, 3, 3, 3),
+  minHeight: '400px',
+  maxHeight: '500px',
+  overflowY: 'auto',
+  '&::-webkit-scrollbar': {
+    width: '6px',
+  },
+  '&::-webkit-scrollbar-track': {
+    background: '#f1f1f1',
+    borderRadius: '3px',
+  },
+  '&::-webkit-scrollbar-thumb': {
+    background: '#15e420',
+    borderRadius: '3px',
+  },
+  '&::-webkit-scrollbar-thumb:hover': {
+    background: '#12c21e',
+  }
+}));
+
+const NavigationButtons = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'space-between',
+  padding: theme.spacing(2, 3),
+  borderTop: '1px solid #e0e0e0',
+  backgroundColor: '#fafafa',
+  borderRadius: '0 0 16px 16px'
+}));
+
+// Function to check if bucket exists by trying to list files in it
+const checkBucketAccess = async () => {
+  try {
+    console.log(`Checking access to bucket: ${BUCKET_NAME}`);
+    
+    // Try to list files in the bucket (will work if bucket exists and is public)
+    const { data, error } = await supabase.storage
+      .from(BUCKET_NAME)
+      .list('', {
+        limit: 1,
+        offset: 0,
+      });
+    
+    if (error) {
+      console.error('Error accessing bucket:', error);
+      
+      // If error is about bucket not found, bucket doesn't exist
+      if (error.message?.includes('bucket not found') || error.message?.includes('not found')) {
+        console.log(`Bucket ${BUCKET_NAME} does not exist`);
+        return false;
+      }
+      
+      // If error is about permissions, bucket exists but can't list
+      if (error.message?.includes('permission')) {
+        console.log(`Bucket ${BUCKET_NAME} exists but no list permission`);
+        return true; // Bucket exists, just can't list
+      }
+      
+      return false;
+    }
+    
+    console.log(`✅ Bucket ${BUCKET_NAME} is accessible`);
+    return true;
+  } catch (error) {
+    console.error('Error checking bucket access:', error);
+    return false;
+  }
+};
+
+const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert }) => {
+  const [activeStep, setActiveStep] = useState(0);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [fileNames, setFileNames] = useState({});
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [formErrors, setFormErrors] = useState({});
+  const [availableLgas, setAvailableLgas] = useState([]);
+  const [skipDocuments, setSkipDocuments] = useState(false);
+  const [bucketReady, setBucketReady] = useState(false);
+  const [bucketChecked, setBucketChecked] = useState(false);
+
+  // Check bucket on mount
+  useEffect(() => {
+    const init = async () => {
+      const accessible = await checkBucketAccess();
+      setBucketReady(accessible);
+      setBucketChecked(true);
+      if (accessible) {
+        console.log(`✅ Bucket ${BUCKET_NAME} is ready for use`);
+      } else {
+        console.warn(`❌ Bucket ${BUCKET_NAME} is not accessible`);
+        showAlert('warning', 'Storage bucket not available. Documents cannot be uploaded. Please ensure the organization-docs bucket exists and is public.');
+      }
+    };
+    init();
+  }, []);
+
+  const [formData, setFormData] = useState({
+    company_name: '',
+    registration_number: '',
+    cac_number: '',
+    house_number: '',
+    street: '',
+    lga: '',
+    state: '',
+    landmark: '',
+    business_nature: [],
+    phone_number1: '',
+    phone_number2: '',
+    email: '',
+    registration_date: new Date().toISOString().split('T')[0],
+    contact_person: '',
+    representative: '',
+    nigerian_directors: 0,
+    non_nigerian_directors: 0,
+    nigerian_employees: 0,
+    non_nigerian_employees: 0,
+    id_type: '',
+    referee_name: '',
+    referee_business: '',
+    referee_phone: '',
+    referee_reg_number: '',
+    cover_letter: null,
+    memorandum: null,
+    registration_cert: null,
+    incorporation_cert: null,
+    premises_cert: null,
+    company_logo: null,
+    form_c07: null,
+    id_document: null
+  });
+
+  useEffect(() => {
+    if (formData.state) {
+      const lgas = getLgasByState(formData.state);
+      setAvailableLgas(lgas);
+    } else {
+      setAvailableLgas([]);
+    }
+  }, [formData.state]);
+
+  useEffect(() => {
+    if (editingOrg) {
+      let businessNature = editingOrg.business_nature || [];
+      if (typeof businessNature === 'string') {
+        try {
+          businessNature = JSON.parse(businessNature);
+        } catch (e) {
+          businessNature = [];
+        }
+      }
+      
+      setFormData({
+        company_name: editingOrg.company_name || '',
+        registration_number: editingOrg.registration_number || '',
+        cac_number: editingOrg.cac_number || '',
+        house_number: editingOrg.house_number || '',
+        street: editingOrg.street || '',
+        lga: editingOrg.lga || '',
+        state: editingOrg.state || '',
+        landmark: editingOrg.landmark || '',
+        business_nature: businessNature,
+        phone_number1: editingOrg.phone_number1 || '',
+        phone_number2: editingOrg.phone_number2 || '',
+        email: editingOrg.email || '',
+        registration_date: editingOrg.registration_date || new Date().toISOString().split('T')[0],
+        contact_person: editingOrg.contact_person || '',
+        representative: editingOrg.representative || '',
+        nigerian_directors: editingOrg.nigerian_directors || 0,
+        non_nigerian_directors: editingOrg.non_nigerian_directors || 0,
+        nigerian_employees: editingOrg.nigerian_employees || 0,
+        non_nigerian_employees: editingOrg.non_nigerian_employees || 0,
+        id_type: editingOrg.id_type || '',
+        referee_name: editingOrg.referee_name || '',
+        referee_business: editingOrg.referee_business || '',
+        referee_phone: editingOrg.referee_phone || '',
+        referee_reg_number: editingOrg.referee_reg_number || '',
+        cover_letter: null,
+        memorandum: null,
+        registration_cert: null,
+        incorporation_cert: null,
+        premises_cert: null,
+        company_logo: null,
+        form_c07: null,
+        id_document: null
+      });
+      
+      if (editingOrg.id) {
+        fetchOrganizationDocuments(editingOrg.id);
+      }
+    } else {
+      generateRegistrationNumber();
+      setFormData({
+        company_name: '',
+        registration_number: '',
+        cac_number: '',
+        house_number: '',
+        street: '',
+        lga: '',
+        state: '',
+        landmark: '',
+        business_nature: [],
+        phone_number1: '',
+        phone_number2: '',
+        email: '',
+        registration_date: new Date().toISOString().split('T')[0],
+        contact_person: '',
+        representative: '',
+        nigerian_directors: 0,
+        non_nigerian_directors: 0,
+        nigerian_employees: 0,
+        non_nigerian_employees: 0,
+        id_type: '',
+        referee_name: '',
+        referee_business: '',
+        referee_phone: '',
+        referee_reg_number: '',
+        cover_letter: null,
+        memorandum: null,
+        registration_cert: null,
+        incorporation_cert: null,
+        premises_cert: null,
+        company_logo: null,
+        form_c07: null,
+        id_document: null
+      });
+      setAvailableLgas([]);
+      setUploadedFiles([]);
+      setFileNames({});
+      setSkipDocuments(false);
+    }
+    setFormErrors({});
+    setActiveStep(0);
+  }, [editingOrg, open]);
+
+  const generateRegistrationNumber = async () => {
+    try {
+      const year = new Date().getFullYear();
+      const { count } = await supabase
+        .from('organizations_registry')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', `${year}-01-01`)
+        .lt('created_at', `${year + 1}-01-01`);
+
+      const serialNumber = String((count || 0) + 1).padStart(4, '0');
+      setFormData(prev => ({ ...prev, registration_number: `KCC/${year}/${serialNumber}` }));
+    } catch (error) {
+      console.error('Error generating registration number:', error);
+      const timestamp = Date.now().toString().slice(-4);
+      setFormData(prev => ({ ...prev, registration_number: `KCC/${new Date().getFullYear()}/${timestamp}` }));
+    }
   };
 
-  const SectionHeader = ({ icon: Icon, title, subtitle }) => (
-    <Box sx={{ mb: 3, mt: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        <Avatar
-          sx={{
-            bgcolor: alpha('#15e420', 0.1),
-            color: '#15e420',
-            width: 40,
-            height: 40
-          }}
-        >
-          <Icon />
-        </Avatar>
-        <Box>
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#1a1a1a' }}>
-            {title}
-          </Typography>
-          {subtitle && (
-            <Typography variant="body2" sx={{ color: '#666' }}>
-              {subtitle}
-            </Typography>
-          )}
-        </Box>
-      </Box>
-      <Divider sx={{ mt: 1.5, borderColor: alpha('#15e420', 0.2) }} />
-    </Box>
-  );
+  const fetchOrganizationDocuments = async (orgId) => {
+    try {
+      console.log('Fetching documents for org:', orgId);
+      const { data, error } = await supabase
+        .from('organization_documents')
+        .select('*')
+        .eq('organization_id', orgId);
 
-  const StyledTextField = ({ icon: Icon, tooltip, ...props }) => (
-    <Tooltip title={tooltip || ''} arrow placement="top">
-      <TextField
-        {...props}
-        fullWidth
-        variant="outlined"
-        InputProps={{
-          startAdornment: Icon && (
-            <InputAdornment position="start">
-              <Icon sx={{ color: alpha('#15e420', 0.7), fontSize: 20 }} />
-            </InputAdornment>
-          ),
-          sx: {
-            borderRadius: 2,
-            '&:hover': {
-              '& .MuiOutlinedInput-notchedOutline': {
-                borderColor: '#15e420',
-              }
-            },
-            '&.Mui-focused': {
-              '& .MuiOutlinedInput-notchedOutline': {
-                borderColor: '#15e420',
-                borderWidth: 2
-              }
+      if (error) {
+        console.error('Error fetching documents:', error);
+        throw error;
+      }
+      
+      console.log('Documents found:', data);
+      setUploadedFiles(data || []);
+    } catch (error) {
+      console.error('Error fetching documents:', error);
+    }
+  };
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (formErrors[name]) {
+      setFormErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const handleBusinessNatureChange = (event) => {
+    const { value } = event.target;
+    setFormData(prev => ({ ...prev, business_nature: value }));
+    if (formErrors.business_nature) {
+      setFormErrors(prev => ({ ...prev, business_nature: '' }));
+    }
+  };
+
+  const handleStateChange = (e) => {
+    const state = e.target.value;
+    setFormData(prev => ({ ...prev, state: state, lga: '' }));
+    if (formErrors.state) {
+      setFormErrors(prev => ({ ...prev, state: '' }));
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const { name, files } = e.target;
+    if (files && files[0]) {
+      const file = files[0];
+      console.log('File selected:', name, file.name, file.size);
+      setFormData(prev => ({ ...prev, [name]: file }));
+      setFileNames(prev => ({ ...prev, [name]: file.name }));
+    }
+  };
+
+  const handleSkipDocuments = () => {
+    setSkipDocuments(true);
+    handleSaveOrganization(true);
+  };
+
+  const validateStep1 = () => {
+    const errors = {};
+    if (!formData.company_name?.trim()) errors.company_name = 'Company name is required';
+    if (!formData.registration_number?.trim()) errors.registration_number = 'Registration number is required';
+    if (!formData.business_nature || formData.business_nature.length === 0) {
+      errors.business_nature = 'At least one business nature is required';
+    }
+    if (!formData.house_number?.trim()) errors.house_number = 'House number is required';
+    if (!formData.street?.trim()) errors.street = 'Street is required';
+    if (!formData.lga) errors.lga = 'Local Government Area is required';
+    if (!formData.state) errors.state = 'State is required';
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = 'Invalid email format';
+    }
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validateStep2 = () => {
+    return true;
+  };
+
+  const handleNext = () => {
+    if (activeStep === 0) {
+      if (validateStep1()) {
+        setActiveStep((prev) => prev + 1);
+      }
+    } else if (activeStep === 1) {
+      if (validateStep2()) {
+        setActiveStep((prev) => prev + 1);
+      }
+    }
+  };
+
+  const handleBack = () => {
+    setActiveStep((prev) => prev - 1);
+  };
+
+ const uploadDocument = async (file, orgId, docType) => {
+  if (!file) {
+    console.log('No file to upload for:', docType);
+    return null;
+  }
+
+  try {
+    console.log('Uploading document:', docType, file.name);
+    
+    // Check if bucket is ready
+    if (!bucketReady) { 
+      const accessible = await checkBucketAccess();
+      setBucketReady(accessible);
+      if (!accessible) {
+        throw new Error('Storage bucket is not available. Please contact administrator.');
+      }
+    }
+
+    // Generate a unique file path
+    const timestamp = Date.now();
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${orgId}/${docType}_${timestamp}.${fileExt}`;
+    const filePath = `organization_documents/${fileName}`;
+
+    console.log('Uploading to path:', filePath);
+    console.log('Using bucket:', BUCKET_NAME);
+
+    // Upload file to storage
+    const { error: uploadError, data: uploadData } = await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('Upload error:', uploadError);
+      throw uploadError;
+    }
+
+    console.log('Upload successful:', uploadData);
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(filePath);
+
+    console.log('Public URL:', publicUrl);
+
+    // Save document record to database - make sure column names match
+    const docRecord = {
+      organization_id: orgId,
+      document_type: docType,
+      file_name: file.name,
+      file_path: filePath,
+      file_url: publicUrl,  // This column MUST exist in your table
+      status: 'pending',
+      uploaded_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    console.log('Saving document record:', docRecord);
+
+    const { data: docData, error: docError } = await supabase
+      .from('organization_documents')
+      .insert([docRecord])
+      .select()
+      .single();
+
+    if (docError) {
+      console.error('Document record error:', docError);
+      
+      // If insertion fails, try to delete the uploaded file
+      if (uploadData) {
+        await supabase.storage
+          .from(BUCKET_NAME)
+          .remove([filePath]);
+      }
+      
+      throw new Error(`Failed to save document record: ${docError.message}`);
+    }
+
+    console.log('Document record saved:', docData);
+    return docData;
+  } catch (error) {
+    console.error('Error in uploadDocument:', error);
+    throw error;
+  }
+};
+
+  const handleSaveOrganization = async (skipDocs = false) => {
+    setUploadLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const now = new Date().toISOString();
+
+      const orgData = {
+        company_name: formData.company_name?.trim() || '',
+        registration_number: formData.registration_number?.trim() || '',
+        cac_number: formData.cac_number?.trim() || '',
+        house_number: formData.house_number?.trim() || '',
+        street: formData.street?.trim() || '',
+        lga: formData.lga || '',
+        state: formData.state || '',
+        landmark: formData.landmark?.trim() || '',
+        business_nature: JSON.stringify(formData.business_nature || []),
+        phone_number1: formData.phone_number1?.trim() || '',
+        phone_number2: formData.phone_number2?.trim() || '',
+        email: formData.email?.trim() || '',
+        registration_date: formData.registration_date || new Date().toISOString().split('T')[0],
+        contact_person: formData.contact_person?.trim() || '',
+        representative: formData.representative?.trim() || '',
+        nigerian_directors: parseInt(formData.nigerian_directors) || 0,
+        non_nigerian_directors: parseInt(formData.non_nigerian_directors) || 0,
+        nigerian_employees: parseInt(formData.nigerian_employees) || 0,
+        non_nigerian_employees: parseInt(formData.non_nigerian_employees) || 0,
+        id_type: formData.id_type || '',
+        referee_name: formData.referee_name?.trim() || '',
+        referee_business: formData.referee_business?.trim() || '',
+        referee_phone: formData.referee_phone?.trim() || '',
+        referee_reg_number: formData.referee_reg_number?.trim() || '',
+        updated_at: now
+      };
+
+      let orgId;
+
+      if (editingOrg) {
+        const { error } = await supabase
+          .from('organizations_registry')
+          .update(orgData)
+          .eq('id', editingOrg.id);
+
+        if (error) throw error;
+        orgId = editingOrg.id;
+        showAlert('success', 'Organization updated successfully');
+      } else {
+        orgData.created_by = user?.id || null;
+        orgData.created_at = now;
+        orgData.status = 'active';
+
+        const { data, error } = await supabase
+          .from('organizations_registry')
+          .insert([orgData])
+          .select()
+          .single();
+
+        if (error) throw error;
+        orgId = data.id;
+        showAlert('success', 'Organization created successfully');
+      }
+
+      // Upload documents if not skipped
+      if (!skipDocs && !skipDocuments && orgId) {
+        console.log('Uploading documents for org:', orgId);
+        
+        const documentTypes = {
+          cover_letter: 'cover_letter',
+          memorandum: 'memorandum',
+          registration_cert: 'registration_cert',
+          incorporation_cert: 'incorporation_cert',
+          premises_cert: 'premises_cert',
+          company_logo: 'company_logo',
+          form_c07: 'form_c07',
+          id_document: 'id_document'
+        };
+
+        let uploadedCount = 0;
+        let errors = [];
+
+        for (const [key, docType] of Object.entries(documentTypes)) {
+          if (formData[key] instanceof File) {
+            try {
+              console.log(`Uploading ${docType}...`);
+              await uploadDocument(formData[key], orgId, docType);
+              uploadedCount++;
+            } catch (error) {
+              console.error(`Failed to upload ${docType}:`, error);
+              errors.push(`${docType}: ${error.message}`);
             }
           }
-        }}
-        InputLabelProps={{
-          sx: {
-            '&.Mui-focused': {
-              color: '#15e420'
-            }
-          }
-        }}
-      />
-    </Tooltip>
-  );
+        }
+        
+        if (uploadedCount > 0 && errors.length === 0) {
+          showAlert('success', `${uploadedCount} document(s) uploaded successfully`);
+        } else if (uploadedCount > 0 && errors.length > 0) {
+          showAlert('warning', `${uploadedCount} document(s) uploaded. ${errors.length} failed: ${errors.join(', ')}`);
+        } else if (errors.length > 0) {
+          showAlert('error', `Failed to upload documents: ${errors.join(', ')}`);
+        }
+      }
+
+      // Refresh documents list
+      if (orgId) {
+        await fetchOrganizationDocuments(orgId);
+      }
+
+      onSaveSuccess();
+    } catch (error) {
+      console.error('Error saving organization:', error);
+      if (error.code === '23505') {
+        showAlert('error', 'Registration number or CAC number already exists');
+      } else if (error.message?.includes('Could not find')) {
+        showAlert('error', 'Database column missing. Please run database migrations.');
+      } else if (error.message?.includes('bucket') || error.message?.includes('storage')) {
+        showAlert('error', 'Storage issue. Please ensure the organization-docs bucket exists.');
+      } else {
+        showAlert('error', 'Failed to save organization: ' + error.message);
+      }
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  const handleDeleteDocument = async (docId, filePath) => {
+    if (!window.confirm('Are you sure you want to delete this document?')) return;
+
+    try {
+      // Delete from storage
+      const { error: storageError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .remove([filePath]);
+
+      if (storageError) {
+        console.error('Storage delete error:', storageError);
+        // Continue to delete from database even if storage fails
+      }
+
+      // Delete from database
+      const { error } = await supabase
+        .from('organization_documents')
+        .delete()
+        .eq('id', docId);
+
+      if (error) throw error;
+
+      setUploadedFiles(prev => prev.filter(d => d.id !== docId));
+      showAlert('success', 'Document deleted successfully');
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      showAlert('error', 'Failed to delete document');
+    }
+  };
+
+  const steps = ['Company & Address', 'Contact & Referee', 'Documents'];
+
+  const getStepContent = (step) => {
+    switch (step) {
+      case 0:
+        return (
+          <BasicInfoTab
+            formData={formData}
+            formErrors={formErrors}
+            availableLgas={availableLgas}
+            onFormChange={handleFormChange}
+            onBusinessNatureChange={handleBusinessNatureChange}
+            onStateChange={handleStateChange}
+          />
+        );
+      case 1:
+        return (
+          <ContactRefereesTab
+            formData={formData}
+            formErrors={formErrors}
+            onFormChange={handleFormChange}
+          />
+        );
+      case 2:
+        return (
+          <DocumentsTab
+            formData={formData}
+            formErrors={formErrors}
+            fileNames={fileNames}
+            uploadedFiles={uploadedFiles}
+            editingOrg={editingOrg}
+            onFileChange={handleFileChange}
+            onDeleteDocument={handleDeleteDocument}
+            onFormChange={handleFormChange}
+            bucketReady={bucketReady}
+          />
+        );
+      default:
+        return 'Unknown step';
+    }
+  };
+
+  const isLastStep = activeStep === steps.length - 1;
 
   return (
-    <Box sx={{ p: { xs: 1, sm: 2 } }}>
-      {/* Basic Information Section */}
-      <Paper 
-        elevation={0} 
-        sx={{ 
-          p: 3, 
-          mb: 4, 
-          borderRadius: 3,
-          border: '1px solid',
-          borderColor: alpha('#15e420', 0.2),
-          background: `linear-gradient(145deg, #ffffff 0%, ${alpha('#15e420', 0.02)} 100%)`
-        }}
-      >
-        <SectionHeader 
-          icon={BusinessCenter} 
-          title="Basic Information" 
-          subtitle="Company details and contact information"
-        />
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={BusinessCenter}
-              tooltip="Enter your registered company name"
-              label="Company Name"
-              value={formData.company_name}
-              onChange={handleChange('company_name')}
-              required
-              placeholder="e.g., ABC Enterprises Ltd"
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={Email}
-              tooltip="Official company email address"
-              label="Email"
-              type="email"
-              value={formData.email}
-              onChange={handleChange('email')}
-              required
-              placeholder="company@example.com"
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={Phone}
-              tooltip="Primary contact phone number"
-              label="Phone Number"
-              value={formData.phone_number}
-              onChange={handleChange('phone_number')}
-              required
-              placeholder="+234 XXX XXX XXXX"
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={Receipt}
-              tooltip="Corporate Affairs Commission registration number"
-              label="CAC Number"
-              value={formData.cac_number}
-              onChange={handleChange('cac_number')}
-              required
-              placeholder="RC-XXXXX"
-            />
-          </Grid>
-
-          <Grid item xs={12}>
-            <StyledTextField
-              icon={LocationCity}
-              tooltip="Full office address"
-              label="Office Address"
-              value={formData.office_address}
-              onChange={handleChange('office_address')}
-              required
-              multiline
-              rows={2}
-              placeholder="Enter complete office address"
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={Description}
-              tooltip="Nature of your business operations"
-              label="Business Nature"
-              value={formData.business_nature}
-              onChange={handleChange('business_nature')}
-              required
-              placeholder="e.g., Manufacturing, Trading, Services"
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={AccountBalance}
-              tooltip="Your company's bankers"
-              label="Bankers"
-              value={formData.bankers}
-              onChange={handleChange('bankers')}
-              required
-              placeholder="e.g., First Bank, GTBank"
-            />
-          </Grid>
-        </Grid>
-      </Paper>
-
-      {/* Personnel Information Section */}
-      <Paper 
-        elevation={0} 
-        sx={{ 
-          p: 3, 
-          mb: 4, 
-          borderRadius: 3,
-          border: '1px solid',
-          borderColor: alpha('#15e420', 0.2),
-          background: `linear-gradient(145deg, #ffffff 0%, ${alpha('#15e420', 0.02)} 100%)`
-        }}
-      >
-        <SectionHeader 
-          icon={People} 
-          title="Personnel Information" 
-          subtitle="Key personnel and staff details"
-        />
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={Person}
-              label="Contact Person"
-              value={formData.contact_person}
-              onChange={handleChange('contact_person')}
-              required
-              placeholder="Primary contact name"
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={Badge}
-              label="Representative"
-              value={formData.representative}
-              onChange={handleChange('representative')}
-              required
-              placeholder="Company representative name"
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={Numbers}
-              type="number"
-              label="Nigerian Directors"
-              value={formData.nigerian_directors}
-              onChange={handleChange('nigerian_directors')}
-              required
-              InputProps={{ inputProps: { min: 0 } }}
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={Numbers}
-              type="number"
-              label="Non-Nigerian Directors"
-              value={formData.non_nigerian_directors}
-              onChange={handleChange('non_nigerian_directors')}
-              required
-              InputProps={{ inputProps: { min: 0 } }}
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={Numbers}
-              type="number"
-              label="Nigerian Employees"
-              value={formData.nigerian_employees}
-              onChange={handleChange('nigerian_employees')}
-              required
-              InputProps={{ inputProps: { min: 0 } }}
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={Numbers}
-              type="number"
-              label="Non-Nigerian Employees"
-              value={formData.non_nigerian_employees}
-              onChange={handleChange('non_nigerian_employees')}
-              required
-              InputProps={{ inputProps: { min: 0 } }}
-            />
-          </Grid>
-        </Grid>
-      </Paper>
-
-      {/* Referees Section */}
-      <Paper 
-        elevation={0} 
-        sx={{ 
-          p: 3, 
-          mb: 4, 
-          borderRadius: 3,
-          border: '1px solid',
-          borderColor: alpha('#15e420', 0.2),
-          background: `linear-gradient(145deg, #ffffff 0%, ${alpha('#15e420', 0.02)} 100%)`
-        }}
-      >
-        <SectionHeader 
-          icon={AssignmentInd} 
-          title="Referee Details" 
-          subtitle="Two business referees required"
-        />
-        
-        <Box sx={{ mb: 4 }}>
-          <Chip 
-            label="Referee 1" 
-            sx={{ 
-              mb: 2, 
-              bgcolor: alpha('#15e420', 0.1),
-              color: '#15e420',
-              fontWeight: 600,
-              '& .MuiChip-label': { px: 2 }
-            }} 
-          />
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <StyledTextField
-                label="Referee 1 Name"
-                value={formData.referee1_name}
-                onChange={handleChange('referee1_name')}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <StyledTextField
-                label="Referee 1 Business"
-                value={formData.referee1_business}
-                onChange={handleChange('referee1_business')}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <StyledTextField
-                icon={Phone}
-                label="Referee 1 Phone"
-                value={formData.referee1_phone}
-                onChange={handleChange('referee1_phone')}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <StyledTextField
-                icon={Receipt}
-                label="Referee 1 Reg Number"
-                value={formData.referee1_reg_number}
-                onChange={handleChange('referee1_reg_number')}
-                required
-              />
-            </Grid>
-          </Grid>
-        </Box>
-
+    <Dialog 
+      open={open} 
+      onClose={onClose}
+      maxWidth="lg"
+      fullWidth
+      PaperProps={{ 
+        sx: { 
+          borderRadius: '16px',
+          maxHeight: '90vh'
+        } 
+      }}
+    >
+      <DialogHeader>
         <Box>
-          <Chip 
-            label="Referee 2" 
-            sx={{ 
-              mb: 2, 
-              bgcolor: alpha('#15e420', 0.1),
-              color: '#15e420',
-              fontWeight: 600,
-              '& .MuiChip-label': { px: 2 }
-            }} 
-          />
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <StyledTextField
-                label="Referee 2 Name"
-                value={formData.referee2_name}
-                onChange={handleChange('referee2_name')}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <StyledTextField
-                label="Referee 2 Business"
-                value={formData.referee2_business}
-                onChange={handleChange('referee2_business')}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <StyledTextField
-                icon={Phone}
-                label="Referee 2 Phone"
-                value={formData.referee2_phone}
-                onChange={handleChange('referee2_phone')}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <StyledTextField
-                icon={Receipt}
-                label="Referee 2 Reg Number"
-                value={formData.referee2_reg_number}
-                onChange={handleChange('referee2_reg_number')}
-                required
-              />
-            </Grid>
-          </Grid>
+          <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: '"Inter", sans-serif' }}>
+            {editingOrg ? 'Edit Organization' : 'Create New Organization'}
+          </Typography>
+          <Typography variant="caption" sx={{ color: '#666' }}>
+            {editingOrg ? 'Update organization details and documents' : 'Add a new organization to the registry'}
+          </Typography>
         </Box>
-      </Paper>
+        <IconButton onClick={onClose} size="small">
+          <CloseIcon />
+        </IconButton>
+      </DialogHeader>
 
-      {/* Additional Information Section */}
-      <Paper 
-        elevation={0} 
-        sx={{ 
-          p: 3, 
-          mb: 4, 
-          borderRadius: 3,
-          border: '1px solid',
-          borderColor: alpha('#15e420', 0.2),
-          background: `linear-gradient(145deg, #ffffff 0%, ${alpha('#15e420', 0.02)} 100%)`
-        }}
-      >
-        <SectionHeader 
-          icon={Description} 
-          title="Additional Information" 
-          subtitle="Other relevant details"
-        />
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <StyledTextField
-              icon={Badge}
-              label="ID Type"
-              value={formData.id_type}
-              onChange={handleChange('id_type')}
-              placeholder="e.g., Passport, Driver's License, National ID"
-            />
-          </Grid>
+      <DialogContent sx={{ p: 0 }}>
+        <StyledStepper activeStep={activeStep} alternativeLabel>
+          {steps.map((label) => (
+            <Step key={label}>
+              <StepLabel>{label}</StepLabel>
+            </Step>
+          ))}
+        </StyledStepper>
 
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth variant="outlined">
-              <InputLabel sx={{ '&.Mui-focused': { color: '#15e420' } }}>
-                Status
-              </InputLabel>
-              <Select
-                value={formData.status}
-                onChange={handleChange('status')}
-                label="Status"
-                sx={{
-                  borderRadius: 2,
+        <StepContentContainer>
+          {getStepContent(activeStep)}
+        </StepContentContainer>
+      </DialogContent>
+
+      <NavigationButtons>
+        <Button
+          onClick={handleBack}
+          disabled={activeStep === 0}
+          variant="outlined"
+          sx={{ textTransform: 'none' }}
+        >
+          Back
+        </Button>
+
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          {isLastStep ? (
+            <>
+              <Button
+                onClick={handleSkipDocuments}
+                variant="outlined"
+                disabled={uploadLoading}
+                sx={{ 
+                  textTransform: 'none',
+                  borderColor: '#ff9800',
+                  color: '#ff9800',
                   '&:hover': {
-                    '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: '#15e420',
-                    }
-                  },
-                  '&.Mui-focused': {
-                    '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: '#15e420',
-                      borderWidth: 2
-                    }
+                    borderColor: '#e65100',
+                    backgroundColor: 'rgba(255, 152, 0, 0.04)'
                   }
                 }}
               >
-                <MenuItem value="pending">
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#ff9800' }} />
-                    Pending
-                  </Box>
-                </MenuItem>
-                <MenuItem value="approved">
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <CheckCircle sx={{ color: '#4caf50', fontSize: 16 }} />
-                    Approved
-                  </Box>
-                </MenuItem>
-                <MenuItem value="rejected">
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#f44336' }} />
-                    Rejected
-                  </Box>
-                </MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-
-          {!isEditing && (
-            <Grid item xs={12}>
-              <StyledTextField
-                icon={Lock}
-                type="password"
-                label="Password (for user account)"
-                value={formData.password}
-                onChange={handleChange('password')}
-                helperText={
-                  <Typography variant="caption" sx={{ color: '#666' }}>
-                    Leave blank to create without user account
-                  </Typography>
-                }
-              />
-            </Grid>
+                Skip for Now
+              </Button>
+              <Button
+                onClick={() => handleSaveOrganization(false)}
+                variant="contained"
+                disabled={uploadLoading}
+                startIcon={uploadLoading ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+                sx={{
+                  bgcolor: '#15e420',
+                  textTransform: 'none',
+                  '&:hover': { bgcolor: '#12c21e' }
+                }}
+              >
+                {uploadLoading ? 'Saving...' : (editingOrg ? 'Update' : 'Save All')}
+              </Button>
+            </>
+          ) : (
+            <Button
+              onClick={handleNext}
+              variant="contained"
+              sx={{
+                bgcolor: '#15e420',
+                textTransform: 'none',
+                '&:hover': { bgcolor: '#12c21e' }
+              }}
+            >
+              Next
+            </Button>
           )}
-        </Grid>
-      </Paper>
-    </Box>
+        </Box>
+      </NavigationButtons>
+    </Dialog>
   );
 };
 

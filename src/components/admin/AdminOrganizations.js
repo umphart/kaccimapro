@@ -1,42 +1,165 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { supabase } from '../../supabaseClient';
 import {
-  Box, Container, Typography, Alert, Snackbar, CircularProgress,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, Chip,
-  Paper, Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, TablePagination, IconButton, Tooltip
+  Box,
+  Container,
+  Paper,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  Chip,
+  Button,
+  IconButton,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TablePagination,
+  Avatar,
+  Alert,
+  Snackbar,
+  CircularProgress,
+  TextField,
+  InputAdornment,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Tooltip,
+  Divider,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Collapse,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Link,
+  Badge
 } from '@mui/material';
 import {
-  Description as DescriptionIcon, CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon, Warning as WarningIcon, Pending as PendingIcon,
-  Visibility as VisibilityIcon, PictureAsPdf as PdfIcon,
-  TableChart as ExcelIcon, Refresh as RefreshIcon
+  Search as SearchIcon,
+  Visibility as VisibilityIcon,
+  CheckCircle as CheckCircleIcon,
+  Pending as PendingIcon,
+  Cancel as CancelIcon,
+  Refresh as RefreshIcon,
+  Business as BusinessIcon,
+  People as PeopleIcon,
+  ExpandMore as ExpandMoreIcon,
+  Description as DescriptionIcon,
+  PictureAsPdf as PdfIcon,
+  Image as ImageIcon,
+  LocationOn as LocationOnIcon,
+  Phone as PhoneIcon,
+  Email as EmailIcon,
+  Person as PersonIcon,
+  Verified as VerifiedIcon,
+  ContactMail as ContactMailIcon,
+  Download as DownloadIcon,
+  Warning as WarningIcon
 } from '@mui/icons-material';
-import { supabase } from '../../supabaseClient';
+import { styled } from '@mui/material/styles';
 import AdminSidebar from './AdminSidebar';
-import OrganizationStats from './OrganizationStats';
-import OrganizationFilters from './OrganizationFilters';
-import OrganizationTable from './OrganizationTable';
-import { documentFields } from './organizationConstants';
-import { exportToPDFA2, exportToExcel } from './reports/exportUtils';
+import { 
+  documentFields, 
+  areAllRequiredDocumentsApproved, 
+  getDocumentSummary,
+  getDocumentStatus,
+  getDocumentStatusLabel,
+  requiredDocumentKeys
+} from './organizationConstants';
+
+const StyledCard = styled(Card)(({ theme }) => ({
+  height: '100%',
+  borderRadius: '12px',
+  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+  border: '1px solid #f0f0f0',
+  transition: 'all 0.2s ease',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: '0 8px 16px rgba(21, 228, 32, 0.1)'
+  }
+}));
+
+const StatusChip = styled(Chip)(({ status }) => ({
+  borderRadius: '20px',
+  height: '24px',
+  fontSize: '0.7rem',
+  fontWeight: 500,
+  backgroundColor: 
+    status === 'approved' || status === 'active' ? '#e8f5e9' :
+    status === 'rejected' ? '#ffebee' :
+    '#fff3e0',
+  color: 
+    status === 'approved' || status === 'active' ? '#2e7d32' :
+    status === 'rejected' ? '#c62828' :
+    '#e65100',
+  '& .MuiChip-icon': {
+    fontSize: '14px'
+  }
+}));
+
+const DetailRow = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  padding: theme.spacing(1, 0),
+  borderBottom: '1px solid #f0f0f0',
+  '&:last-child': {
+    borderBottom: 'none'
+  }
+}));
+
+const DetailLabel = styled(Typography)(({ theme }) => ({
+  fontWeight: 600,
+  color: '#666',
+  minWidth: '140px',
+  fontSize: '0.85rem'
+}));
+
+const DetailValue = styled(Typography)(({ theme }) => ({
+  color: '#333',
+  fontSize: '0.85rem',
+  flex: 1
+}));
+
+const DocumentCard = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(2),
+  marginBottom: theme.spacing(1),
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  borderRadius: '8px',
+  border: '1px solid #e0e0e0',
+  backgroundColor: '#fafafa',
+  '&:hover': {
+    backgroundColor: '#f5f5f5',
+    borderColor: '#15e420'
+  }
+}));
 
 const AdminOrganizations = () => {
   const navigate = useNavigate();
   const { filter } = useParams();
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
   const [organizations, setOrganizations] = useState([]);
-  const [allOrganizations, setAllOrganizations] = useState([]); // For full export
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
-  const [approveDialog, setApproveDialog] = useState({ open: false, org: null, documentStatus: {} });
+  const [selectedOrg, setSelectedOrg] = useState(null);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
-
-  const isDetailedView = statusFilter === 'approved' || statusFilter === 'rejected';
 
   useEffect(() => {
     if (filter === 'pending') setStatusFilter('pending');
@@ -48,96 +171,114 @@ const AdminOrganizations = () => {
 
   useEffect(() => {
     fetchOrganizations();
-    if (!isDetailedView) fetchStats();
+    fetchStats();
   }, [page, rowsPerPage, searchTerm, statusFilter]);
 
-  // Fetch ALL organizations (no limit) for export
-  useEffect(() => {
-    if (isDetailedView) {
-      fetchAllOrganizationsForExport();
-    }
-  }, [statusFilter, searchTerm]);
+  const showAlert = (type, message) => {
+    setAlert({ open: true, type, message });
+  };
 
-  const showAlert = (type, message) => setAlert({ open: true, type, message });
-  const handleCloseAlert = () => setAlert({ ...alert, open: false });
+  const handleCloseAlert = () => {
+    setAlert({ ...alert, open: false });
+  };
 
   const fetchOrganizations = async () => {
     setLoading(true);
     try {
-      let query = supabase.from('organizations').select('*, payments(*)', { count: 'exact' });
-      if (statusFilter !== 'all') query = query.eq('status', statusFilter);
-      if (searchTerm) query = query.or(`company_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,cac_number.ilike.%${searchTerm}%`);
-      
+      let query = supabase
+        .from('organizations_registry')
+        .select('*', { count: 'exact' });
+
+      if (statusFilter !== 'all') {
+        query = query.eq('status', statusFilter);
+      }
+
+      if (searchTerm) {
+        query = query.or(
+          `company_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,cac_number.ilike.%${searchTerm}%,registration_number.ilike.%${searchTerm}%`
+        );
+      }
+
       const from = page * rowsPerPage;
       const to = from + rowsPerPage - 1;
-      const { data, error, count } = await query.order('created_at', { ascending: false }).range(from, to);
+
+      const { data, error, count } = await query
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
       if (error) throw error;
 
-      let orgsWithDocStatus = data || [];
-      if (statusFilter === 'pending') {
-        orgsWithDocStatus = await Promise.all((data || []).map(async (org) => {
-          const docStatus = await checkDocumentStatus(org.id);
-          return { ...org, documentStatus: docStatus };
-        }));
-      }
-      setOrganizations(orgsWithDocStatus || []);
+      // Fetch documents for each organization
+      const orgsWithDocs = await Promise.all(
+        (data || []).map(async (org) => {
+          const { data: docData, error: docError } = await supabase
+            .from('organization_documents')
+            .select('*')
+            .eq('organization_id', org.id);
+
+          if (docError) {
+            console.error('Error fetching documents for org:', org.id, docError);
+            return { ...org, documents: [] };
+          }
+
+          return { ...org, documents: docData || [] };
+        })
+      );
+
+      setOrganizations(orgsWithDocs);
       setTotalCount(count || 0);
     } catch (error) {
       console.error('Error fetching organizations:', error);
-      showAlert('error', 'Failed to load organizations');
+      showAlert('error', 'Failed to load organizations: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch ALL organizations for export (no pagination)
-  const fetchAllOrganizationsForExport = async () => {
+  const fetchStats = async () => {
     try {
-      let query = supabase.from('organizations').select('*');
-      if (statusFilter !== 'all') query = query.eq('status', statusFilter);
-      if (searchTerm) query = query.or(`company_name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,cac_number.ilike.%${searchTerm}%`);
-      
-      const { data, error } = await query.order('created_at', { ascending: false });
-      if (error) throw error;
-      setAllOrganizations(data || []);
+      const { count: total } = await supabase
+        .from('organizations_registry')
+        .select('*', { count: 'exact', head: true });
+
+      const { count: pending } = await supabase
+        .from('organizations_registry')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+      const { count: approved } = await supabase
+        .from('organizations_registry')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'approved');
+
+      const { count: rejected } = await supabase
+        .from('organizations_registry')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'rejected');
+
+      setStats({
+        total: total || 0,
+        pending: pending || 0,
+        approved: approved || 0,
+        rejected: rejected || 0
+      });
     } catch (error) {
-      console.error('Error fetching all organizations:', error);
+      console.error('Error fetching stats:', error);
     }
   };
 
-  const checkDocumentStatus = async (organizationId) => {
-    try {
-      const { data: org } = await supabase.from('organizations').select(documentFields.map(f => f.key).join(',')).eq('id', organizationId).single();
-      const { data: notifications } = await supabase.from('organization_notifications').select('*').eq('organization_id', organizationId).in('type', ['document_rejected', 'document_approved']).order('created_at', { ascending: false });
-      
-      const documentStatus = {};
-      documentFields.forEach(field => {
-        const hasDocument = !!org[field.key];
-        const rejectedNotification = notifications?.find(n => n.type === 'document_rejected' && n.title?.includes(field.name));
-        const approvedNotification = notifications?.find(n => n.type === 'document_approved' && n.title?.includes(field.name));
-        if (!hasDocument) documentStatus[field.key] = 'missing';
-        else if (rejectedNotification && (!approvedNotification || new Date(rejectedNotification.created_at) > new Date(approvedNotification.created_at))) documentStatus[field.key] = 'rejected';
-        else if (approvedNotification) documentStatus[field.key] = 'approved';
-        else documentStatus[field.key] = 'pending';
-      });
-      return documentStatus;
-    } catch (error) { return {}; }
-  };
-
-  const fetchStats = async () => {
-    try {
-      const { count: total } = await supabase.from('organizations').select('*', { count: 'exact', head: true });
-      const { count: pending } = await supabase.from('organizations').select('*', { count: 'exact', head: true }).eq('status', 'pending');
-      const { count: approved } = await supabase.from('organizations').select('*', { count: 'exact', head: true }).eq('status', 'approved');
-      const { count: rejected } = await supabase.from('organizations').select('*', { count: 'exact', head: true }).eq('status', 'rejected');
-      setStats({ total: total || 0, pending: pending || 0, approved: approved || 0, rejected: rejected || 0 });
-    } catch (error) { console.error('Error fetching stats:', error); }
-  };
-
   const handleChangePage = (event, newPage) => setPage(newPage);
-  const handleChangeRowsPerPage = (event) => { setRowsPerPage(parseInt(event.target.value, 10)); setPage(0); };
-  const handleSearch = (event) => { setSearchTerm(event.target.value); setPage(0); };
   
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
+  const handleSearch = (event) => {
+    setSearchTerm(event.target.value);
+    setPage(0);
+  };
+
   const handleStatusFilter = (event) => {
     const newFilter = event.target.value;
     setStatusFilter(newFilter);
@@ -145,202 +286,743 @@ const AdminOrganizations = () => {
     navigate(newFilter === 'all' ? '/admin/organizations' : `/admin/organizations/filter/${newFilter}`);
   };
 
-  const handleViewOrganization = (id) => navigate(`/admin/organizations/${id}`);
-
-  // PDF Export with ALL data on A2 paper
-  const handlePDFExport = async () => {
-    setExporting(true);
-    const dataToExport = allOrganizations.length > 0 ? allOrganizations : organizations;
-    await exportToPDFA2('organizations', dataToExport, { start: '2024-01-01', end: new Date().toISOString().split('T')[0] }, { search: searchTerm }, setExporting, showAlert);
+  const handleViewDetails = (org) => {
+    setSelectedOrg(org);
+    setDetailsDialogOpen(true);
   };
 
-  const handleExcelExport = async () => {
-    setExporting(true);
-    const dataToExport = allOrganizations.length > 0 ? allOrganizations : organizations;
-    await exportToExcel('organizations', dataToExport, { start: '2024-01-01', end: new Date().toISOString().split('T')[0] }, { search: searchTerm }, setExporting, showAlert);
+  const handleCloseDetails = () => {
+    setDetailsDialogOpen(false);
+    setSelectedOrg(null);
   };
 
-  const checkAllDocumentsApproved = (documentStatus) => {
-    if (!documentStatus) return false;
-    return documentFields.every(field => documentStatus[field.key] === 'approved');
+  const getStatusChip = (status) => {
+    const statusMap = {
+      pending: { label: 'Pending', icon: <PendingIcon /> },
+      approved: { label: 'Approved', icon: <CheckCircleIcon /> },
+      rejected: { label: 'Rejected', icon: <CancelIcon /> },
+      active: { label: 'Active', icon: <CheckCircleIcon /> }
+    };
+    const config = statusMap[status?.toLowerCase()] || statusMap.pending;
+    
+    return <StatusChip icon={config.icon} label={config.label} status={status?.toLowerCase()} />;
   };
 
-  const handleApproveClick = (org) => {
-    if (!checkAllDocumentsApproved(org.documentStatus)) {
-      setApproveDialog({ open: true, org, documentStatus: org.documentStatus });
-    } else {
-      confirmApproveOrganization(org);
+  const getDocumentIcon = (docType) => {
+    const pdfTypes = ['cover_letter', 'memorandum', 'registration_cert', 'incorporation_cert', 'premises_cert', 'form_c07'];
+    if (pdfTypes.includes(docType)) {
+      return <PdfIcon sx={{ color: '#f44336' }} />;
     }
+    return <ImageIcon sx={{ color: '#4caf50' }} />;
   };
 
-  const confirmApproveOrganization = async (org) => {
-    try {
-      await supabase.from('organizations').update({ status: 'approved', updated_at: new Date().toISOString() }).eq('id', org.id);
-      await supabase.from('organization_notifications').insert([{ organization_id: org.id, type: 'success', title: 'Organization Approved', message: 'Your organization has been fully approved!', category: 'registration', action_url: '/dashboard', read: false }]);
-      showAlert('success', `${org.company_name} approved`);
-      fetchOrganizations(); fetchStats();
-    } catch (error) { showAlert('error', 'Failed to approve'); }
+  const getDocumentLabel = (docType) => {
+    const labels = {
+      cover_letter: 'Covering Letter',
+      memorandum: 'Memorandum & Articles',
+      registration_cert: 'Registration Certificate',
+      incorporation_cert: 'Incorporation Certificate',
+      premises_cert: 'Business Premises Certificate',
+      company_logo: 'Company Logo',
+      form_c07: 'Form C07',
+      id_document: 'ID Document'
+    };
+    return labels[docType] || docType;
   };
 
-  const handleRejectOrganization = async (org) => {
-    try {
-      await supabase.from('organizations').update({ status: 'rejected', updated_at: new Date().toISOString() }).eq('id', org.id);
-      await supabase.from('organization_notifications').insert([{ organization_id: org.id, type: 'error', title: 'Organization Rejected', message: 'Your registration has been rejected.', category: 'registration', action_url: '/contact', read: false }]);
-      showAlert('success', `${org.company_name} rejected`);
-      fetchOrganizations(); fetchStats();
-      setApproveDialog({ open: false, org: null, documentStatus: {} });
-    } catch (error) { showAlert('error', 'Failed to reject'); }
+  const getDocumentStatusChip = (status) => {
+    const configs = {
+      approved: { label: 'Approved', color: 'success' },
+      pending: { label: 'Pending', color: 'warning' },
+      rejected: { label: 'Rejected', color: 'error' },
+      missing: { label: 'Missing', color: 'default' }
+    };
+    const config = configs[status] || configs.pending;
+    return <Chip label={config.label} color={config.color} size="small" />;
   };
 
-  const getDocumentStatusSummary = (documentStatus) => {
-    if (!documentStatus) return { approved: 0, pending: 0, rejected: 0, missing: 0 };
-    const counts = { approved: 0, pending: 0, rejected: 0, missing: 0 };
-    Object.values(documentStatus).forEach(status => { counts[status]++; });
-    return counts;
+const getDocumentChips = (documents) => {
+  // Get summary only for required documents
+  const summary = getDocumentSummary(documents || []);
+  const chips = [];
+  
+  // Show approved count
+  if (summary.approved > 0) {
+    chips.push(
+      <Chip key="approved" size="small" label={`${summary.approved} approved`} color="success" sx={{ height: '20px', fontSize: '0.65rem' }} />
+    );
+  }
+  
+  // Show pending count
+  if (summary.pending > 0) {
+    chips.push(
+      <Chip key="pending" size="small" label={`${summary.pending} pending`} color="warning" sx={{ height: '20px', fontSize: '0.65rem' }} />
+    );
+  }
+  
+  // Show missing count
+  if (summary.missing > 0) {
+    chips.push(
+      <Chip key="missing" size="small" label={`${summary.missing} missing`} color="default" sx={{ height: '20px', fontSize: '0.65rem' }} />
+    );
+  }
+  
+  // If all required documents are uploaded and approved
+  if (summary.approved === requiredDocumentKeys.length && summary.missing === 0 && summary.pending === 0) {
+    return <Chip size="small" label="All documents approved" color="success" sx={{ height: '20px', fontSize: '0.65rem' }} />;
+  }
+  
+  // If all required documents are uploaded but pending
+  if (summary.missing === 0 && summary.pending > 0 && summary.approved === 0) {
+    return <Chip size="small" label="All documents uploaded" color="info" sx={{ height: '20px', fontSize: '0.65rem' }} />;
+  }
+  
+  // If no chips were added
+  if (chips.length === 0) {
+    return <Chip size="small" label="No documents" color="default" sx={{ height: '20px', fontSize: '0.65rem' }} />;
+  }
+  
+  return chips;
+};
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-NG', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const getRequiredDocsStatus = (documents) => {
+    if (!documents || documents.length === 0) {
+      return { allUploaded: false, missing: requiredDocumentKeys };
+    }
+
+    const uploadedKeys = documents.map(d => d.document_type);
+    const missing = requiredDocumentKeys.filter(key => !uploadedKeys.includes(key));
+    const allUploaded = missing.length === 0;
+
+    return { allUploaded, missing };
   };
 
   if (loading && organizations.length === 0) {
-    return <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px"><CircularProgress style={{ color: '#15e420' }} /></Box>;
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress style={{ color: '#15e420' }} />
+      </Box>
+    );
   }
 
   return (
     <>
-      <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert} anchorOrigin={{ vertical: 'top', horizontal: 'right' }}>
-        <Alert onClose={handleCloseAlert} severity={alert.type} sx={{ width: '100%' }}>{alert.message}</Alert>
+      <Snackbar
+        open={alert.open}
+        autoHideDuration={6000}
+        onClose={handleCloseAlert}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseAlert} severity={alert.type} sx={{ width: '100%' }}>
+          {alert.message}
+        </Alert>
       </Snackbar>
 
-      <Container maxWidth="xl" sx={{ py: { xs: 1, md: 2 }, px: { xs: 1, md: 2 } }}>
-        <Box sx={{ display: 'flex', gap: { xs: 1, md: 3 } }}>
-          <AdminSidebar />
-          
-          <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: { xs: 1.5, md: 2 }, borderRadius: '16px', minWidth: 0, overflow: 'hidden' }}>
-            {/* Header */}
-            <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#333', fontSize: { xs: '1rem', md: '1.25rem' } }}>
-                {isDetailedView ? `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Organizations` : 'Organizations'}
-              </Typography>
-              
-              {isDetailedView && (
-                <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                  <Typography variant="caption" sx={{ color: '#666', mr: 1 }}>
-                    {allOrganizations.length} records
-                  </Typography>
-                  <Tooltip title="Export PDF (A2 - Full Details)">
-                    <IconButton onClick={handlePDFExport} disabled={exporting} sx={{ color: '#dc3545' }}>
-                      {exporting ? <CircularProgress size={18} /> : <PdfIcon />}
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Export Excel">
-                    <IconButton onClick={handleExcelExport} disabled={exporting} sx={{ color: '#28a745' }}>
-                      {exporting ? <CircularProgress size={18} /> : <ExcelIcon />}
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              )}
-            </Box>
+      <Box sx={{ display: 'flex', bgcolor: '#f8f9fa', minHeight: '100vh' }}>
+        <AdminSidebar />
 
-            {!isDetailedView && <OrganizationStats stats={stats} />}
+        <Box sx={{ flex: 1, p: { xs: 2, md: 3 } }}>
+          <Container maxWidth="xl" sx={{ py: { xs: 1, md: 2 } }}>
+            {/* Stats Cards */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={6} sm={3}>
+                <StyledCard>
+                  <CardContent sx={{ p: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Avatar sx={{ bgcolor: '#15e420', width: 40, height: 40 }}>
+                        <BusinessIcon />
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" sx={{ color: '#666', fontWeight: 500 }}>Total</Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>{stats.total}</Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </StyledCard>
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <StyledCard>
+                  <CardContent sx={{ p: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Avatar sx={{ bgcolor: '#ffc107', width: 40, height: 40 }}>
+                        <PendingIcon />
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" sx={{ color: '#666', fontWeight: 500 }}>Pending</Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>{stats.pending}</Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </StyledCard>
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <StyledCard>
+                  <CardContent sx={{ p: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Avatar sx={{ bgcolor: '#28a745', width: 40, height: 40 }}>
+                        <CheckCircleIcon />
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" sx={{ color: '#666', fontWeight: 500 }}>Approved</Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>{stats.approved}</Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </StyledCard>
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <StyledCard>
+                  <CardContent sx={{ p: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Avatar sx={{ bgcolor: '#dc3545', width: 40, height: 40 }}>
+                        <CancelIcon />
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" sx={{ color: '#666', fontWeight: 500 }}>Rejected</Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>{stats.rejected}</Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </StyledCard>
+              </Grid>
+            </Grid>
 
-            <OrganizationFilters searchTerm={searchTerm} onSearchChange={handleSearch} statusFilter={statusFilter} onStatusFilterChange={handleStatusFilter} onRefresh={fetchOrganizations} />
-            
-            {isDetailedView ? (
-              <SimpleOrganizationsTable 
-                organizations={organizations} 
-                totalCount={totalCount} 
-                page={page} 
-                rowsPerPage={rowsPerPage} 
-                onPageChange={handleChangePage} 
-                onRowsPerPageChange={handleChangeRowsPerPage} 
-                onViewDetails={handleViewOrganization} 
-              />
-            ) : (
-              <OrganizationTable 
-                organizations={organizations} totalCount={totalCount} page={page} rowsPerPage={rowsPerPage}
-                onPageChange={handleChangePage} onRowsPerPageChange={handleChangeRowsPerPage}
-                onViewDetails={handleViewOrganization} onApproveClick={handleApproveClick} onReject={handleRejectOrganization}
-                statusFilter={statusFilter} checkAllDocumentsApproved={checkAllDocumentsApproved} getDocumentStatusSummary={getDocumentStatusSummary}
-              />
-            )}
-          </Box>
-        </Box>
-      </Container>
-
-      <Dialog open={approveDialog.open} onClose={() => setApproveDialog({ open: false, org: null, documentStatus: {} })} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 600 }}>Cannot Approve Organization</DialogTitle>
-        <DialogContent>
-          <Alert severity="warning" sx={{ mb: 2 }}>All documents must be approved first.</Alert>
-          {documentFields.map(field => {
-            const status = approveDialog.documentStatus?.[field.key] || 'missing';
-            return (
-              <Box key={field.key} sx={{ display: 'flex', justifyContent: 'space-between', p: 0.75, mb: 0.5, bgcolor: status === 'approved' ? '#e8f5e9' : status === 'rejected' ? '#ffebee' : status === 'missing' ? '#f5f5f5' : '#fff3e0', borderRadius: 1 }}>
-                <Typography variant="body2">{field.name}</Typography>
-                <Chip size="small" label={status} color={status === 'approved' ? 'success' : status === 'rejected' ? 'error' : status === 'missing' ? 'default' : 'warning'} />
+            {/* Search and Filter */}
+            <Paper sx={{ p: 2, mb: 3, borderRadius: '12px' }}>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <TextField
+                  placeholder="Search organizations..."
+                  value={searchTerm}
+                  onChange={handleSearch}
+                  size="small"
+                  sx={{ flex: 1, minWidth: 200 }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <FormControl size="small" sx={{ minWidth: 120 }}>
+                  <InputLabel>Status</InputLabel>
+                  <Select value={statusFilter} onChange={handleStatusFilter} label="Status">
+                    <MenuItem value="all">All</MenuItem>
+                    <MenuItem value="pending">Pending</MenuItem>
+                    <MenuItem value="approved">Approved</MenuItem>
+                    <MenuItem value="rejected">Rejected</MenuItem>
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={fetchOrganizations}
+                  size="small"
+                  sx={{ textTransform: 'none' }}
+                >
+                  Refresh
+                </Button>
               </Box>
-            );
-          })}
-        </DialogContent>
-        <DialogActions><Button onClick={() => setApproveDialog({ open: false, org: null, documentStatus: {} })}>Close</Button></DialogActions>
+            </Paper>
+
+            {/* Organizations Table */}
+            <Paper sx={{ borderRadius: '12px', overflow: 'hidden' }}>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead sx={{ bgcolor: '#f8f9fa' }}>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>#</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Company</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Reg. Number</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>CAC</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Phone</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Status</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Documents</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {organizations.length > 0 ? (
+                      organizations.map((org, index) => {
+                        let businessNature = org.business_nature || [];
+                        if (typeof businessNature === 'string') {
+                          try {
+                            businessNature = JSON.parse(businessNature);
+                          } catch (e) {
+                            businessNature = [];
+                          }
+                        }
+                        
+                        const requiredDocsStatus = getRequiredDocsStatus(org.documents);
+                        const isFullyUploaded = requiredDocsStatus.allUploaded;
+                        
+                        return (
+                          <TableRow key={org.id} hover>
+                            <TableCell sx={{ fontSize: '0.8rem', color: '#999' }}>
+                              {page * rowsPerPage + index + 1}
+                            </TableCell>
+                            <TableCell sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                {org.company_name}
+                                {!isFullyUploaded && org.status === 'pending' && (
+                                  <Tooltip title="Missing required documents">
+                                    <WarningIcon sx={{ color: '#ff9800', fontSize: '16px' }} />
+                                  </Tooltip>
+                                )}
+                                {businessNature.length > 0 && (
+                                  <Chip 
+                                    label={businessNature[0]} 
+                                    size="small" 
+                                    sx={{ 
+                                      ml: 1, 
+                                      height: '18px', 
+                                      fontSize: '0.6rem',
+                                      backgroundColor: '#e3f2fd',
+                                      color: '#1565c0'
+                                    }} 
+                                  />
+                                )}
+                                {businessNature.length > 1 && (
+                                  <Chip 
+                                    label={`+${businessNature.length - 1}`} 
+                                    size="small" 
+                                    sx={{ 
+                                      ml: 0.5, 
+                                      height: '18px', 
+                                      fontSize: '0.6rem',
+                                      backgroundColor: '#f5f5f5'
+                                    }} 
+                                  />
+                                )}
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={org.registration_number}
+                                size="small"
+                                sx={{ 
+                                  fontWeight: 600, 
+                                  fontSize: '0.65rem', 
+                                  bgcolor: '#e3f2fd', 
+                                  color: '#1565c0',
+                                  height: 22
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell sx={{ fontSize: '0.8rem' }}>{org.cac_number || 'N/A'}</TableCell>
+                            <TableCell sx={{ fontSize: '0.8rem' }}>{org.phone_number1 || 'N/A'}</TableCell>
+                            <TableCell>{getStatusChip(org.status)}</TableCell>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                {getDocumentChips(org.documents)}
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              <Tooltip title="View Full Details">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleViewDetails(org)}
+                                  sx={{ color: '#15e420' }}
+                                >
+                                  <VisibilityIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                          <Typography sx={{ color: '#666' }}>No organizations found</Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              <TablePagination
+                rowsPerPageOptions={[5, 10, 25, 50]}
+                component="div"
+                count={totalCount}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                onPageChange={handleChangePage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                sx={{
+                  '.MuiTablePagination-toolbar': { minHeight: 40 },
+                  '.MuiTablePagination-selectLabel, .MuiTablePagination-input': { fontSize: '0.8rem' },
+                  '.MuiTablePagination-displayedRows': { fontSize: '0.8rem' }
+                }}
+              />
+            </Paper>
+          </Container>
+        </Box>
+      </Box>
+
+      {/* Details Dialog */}
+      <Dialog
+        open={detailsDialogOpen}
+        onClose={handleCloseDetails}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '16px', maxHeight: '90vh' } }}
+      >
+        {selectedOrg && (
+          <>
+            <DialogTitle sx={{ bgcolor: '#f8f9fa', borderBottom: '1px solid #e0e0e0' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    {selectedOrg.company_name}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#666' }}>
+                    Registration: {selectedOrg.registration_number}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Chip 
+                    label={selectedOrg.status?.toUpperCase() || 'ACTIVE'} 
+                    size="small"
+                    sx={{ 
+                      backgroundColor: selectedOrg.status === 'active' || selectedOrg.status === 'approved' ? '#e8f5e9' : '#fff3e0',
+                      color: selectedOrg.status === 'active' || selectedOrg.status === 'approved' ? '#2e7d32' : '#e65100',
+                      fontWeight: 600,
+                      height: '24px',
+                      fontSize: '0.7rem'
+                    }}
+                  />
+                  <IconButton onClick={handleCloseDetails} size="small">
+                    <CancelIcon />
+                  </IconButton>
+                </Box>
+              </Box>
+            </DialogTitle>
+            
+            <DialogContent sx={{ p: 0 }}>
+              <Box sx={{ p: 3 }}>
+                {/* Basic Information */}
+                <Accordion defaultExpanded>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <BusinessIcon sx={{ color: '#15e420' }} /> Company Information
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>Company Name</DetailLabel>
+                          <DetailValue>{selectedOrg.company_name}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>Registration Number</DetailLabel>
+                          <DetailValue>{selectedOrg.registration_number}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>CAC Number</DetailLabel>
+                          <DetailValue>{selectedOrg.cac_number || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>Registration Date</DetailLabel>
+                          <DetailValue>{formatDate(selectedOrg.registration_date)}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <DetailRow>
+                          <DetailLabel>Business Nature</DetailLabel>
+                          <DetailValue>
+                            {(() => {
+                              let nature = selectedOrg.business_nature || [];
+                              if (typeof nature === 'string') {
+                                try { nature = JSON.parse(nature); } catch (e) { nature = []; }
+                              }
+                              return Array.isArray(nature) ? nature.join(', ') : 'N/A';
+                            })()}
+                          </DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <DetailRow>
+                          <DetailLabel>ID Type</DetailLabel>
+                          <DetailValue>{selectedOrg.id_type || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
+
+                {/* Address Information */}
+                <Accordion>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <LocationOnIcon sx={{ color: '#15e420' }} /> Address Information
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>House Number</DetailLabel>
+                          <DetailValue>{selectedOrg.house_number || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>Street</DetailLabel>
+                          <DetailValue>{selectedOrg.street || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>LGA</DetailLabel>
+                          <DetailValue>{selectedOrg.lga || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>State</DetailLabel>
+                          <DetailValue>{selectedOrg.state || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <DetailRow>
+                          <DetailLabel>Landmark</DetailLabel>
+                          <DetailValue>{selectedOrg.landmark || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
+
+                {/* Contact Information */}
+                <Accordion>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <PersonIcon sx={{ color: '#15e420' }} /> Contact Information
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>Contact Person</DetailLabel>
+                          <DetailValue>{selectedOrg.contact_person || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>Representative</DetailLabel>
+                          <DetailValue>{selectedOrg.representative || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel><PhoneIcon fontSize="small" sx={{ mr: 0.5 }} /> Phone 1</DetailLabel>
+                          <DetailValue>{selectedOrg.phone_number1 || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel><PhoneIcon fontSize="small" sx={{ mr: 0.5 }} /> Phone 2</DetailLabel>
+                          <DetailValue>{selectedOrg.phone_number2 || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <DetailRow>
+                          <DetailLabel><EmailIcon fontSize="small" sx={{ mr: 0.5 }} /> Email</DetailLabel>
+                          <DetailValue>{selectedOrg.email || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
+
+                {/* Staff Information */}
+                <Accordion>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <PeopleIcon sx={{ color: '#15e420' }} /> Staff Information
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6} md={3}>
+                        <DetailRow>
+                          <DetailLabel>Nigerian Directors</DetailLabel>
+                          <DetailValue>{selectedOrg.nigerian_directors || 0}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={6} md={3}>
+                        <DetailRow>
+                          <DetailLabel>Non-Nigerian Directors</DetailLabel>
+                          <DetailValue>{selectedOrg.non_nigerian_directors || 0}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={6} md={3}>
+                        <DetailRow>
+                          <DetailLabel>Nigerian Employees</DetailLabel>
+                          <DetailValue>{selectedOrg.nigerian_employees || 0}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={6} md={3}>
+                        <DetailRow>
+                          <DetailLabel>Non-Nigerian Employees</DetailLabel>
+                          <DetailValue>{selectedOrg.non_nigerian_employees || 0}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
+
+                {/* Referee Information */}
+                <Accordion>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <ContactMailIcon sx={{ color: '#15e420' }} /> Referee Information
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>Referee</Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>Full Name</DetailLabel>
+                          <DetailValue>{selectedOrg.referee_name || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>Business Name</DetailLabel>
+                          <DetailValue>{selectedOrg.referee_business || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>Phone Number</DetailLabel>
+                          <DetailValue>{selectedOrg.referee_phone || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <DetailRow>
+                          <DetailLabel>Registration Number</DetailLabel>
+                          <DetailValue>{selectedOrg.referee_reg_number || 'N/A'}</DetailValue>
+                        </DetailRow>
+                      </Grid>
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
+
+                {/* Documents */}
+                <Accordion defaultExpanded>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <DescriptionIcon sx={{ color: '#15e420' }} /> Documents ({selectedOrg.documents?.length || 0})
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    {selectedOrg.documents && selectedOrg.documents.length > 0 ? (
+                      <Box>
+                        {documentFields.map((field) => {
+                          const doc = selectedOrg.documents.find(d => d.document_type === field.key);
+                          const status = doc ? (doc.is_verified ? 'approved' : 'pending') : 'missing';
+                          
+                          return (
+                            <DocumentCard key={field.key}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                {doc ? getDocumentIcon(field.key) : <WarningIcon sx={{ color: '#ff9800' }} />}
+                                <Box>
+                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                    {field.name}
+                                    {field.required && (
+                                      <Chip 
+                                        label="Required" 
+                                        size="small" 
+                                        sx={{ ml: 1, height: '16px', fontSize: '0.55rem', backgroundColor: '#ffebee', color: '#c62828' }} 
+                                      />
+                                    )}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ color: '#666' }}>
+                                    {doc ? `${doc.file_name} • ${formatDate(doc.uploaded_at)}` : 'Not uploaded'}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                {getDocumentStatusChip(status)}
+                                {doc && (
+                                  <>
+                                    <Tooltip title="View Document">
+                                      <IconButton
+                                        size="small"
+                                        href={doc.file_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        sx={{ color: '#15e420' }}
+                                      >
+                                        <VisibilityIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                    <Tooltip title="Download">
+                                      <IconButton
+                                        size="small"
+                                        href={doc.file_url}
+                                        download
+                                        sx={{ color: '#2196f3' }}
+                                      >
+                                        <DownloadIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </>
+                                )}
+                              </Box>
+                            </DocumentCard>
+                          );
+                        })}
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" sx={{ color: '#666', textAlign: 'center', py: 2 }}>
+                        No documents uploaded
+                      </Typography>
+                    )}
+                  </AccordionDetails>
+                </Accordion>
+              </Box>
+            </DialogContent>
+
+            <DialogActions sx={{ p: 3, borderTop: '1px solid #e0e0e0' }}>
+              <Button onClick={handleCloseDetails} variant="outlined" sx={{ textTransform: 'none' }}>
+                Close
+              </Button>
+              <Button
+                variant="contained"
+                sx={{
+                  bgcolor: '#15e420',
+                  textTransform: 'none',
+                  '&:hover': { bgcolor: '#12c21e' }
+                }}
+                onClick={() => navigate(`/admin/organizations/${selectedOrg.id}`)}
+              >
+                View Full Profile
+              </Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
     </>
-  );
-};
-
-// Simple table - Basic info only for screen view
-const SimpleOrganizationsTable = ({ organizations, totalCount, page, rowsPerPage, onPageChange, onRowsPerPageChange, onViewDetails }) => {
-  const columns = [
-    { key: 'company_name', label: 'Company', w: 160 },
-    { key: 'email', label: 'Email', w: 180 },
-    { key: 'phone_number', label: 'Phone', w: 120 },
-    { key: 'cac_number', label: 'CAC', w: 100 },
-    { key: 'office_address', label: 'Address', w: 160 },
-    { key: 'business_nature', label: 'Business Nature', w: 140 },
-  
-  ];
-
-  return (
-    <Paper sx={{ borderRadius: '12px', overflow: 'hidden' }}>
-      <TableContainer sx={{ maxHeight: 'calc(100vh - 350px)' }}>
-        <Table size="small" stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', py: 1, px: 1.5, bgcolor: '#f1f3f5', width: 40 }}>S/N</TableCell>
-              {columns.map(col => (
-                <TableCell key={col.key} sx={{ fontWeight: 600, fontSize: '0.75rem', py: 1, px: 1.5, bgcolor: '#f1f3f5', minWidth: col.w }}>
-                  {col.label}
-                </TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {organizations.length > 0 ? organizations.map((org, i) => (
-              <TableRow key={org.id} hover onClick={() => onViewDetails(org.id)} sx={{ cursor: 'pointer', '&:nth-of-type(even)': { bgcolor: '#fafafa' }, '&:hover': { bgcolor: '#e8f5e9' } }}>
-                <TableCell sx={{ fontSize: '0.75rem', py: 0.75, px: 1.5, textAlign: 'center', color: '#999' }}>
-                  {page * rowsPerPage + i + 1}
-                </TableCell>
-                {columns.map(col => (
-                  <TableCell key={col.key} sx={{ fontSize: '0.75rem', py: 0.75, px: 1.5, maxWidth: col.w, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {col.key === 'created_at' ? (
-                      org[col.key] ? new Date(org[col.key]).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'
-                    ) : (
-                      <Tooltip title={String(org[col.key] || 'N/A')} arrow>
-                        <span>{org[col.key] || '-'}</span>
-                      </Tooltip>
-                    )}
-                  </TableCell>
-                ))}
-              </TableRow>
-            )) : (
-              <TableRow><TableCell colSpan={columns.length + 1} align="center" sx={{ py: 4 }}><Typography color="textSecondary">No organizations found</Typography></TableCell></TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <TablePagination
-        rowsPerPageOptions={[10, 25, 50]} component="div" count={totalCount} rowsPerPage={rowsPerPage} page={page}
-        onPageChange={onPageChange} onRowsPerPageChange={onRowsPerPageChange}
-        sx={{ '.MuiTablePagination-toolbar': { minHeight: 40, px: 1.5 }, '.MuiTablePagination-selectLabel, .MuiTablePagination-input': { fontSize: '0.8rem' }, '.MuiTablePagination-displayedRows': { fontSize: '0.8rem' } }}
-      />
-    </Paper>
   );
 };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 import {
   Box,
@@ -23,37 +23,17 @@ import {
   Snackbar,
   CircularProgress,
   useTheme,
-  useMediaQuery,
-  Drawer,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  ListItemButton,
-  Divider,
-  AppBar,
-  Toolbar
+  useMediaQuery
 } from '@mui/material';
 import {
   People as PeopleIcon,
   Payment as PaymentIcon,
   CheckCircle as CheckCircleIcon,
   Pending as PendingIcon,
-  TrendingUp as TrendingUpIcon,
   Visibility as VisibilityIcon,
   Warning as WarningIcon,
   Business as BusinessIcon,
-  Receipt as ReceiptIcon,
-  Dashboard as DashboardIcon,
-  Description as DescriptionIcon,
-  AttachMoney as AttachMoneyIcon,
-  Assessment as AssessmentIcon,
-  Notifications as NotificationsIcon,
-  Settings as SettingsIcon,
-  Logout as LogoutIcon,
-  Menu as MenuIcon,
-  AdminPanelSettings as AdminPanelSettingsIcon,
-  Security as SecurityIcon
+  Receipt as ReceiptIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import {
@@ -68,6 +48,7 @@ import {
   ArcElement
 } from 'chart.js';
 import { Line, Doughnut } from 'react-chartjs-2';
+import AdminSidebar from './AdminSidebar';
 
 ChartJS.register(
   CategoryScale,
@@ -80,60 +61,38 @@ ChartJS.register(
   ArcElement
 );
 
-const drawerWidth = 260;
-
 const StyledCard = styled(Card)(({ theme }) => ({
   height: '100%',
   borderRadius: '12px',
-  boxShadow: '0 5px 15px rgba(0, 0, 0, 0.08)',
-  transition: 'all 0.3s',
+  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+  transition: 'all 0.2s ease',
+  border: '1px solid #f0f0f0',
   '&:hover': {
     transform: 'translateY(-2px)',
-    boxShadow: '0 10px 25px rgba(21, 228, 32, 0.12)'
+    boxShadow: '0 8px 16px rgba(21, 228, 32, 0.1)'
   }
 }));
 
-const StatCard = ({ title, value, icon, color }) => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  
+const StatCard = ({ title, value, icon, color, subtitle }) => {
   return (
     <StyledCard>
-      <CardContent sx={{ p: isMobile ? 1.5 : 2.5 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: isMobile ? 1 : 1.5 }}>
-          <Avatar sx={{ bgcolor: color, width: isMobile ? 32 : 40, height: isMobile ? 32 : 40 }}>
+      <CardContent sx={{ p: 2.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Avatar sx={{ bgcolor: color, width: 44, height: 44 }}>
             {icon}
           </Avatar>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                color: '#666', 
-                fontFamily: '"Inter", sans-serif', 
-                fontSize: isMobile ? '0.65rem' : '0.7rem', 
-                fontWeight: 500,
-                display: 'block',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}
-            >
+          <Box>
+            <Typography variant="body2" sx={{ color: '#666', fontWeight: 500 }}>
               {title}
             </Typography>
-            <Typography 
-              variant={isMobile ? "body2" : "h6"} 
-              sx={{ 
-                fontWeight: 700, 
-                fontFamily: '"Poppins", sans-serif', 
-                fontSize: isMobile ? '0.9rem' : '1.1rem', 
-                lineHeight: 1.3,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}
-            >
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#333' }}>
               {value}
             </Typography>
+            {subtitle && (
+              <Typography variant="caption" sx={{ color: '#999' }}>
+                {subtitle}
+              </Typography>
+            )}
           </Box>
         </Box>
       </CardContent>
@@ -145,7 +104,6 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [adminData, setAdminData] = useState(null);
   const [stats, setStats] = useState({
@@ -202,7 +160,6 @@ const AdminDashboard = () => {
       }
 
       setAdminData(data);
-      // Store admin data
       sessionStorage.setItem('adminData', JSON.stringify(data));
       sessionStorage.setItem('adminRole', data.admin_type);
     } catch (error) {
@@ -407,115 +364,6 @@ const AdminDashboard = () => {
     }]
   };
 
-  // Sidebar content
-  const sidebarContent = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ p: 2, textAlign: 'center' }}>
-        <img src="/static/logo.png" alt="KACCIMA" style={{ width: '60px', height: '60px', marginBottom: '8px' }} />
-        <Typography variant="subtitle1" sx={{ fontFamily: '"Poppins", sans-serif', fontWeight: 600, color: '#15e420' }}>
-          Admin Panel
-        </Typography>
-        {adminData && (
-          <Chip
-            label={adminData.admin_type?.replace('_', ' ')}
-            size="small"
-            sx={{ 
-              mt: 1, 
-              backgroundColor: adminData.admin_type === 'super_admin' ? '#dc3545' : 
-                              adminData.admin_type === 'approver' ? '#667eea' : '#f093fb',
-              color: 'white',
-              textTransform: 'capitalize'
-            }}
-          />
-        )}
-      </Box>
-      
-      <Divider />
-      
-      <List sx={{ flex: 1, px: 1 }}>
-        <ListItemButton 
-          onClick={() => { navigate('/admin/dashboard'); setMobileOpen(false); }}
-          selected={window.location.pathname === '/admin/dashboard'}
-          sx={{ borderRadius: '8px', mb: 0.5 }}
-        >
-          <ListItemIcon><DashboardIcon sx={{ color: '#15e420' }} /></ListItemIcon>
-          <ListItemText primary="Dashboard" primaryTypographyProps={{ fontSize: '0.9rem' }} />
-        </ListItemButton>
-
-        <ListItemButton 
-          onClick={() => { navigate('/admin/organizations'); setMobileOpen(false); }}
-          selected={window.location.pathname.includes('/admin/organizations')}
-          sx={{ borderRadius: '8px', mb: 0.5 }}
-        >
-          <ListItemIcon><BusinessIcon sx={{ color: '#15e420' }} /></ListItemIcon>
-          <ListItemText primary="Organizations" primaryTypographyProps={{ fontSize: '0.9rem' }} />
-        </ListItemButton>
-
-        <ListItemButton 
-          onClick={() => { navigate('/admin/payments'); setMobileOpen(false); }}
-          selected={window.location.pathname.includes('/admin/payments')}buck
-          sx={{ borderRadius: '8px', mb: 0.5 }}
-        >
-          <ListItemIcon><AttachMoneyIcon sx={{ color: '#15e420' }} /></ListItemIcon>
-          <ListItemText primary="Payments" primaryTypographyProps={{ fontSize: '0.9rem' }} />
-        </ListItemButton>
-
-        <ListItemButton 
-          onClick={() => { navigate('/admin/documents'); setMobileOpen(false); }}
-          selected={window.location.pathname === '/admin/documents'}
-          sx={{ borderRadius: '8px', mb: 0.5 }}
-        >
-          <ListItemIcon><DescriptionIcon sx={{ color: '#15e420' }} /></ListItemIcon>
-          <ListItemText primary="Documents" primaryTypographyProps={{ fontSize: '0.9rem' }} />
-        </ListItemButton>
-
-        <ListItemButton 
-          onClick={() => { navigate('/admin/reports'); setMobileOpen(false); }}
-          selected={window.location.pathname === '/admin/reports'}
-          sx={{ borderRadius: '8px', mb: 0.5 }}
-        >
-          <ListItemIcon><AssessmentIcon sx={{ color: '#15e420' }} /></ListItemIcon>
-          <ListItemText primary="Reports" primaryTypographyProps={{ fontSize: '0.9rem' }} />
-        </ListItemButton>
-
-        <ListItemButton 
-          onClick={() => { navigate('/admin/notifications'); setMobileOpen(false); }}
-          selected={window.location.pathname === '/admin/notifications'}
-          sx={{ borderRadius: '8px', mb: 0.5 }}
-        >
-          <ListItemIcon><NotificationsIcon sx={{ color: '#15e420' }} /></ListItemIcon>
-          <ListItemText primary="Notifications" primaryTypographyProps={{ fontSize: '0.9rem' }} />
-        </ListItemButton>
-
- 
-
-        <ListItemButton 
-          onClick={() => { navigate('/admin/settings'); setMobileOpen(false); }}
-          selected={window.location.pathname === '/admin/settings'}
-          sx={{ borderRadius: '8px', mb: 0.5 }}
-        >
-          <ListItemIcon><SettingsIcon sx={{ color: '#15e420' }} /></ListItemIcon>
-          <ListItemText primary="Settings" primaryTypographyProps={{ fontSize: '0.9rem' }} />
-        </ListItemButton>
-      </List>
-
-      <Divider />
-      
-      <Box sx={{ p: 2 }}>
-        <Button
-          fullWidth
-          variant="outlined"
-          color="error"
-          startIcon={<LogoutIcon />}
-          onClick={handleLogout}
-          sx={{ textTransform: 'none' }}
-        >
-          Logout
-        </Button>
-      </Box>
-    </Box>
-  );
-
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
@@ -537,77 +385,38 @@ const AdminDashboard = () => {
         </Alert>
       </Snackbar>
 
-      <Box sx={{ display: 'flex' }}>
-        {/* Mobile drawer */}
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-          ModalProps={{ keepMounted: true }}
-          sx={{
-            display: { xs: 'block', md: 'none' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth }
-          }}
-        >
-          {sidebarContent}
-        </Drawer>
+      <Box sx={{ display: 'flex', bgcolor: '#f8f9fa', minHeight: '100vh' }}>
+        <AdminSidebar onLogout={handleLogout} />
 
-        {/* Desktop drawer */}
-        <Drawer
-          variant="permanent"
-          sx={{
-            display: { xs: 'none', md: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth }
-          }}
-          open
-        >
-          {sidebarContent}
-        </Drawer>
-
-        {/* Main content */}
-        <Box sx={{ flex: 1, bgcolor: '#f8f9fa', minHeight: '100vh' }}>
-          {/* Top bar for mobile */}
-          <AppBar position="sticky" sx={{ display: { xs: 'block', md: 'none' }, bgcolor: 'white', boxShadow: 1 }}>
-            <Toolbar>
-              <IconButton onClick={() => setMobileOpen(true)}>
-                <MenuIcon />
-              </IconButton>
-              <Typography variant="h6" sx={{ flex: 1, color: '#333', fontFamily: '"Poppins", sans-serif' }}>
-                Admin Dashboard
-              </Typography>
-            </Toolbar>
-          </AppBar>
-
-          <Container maxWidth="xl" sx={{ py: 3, px: { xs: 1, sm: 2, md: 3 } }}>
+        <Box sx={{ flex: 1, p: { xs: 2, md: 3 } }}>
+          <Container maxWidth="xl" sx={{ py: { xs: 1, md: 2 } }}>
             {/* Header */}
             <Box sx={{ mb: 3 }}>
               <Typography 
                 variant="h5" 
                 sx={{ 
-                  fontFamily: '"Poppins", sans-serif',
+                  fontFamily: '"Inter", sans-serif',
                   fontWeight: 600,
                   color: '#333',
-                  mb: 0.5,
-                  fontSize: { xs: '1.1rem', sm: '1.5rem' }
+                  mb: 0.5
                 }}
               >
-                Welcome back, {adminData?.full_name}!
+                Welcome back, {adminData?.full_name || 'Admin'}!
               </Typography>
               <Typography 
                 variant="body2" 
                 sx={{ 
                   fontFamily: '"Inter", sans-serif',
-                  color: '#666',
-                  fontSize: { xs: '0.75rem', sm: '0.875rem' }
+                  color: '#666'
                 }}
               >
                 Here's what's happening with your platform today.
               </Typography>
             </Box>
 
-            {/* Stats Cards */}
-            <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: { xs: 1, sm: 3 } }}>
-              <Grid item xs={6} sm={6} md={3}>
+            {/* Stats Cards - Organizations */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={6} sm={3}>
                 <StatCard
                   title="Total Organizations"
                   value={stats.totalOrganizations}
@@ -615,7 +424,7 @@ const AdminDashboard = () => {
                   color="#15e420"
                 />
               </Grid>
-              <Grid item xs={6} sm={6} md={3}>
+              <Grid item xs={6} sm={3}>
                 <StatCard
                   title="Pending Reviews"
                   value={stats.pendingOrganizations}
@@ -623,7 +432,7 @@ const AdminDashboard = () => {
                   color="#ffc107"
                 />
               </Grid>
-              <Grid item xs={6} sm={6} md={3}>
+              <Grid item xs={6} sm={3}>
                 <StatCard
                   title="Approved"
                   value={stats.approvedOrganizations}
@@ -631,7 +440,7 @@ const AdminDashboard = () => {
                   color="#28a745"
                 />
               </Grid>
-              <Grid item xs={6} sm={6} md={3}>
+              <Grid item xs={6} sm={3}>
                 <StatCard
                   title="Rejected"
                   value={stats.rejectedOrganizations}
@@ -641,9 +450,9 @@ const AdminDashboard = () => {
               </Grid>
             </Grid>
 
-            {/* Payment Stats */}
-            <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: { xs: 1, sm: 3 } }}>
-              <Grid item xs={6} sm={6} md={3}>
+            {/* Stats Cards - Payments */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={6} sm={3}>
                 <StatCard
                   title="Total Payments"
                   value={stats.totalPayments}
@@ -651,7 +460,7 @@ const AdminDashboard = () => {
                   color="#17a2b8"
                 />
               </Grid>
-              <Grid item xs={6} sm={6} md={3}>
+              <Grid item xs={6} sm={3}>
                 <StatCard
                   title="Pending Payments"
                   value={stats.pendingPayments}
@@ -659,7 +468,7 @@ const AdminDashboard = () => {
                   color="#ffc107"
                 />
               </Grid>
-              <Grid item xs={6} sm={6} md={3}>
+              <Grid item xs={6} sm={3}>
                 <StatCard
                   title="Approved Payments"
                   value={stats.approvedPayments}
@@ -667,7 +476,7 @@ const AdminDashboard = () => {
                   color="#28a745"
                 />
               </Grid>
-              <Grid item xs={6} sm={6} md={3}>
+              <Grid item xs={6} sm={3}>
                 <StatCard
                   title="Total Revenue"
                   value={`₦${stats.totalRevenue.toLocaleString()}`}
@@ -678,21 +487,20 @@ const AdminDashboard = () => {
             </Grid>
 
             {/* Charts */}
-            <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: { xs: 1, sm: 3 } }}>
+            <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={12} md={8}>
-                <Paper sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: '12px', bgcolor: 'white' }}>
+                <Paper sx={{ p: 2, borderRadius: '12px', bgcolor: 'white' }}>
                   <Typography 
                     variant="subtitle1" 
                     sx={{ 
-                      fontFamily: '"Poppins", sans-serif',
+                      fontFamily: '"Inter", sans-serif',
                       fontWeight: 600,
-                      mb: { xs: 1, sm: 2 },
-                      fontSize: { xs: '0.9rem', sm: '1rem' }
+                      mb: 2
                     }}
                   >
                     Registration Trends (Last 6 Months)
                   </Typography>
-                  <Box sx={{ height: { xs: 180, sm: 220 } }}>
+                  <Box sx={{ height: 220 }}>
                     {stats.monthlyRegistrations.length > 0 ? (
                       <Line data={chartData} options={chartOptions} />
                     ) : (
@@ -707,24 +515,23 @@ const AdminDashboard = () => {
               </Grid>
               <Grid item xs={12} md={4}>
                 <Paper sx={{ 
-                  p: { xs: 1.5, sm: 2 }, 
+                  p: 2, 
                   borderRadius: '12px', 
                   height: '100%', 
                   bgcolor: 'white',
-                  minHeight: { xs: 200, md: 'auto' }
+                  minHeight: 200
                 }}>
                   <Typography 
                     variant="subtitle1" 
                     sx={{ 
-                      fontFamily: '"Poppins", sans-serif',
+                      fontFamily: '"Inter", sans-serif',
                       fontWeight: 600,
-                      mb: { xs: 1, sm: 2 },
-                      fontSize: { xs: '0.9rem', sm: '1rem' }
+                      mb: 2
                     }}
                   >
                     Organization Status
                   </Typography>
-                  <Box sx={{ height: { xs: 140, sm: 180 } }}>
+                  <Box sx={{ height: 180 }}>
                     {stats.totalOrganizations > 0 ? (
                       <Doughnut data={doughnutData} options={chartOptions} />
                     ) : (
@@ -740,21 +547,18 @@ const AdminDashboard = () => {
             </Grid>
 
             {/* Recent Activities */}
-            <Paper sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: '12px', bgcolor: 'white', overflow: 'hidden' }}>
+            <Paper sx={{ p: 2, borderRadius: '12px', bgcolor: 'white' }}>
               <Box sx={{ 
                 display: 'flex', 
-                flexDirection: { xs: 'column', sm: 'row' },
                 justifyContent: 'space-between', 
-                alignItems: { xs: 'flex-start', sm: 'center' }, 
-                mb: 2,
-                gap: { xs: 1, sm: 0 }
+                alignItems: 'center', 
+                mb: 2
               }}>
                 <Typography 
                   variant="subtitle1" 
                   sx={{ 
-                    fontFamily: '"Poppins", sans-serif',
-                    fontWeight: 600,
-                    fontSize: { xs: '0.9rem', sm: '1rem' }
+                    fontFamily: '"Inter", sans-serif',
+                    fontWeight: 600
                   }}
                 >
                   Recent Registrations
@@ -769,7 +573,6 @@ const AdminDashboard = () => {
                     fontSize: '0.75rem',
                     py: 0.5,
                     px: 1.5,
-                    alignSelf: { xs: 'flex-end', sm: 'auto' },
                     '&:hover': {
                       borderColor: '#12c21e',
                       backgroundColor: '#e8f5e9'
@@ -780,54 +583,31 @@ const AdminDashboard = () => {
                 </Button>
               </Box>
 
-              <TableContainer sx={{ overflowX: 'auto' }}>
+              <TableContainer>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>
-                        Company
-                      </TableCell>
-                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1, display: { xs: 'none', sm: 'table-cell' } }}>
-                        Date
-                      </TableCell>
-                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>
-                        Status
-                      </TableCell>
-                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>
-                        Payment
-                      </TableCell>
-                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.8rem', py: 1 }}>
-                        Actions
-                      </TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Company</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem', display: { xs: 'none', sm: 'table-cell' } }}>Date</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Status</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Payment</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {recentActivities.length > 0 ? (
                       recentActivities.map((activity) => (
                         <TableRow key={activity.id} hover>
-                          <TableCell sx={{ 
-                            fontFamily: '"Inter", sans-serif', 
-                            fontSize: '0.8rem', 
-                            py: 1,
-                            maxWidth: { xs: 100, sm: 'none' },
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }}>
+                          <TableCell sx={{ fontSize: '0.85rem' }}>
                             {activity.company}
                           </TableCell>
-                          <TableCell sx={{ 
-                            fontFamily: '"Inter", sans-serif', 
-                            fontSize: '0.8rem', 
-                            py: 1,
-                            display: { xs: 'none', sm: 'table-cell' }
-                          }}>
+                          <TableCell sx={{ fontSize: '0.85rem', display: { xs: 'none', sm: 'table-cell' } }}>
                             {new Date(activity.date).toLocaleDateString()}
                           </TableCell>
-                          <TableCell sx={{ py: 1 }}>
+                          <TableCell>
                             {getStatusChip(activity.status)}
                           </TableCell>
-                          <TableCell sx={{ py: 1 }}>
+                          <TableCell>
                             {activity.hasPayment ? (
                               <Chip
                                 icon={<CheckCircleIcon />}
@@ -846,11 +626,11 @@ const AdminDashboard = () => {
                               />
                             )}
                           </TableCell>
-                          <TableCell sx={{ py: 1 }}>
+                          <TableCell>
                             <IconButton
                               size="small"
                               onClick={() => navigate(`/admin/organizations/${activity.id}`)}
-                              sx={{ color: '#15e420', p: 0.5 }}
+                              sx={{ color: '#15e420' }}
                             >
                               <VisibilityIcon fontSize="small" />
                             </IconButton>
