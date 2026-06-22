@@ -324,51 +324,6 @@ const AdminOrganizationDetail = () => {
             </Paper>
 
             <Grid container spacing={3}>
-              {/* Stats Cards */}
-              <Grid item xs={12}>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Card sx={{ borderRadius: '12px' }}>
-                      <CardContent sx={{ p: 2 }}>
-                        <Typography variant="caption" sx={{ color: '#666' }}>Total Documents</Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                          {documents.length || 0}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Card sx={{ borderRadius: '12px' }}>
-                      <CardContent sx={{ p: 2 }}>
-                        <Typography variant="caption" sx={{ color: '#666' }}>Approved</Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, color: '#28a745' }}>
-                          {summary.approved || 0}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Card sx={{ borderRadius: '12px' }}>
-                      <CardContent sx={{ p: 2 }}>
-                        <Typography variant="caption" sx={{ color: '#666' }}>Pending</Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, color: '#ffc107' }}>
-                          {summary.pending || 0}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Card sx={{ borderRadius: '12px' }}>
-                      <CardContent sx={{ p: 2 }}>
-                        <Typography variant="caption" sx={{ color: '#666' }}>Missing</Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 700, color: '#dc3545' }}>
-                          {summary.missing || 0}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                </Grid>
-              </Grid>
 
               {/* Company Details */}
               <Grid item xs={12} md={6}>

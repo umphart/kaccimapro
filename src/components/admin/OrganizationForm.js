@@ -21,9 +21,9 @@ import BasicInfoTab from './BasicInfoTab';
 import ContactRefereesTab from './ContactRefereesTab';
 import DocumentsTab from './DocumentsTab';
 import { getLgasByState } from './nigerianStates';
+import { sendOrganizationCredentials } from '../../utils/emailService';
 
 // The bucket name that exists in your Supabase Storage
-// Based on your screenshot, it's 'organization-docs' (with a hyphen)
 const BUCKET_NAME = 'organization-docs';
 
 const DialogHeader = styled(Box)(({ theme }) => ({
@@ -73,12 +73,23 @@ const NavigationButtons = styled(Box)(({ theme }) => ({
   borderRadius: '0 0 16px 16px'
 }));
 
-// Function to check if bucket exists by trying to list files in it
+// Function to generate a random password
+const generateRandomPassword = () => {
+  const length = 12;
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  let password = '';
+  for (let i = 0; i < length; i++) {
+    const randomIndex = Math.floor(Math.random() * charset.length);
+    password += charset[randomIndex];
+  }
+  return password;
+};
+
+// Function to check if bucket exists
 const checkBucketAccess = async () => {
   try {
     console.log(`Checking access to bucket: ${BUCKET_NAME}`);
     
-    // Try to list files in the bucket (will work if bucket exists and is public)
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
       .list('', {
@@ -89,16 +100,14 @@ const checkBucketAccess = async () => {
     if (error) {
       console.error('Error accessing bucket:', error);
       
-      // If error is about bucket not found, bucket doesn't exist
       if (error.message?.includes('bucket not found') || error.message?.includes('not found')) {
         console.log(`Bucket ${BUCKET_NAME} does not exist`);
         return false;
       }
       
-      // If error is about permissions, bucket exists but can't list
       if (error.message?.includes('permission')) {
         console.log(`Bucket ${BUCKET_NAME} exists but no list permission`);
-        return true; // Bucket exists, just can't list
+        return true;
       }
       
       return false;
@@ -392,101 +401,99 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
     setActiveStep((prev) => prev - 1);
   };
 
- const uploadDocument = async (file, orgId, docType) => {
-  if (!file) {
-    console.log('No file to upload for:', docType);
-    return null;
-  }
-
-  try {
-    console.log('Uploading document:', docType, file.name);
-    
-    // Check if bucket is ready
-    if (!bucketReady) { 
-      const accessible = await checkBucketAccess();
-      setBucketReady(accessible);
-      if (!accessible) {
-        throw new Error('Storage bucket is not available. Please contact administrator.');
-      }
+  const uploadDocument = async (file, orgId, docType) => {
+    if (!file) {
+      console.log('No file to upload for:', docType);
+      return null;
     }
 
-    // Generate a unique file path
-    const timestamp = Date.now();
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${orgId}/${docType}_${timestamp}.${fileExt}`;
-    const filePath = `organization_documents/${fileName}`;
-
-    console.log('Uploading to path:', filePath);
-    console.log('Using bucket:', BUCKET_NAME);
-
-    // Upload file to storage
-    const { error: uploadError, data: uploadData } = await supabase.storage
-      .from(BUCKET_NAME)
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false
-      });
-
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
-      throw uploadError;
-    }
-
-    console.log('Upload successful:', uploadData);
-
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from(BUCKET_NAME)
-      .getPublicUrl(filePath);
-
-    console.log('Public URL:', publicUrl);
-
-    // Save document record to database - make sure column names match
-    const docRecord = {
-      organization_id: orgId,
-      document_type: docType,
-      file_name: file.name,
-      file_path: filePath,
-      file_url: publicUrl,  // This column MUST exist in your table
-      status: 'pending',
-      uploaded_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    console.log('Saving document record:', docRecord);
-
-    const { data: docData, error: docError } = await supabase
-      .from('organization_documents')
-      .insert([docRecord])
-      .select()
-      .single();
-
-    if (docError) {
-      console.error('Document record error:', docError);
+    try {
+      console.log('Uploading document:', docType, file.name);
       
-      // If insertion fails, try to delete the uploaded file
-      if (uploadData) {
-        await supabase.storage
-          .from(BUCKET_NAME)
-          .remove([filePath]);
+      if (!bucketReady) { 
+        const accessible = await checkBucketAccess();
+        setBucketReady(accessible);
+        if (!accessible) {
+          throw new Error('Storage bucket is not available. Please contact administrator.');
+        }
       }
-      
-      throw new Error(`Failed to save document record: ${docError.message}`);
-    }
 
-    console.log('Document record saved:', docData);
-    return docData;
-  } catch (error) {
-    console.error('Error in uploadDocument:', error);
-    throw error;
-  }
-};
+      const timestamp = Date.now();
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${orgId}/${docType}_${timestamp}.${fileExt}`;
+      const filePath = `organization_documents/${fileName}`;
+
+      console.log('Uploading to path:', filePath);
+      console.log('Using bucket:', BUCKET_NAME);
+
+      const { error: uploadError, data: uploadData } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('Upload successful:', uploadData);
+
+      const { data: { publicUrl } } = supabase.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(filePath);
+
+      console.log('Public URL:', publicUrl);
+
+      const docRecord = {
+        organization_id: orgId,
+        document_type: docType,
+        file_name: file.name,
+        file_path: filePath,
+        file_url: publicUrl,
+        status: 'pending',
+        uploaded_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('Saving document record:', docRecord);
+
+      const { data: docData, error: docError } = await supabase
+        .from('organization_documents')
+        .insert([docRecord])
+        .select()
+        .single();
+
+      if (docError) {
+        console.error('Document record error:', docError);
+        
+        if (uploadData) {
+          await supabase.storage
+            .from(BUCKET_NAME)
+            .remove([filePath]);
+        }
+        
+        throw new Error(`Failed to save document record: ${docError.message}`);
+      }
+
+      console.log('Document record saved:', docData);
+      return docData;
+    } catch (error) {
+      console.error('Error in uploadDocument:', error);
+      throw error;
+    }
+  };
 
   const handleSaveOrganization = async (skipDocs = false) => {
     setUploadLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const now = new Date().toISOString();
+
+      // Generate a random password for the organization
+      const generatedPassword = generateRandomPassword();
+      console.log('Generated password for organization:', generatedPassword);
 
       const orgData = {
         company_name: formData.company_name?.trim() || '',
@@ -530,7 +537,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
       } else {
         orgData.created_by = user?.id || null;
         orgData.created_at = now;
-        orgData.status = 'active';
+        orgData.status = 'pending';
 
         const { data, error } = await supabase
           .from('organizations_registry')
@@ -540,7 +547,43 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
 
         if (error) throw error;
         orgId = data.id;
-        showAlert('success', 'Organization created successfully');
+        
+        // Create auth user for the organization
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+          email: formData.email?.trim(),
+          password: generatedPassword,
+          email_confirm: true,
+          user_metadata: {
+            company_name: formData.company_name?.trim(),
+            organization_id: orgId,
+            role: 'organization'
+          }
+        });
+
+        if (authError) {
+          console.error('Error creating auth user:', authError);
+          // If auth user creation fails, we should delete the organization record
+          await supabase
+            .from('organizations_registry')
+            .delete()
+            .eq('id', orgId);
+          throw new Error(`Failed to create user account: ${authError.message}`);
+        }
+
+        // Send email with credentials
+        const emailSent = await sendOrganizationCredentials(
+          formData.email?.trim(),
+          formData.company_name?.trim(),
+          generatedPassword,
+          formData.registration_number
+        );
+
+        if (!emailSent.success) {
+          console.warn('Failed to send credentials email:', emailSent.error);
+          showAlert('warning', 'Organization created but credential email could not be sent. Please send credentials manually.');
+        } else {
+          showAlert('success', 'Organization created successfully! Login credentials have been sent to the organization email.');
+        }
       }
 
       // Upload documents if not skipped
@@ -609,17 +652,14 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
     if (!window.confirm('Are you sure you want to delete this document?')) return;
 
     try {
-      // Delete from storage
       const { error: storageError } = await supabase.storage
         .from(BUCKET_NAME)
         .remove([filePath]);
 
       if (storageError) {
         console.error('Storage delete error:', storageError);
-        // Continue to delete from database even if storage fails
       }
 
-      // Delete from database
       const { error } = await supabase
         .from('organization_documents')
         .delete()

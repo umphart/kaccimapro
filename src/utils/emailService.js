@@ -5,8 +5,8 @@ const EMAILJS_CONFIG = {
   publicKey: process.env.REACT_APP_EMAILJS_PUBLIC_KEY || 'vEb1fxTEwxzpmcNmm',
   serviceId: process.env.REACT_APP_EMAILJS_SERVICE_ID || 'service_hoj7fzf',
   templates: {
-    admin: 'template_kwa5fnl',     // For admin notifications (new registrations & payments)
-    org: 'template_orimz2f'         // For organization notifications
+    admin: 'template_kwa5fnl',  // Used for both admin notifications AND organization credentials
+    org: 'template_orimz2f'      // Used for organization notifications (payment approvals, etc.)
   }
 };
 
@@ -18,11 +18,71 @@ const ADMIN_EMAIL = 'pharouq900@gmail.com';
 
 // Configuration flags
 const EMAIL_CONFIG = {
-  SEND_REJECTION_EMAILS: process.env.REACT_APP_SEND_REJECTION_EMAILS === 'true' || false, // Disabled by default
+  SEND_REJECTION_EMAILS: process.env.REACT_APP_SEND_REJECTION_EMAILS === 'true' || false,
+};
+
+// ============================================
+// SEND ORGANIZATION CREDENTIALS EMAIL
+// Uses the admin template (template_kwa5fnl) with modified content
+// ============================================
+
+export const sendOrganizationCredentials = async (email, companyName, password, registrationNumber) => {
+  try {
+    if (!email) {
+      throw new Error('Recipient email is required');
+    }
+
+    const loginUrl = `${window.location.origin}/login`;
+    const dashboardUrl = `${window.location.origin}/dashboard`;
+
+    // Format the details with the password and registration info
+    const credentialsMessage = `
+🔑 **Your Login Credentials:**
+• Email: ${email}
+• Password: ${password}
+
+📋 **Registration Details:**
+• Company: ${companyName}
+• Registration Number: ${registrationNumber}
+
+⚠️ **Important:** Please change your password after your first login for security.
+
+🔐 **Security Notice:**
+• This password is temporary. Please change it immediately after logging in.
+• Never share your password with anyone.
+• If you suspect unauthorized access, contact support immediately.
+
+For security reasons, we recommend changing your password immediately upon first login.
+    `;
+
+    const templateParams = {
+      to_email: email,  // Send to the organization email
+      company_name: companyName,
+      message: `Welcome to KACCIMA! Your organization account has been created.
+
+${credentialsMessage}`,
+      action_url: loginUrl,
+      action_text: 'Login to Your Account',
+      reply_to: 'pharouq900@gmail.com'
+    };
+
+    const response = await emailjs.send(
+      EMAILJS_CONFIG.serviceId,
+      EMAILJS_CONFIG.templates.admin,  // Using the admin template
+      templateParams
+    );
+
+    console.log('✅ Organization credentials email sent successfully');
+    return { success: true, data: response };
+  } catch (error) {
+    console.error('❌ Failed to send credentials email:', error);
+    return { success: false, error: error.message };
+  }
 };
 
 // ============================================
 // ADMIN NOTIFICATIONS (New Registrations)
+// Uses the admin template (template_kwa5fnl)
 // ============================================
 
 export const sendAdminRegistrationNotification = async (orgData) => {
@@ -59,7 +119,8 @@ Registration Details:
 };
 
 // ============================================
-// ADMIN PAYMENT NOTIFICATION (When user submits payment)
+// ADMIN PAYMENT NOTIFICATION
+// Uses the admin template (template_kwa5fnl)
 // ============================================
 
 export const sendAdminPaymentNotification = async (paymentData, organization) => {
@@ -101,6 +162,7 @@ Review this payment in the admin dashboard.`,
 
 // ============================================
 // PAYMENT APPROVAL EMAIL (To Organization)
+// Uses the org template (template_orimz2f)
 // ============================================
 
 export const sendPaymentApprovedEmail = async (email, companyName, amount, organizationStatus = 'pending') => {
@@ -109,10 +171,8 @@ export const sendPaymentApprovedEmail = async (email, companyName, amount, organ
       throw new Error('Recipient email is required');
     }
 
-    // Determine if this is first-time approval or renewal
     const isFirstTimeApproval = organizationStatus === 'pending' || organizationStatus === 'pending_approval';
     
-    // Enhanced congratulatory messages
     const mainMessage = isFirstTimeApproval 
       ? `🎉 Congratulations ${companyName}! Your payment of ₦${amount?.toLocaleString()} has been successfully approved and your organization is now fully activated on our platform.`
       : `🎉 Great news ${companyName}! Your payment of ₦${amount?.toLocaleString()} has been approved. Thank you for your continued partnership.`;
@@ -180,6 +240,7 @@ Thank you for your continued trust in our services.`;
 
 // ============================================
 // PAYMENT REJECTION EMAIL (To Organization)
+// Uses the org template (template_orimz2f)
 // ============================================
 
 export const sendPaymentRejectedEmail = async (email, companyName, amount, rejectionReason, forceSend = false) => {
@@ -188,7 +249,6 @@ export const sendPaymentRejectedEmail = async (email, companyName, amount, rejec
       throw new Error('Recipient email is required');
     }
 
-    // Check if rejection emails are enabled - allow force send
     if (!EMAIL_CONFIG.SEND_REJECTION_EMAILS && !forceSend) {
       console.log('⚠️ Rejection emails are disabled');
       return { success: true, skipped: true, message: 'Rejection emails disabled' };
@@ -220,4 +280,19 @@ Please contact our support team for assistance or to resolve any issues with you
     console.error('❌ Failed to send payment rejection email:', error);
     return { success: false, error: error.message };
   }
+};
+
+// ============================================
+// GENERATE RANDOM PASSWORD (Utility)
+// ============================================
+
+export const generateRandomPassword = () => {
+  const length = 12;
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  let password = '';
+  for (let i = 0; i < length; i++) {
+    const randomIndex = Math.floor(Math.random() * charset.length);
+    password += charset[randomIndex];
+  }
+  return password;
 };
