@@ -5,25 +5,17 @@ const EMAILJS_CONFIG = {
   publicKey: process.env.REACT_APP_EMAILJS_PUBLIC_KEY || 'vEb1fxTEwxzpmcNmm',
   serviceId: process.env.REACT_APP_EMAILJS_SERVICE_ID || 'service_hoj7fzf',
   templates: {
-    admin: 'template_kwa5fnl',  // Used for both admin notifications AND organization credentials
-    org: 'template_orimz2f'      // Used for organization notifications (payment approvals, etc.)
+    admin: 'template_kwa5fnl',
+    org: 'template_orimz2f'
   }
 };
 
 // Initialize EmailJS
 emailjs.init(EMAILJS_CONFIG.publicKey);
 
-// Admin email
-const ADMIN_EMAIL = 'pharouq900@gmail.com';
-
-// Configuration flags
-const EMAIL_CONFIG = {
-  SEND_REJECTION_EMAILS: process.env.REACT_APP_SEND_REJECTION_EMAILS === 'true' || false,
-};
-
 // ============================================
 // SEND ORGANIZATION CREDENTIALS EMAIL
-// Uses the admin template (template_kwa5fnl) with modified content
+// Uses the admin template (template_kwa5fnl)
 // ============================================
 
 export const sendOrganizationCredentials = async (email, companyName, password, registrationNumber) => {
@@ -35,44 +27,60 @@ export const sendOrganizationCredentials = async (email, companyName, password, 
     const loginUrl = `${window.location.origin}/login`;
     const dashboardUrl = `${window.location.origin}/dashboard`;
 
-    // Format the details with the password and registration info
     const credentialsMessage = `
+🎉 Welcome to KACCIMA!
+
+Your organization "${companyName}" has been successfully registered on the Kaduna Chamber of Commerce platform.
+
 🔑 **Your Login Credentials:**
-• Email: ${email}
-• Password: ${password}
+━━━━━━━━━━━━━━━━━━━━━━━
+📧 Email: ${email}
+🔒 Password: ${password}
+━━━━━━━━━━━━━━━━━━━━━━━
 
 📋 **Registration Details:**
 • Company: ${companyName}
 • Registration Number: ${registrationNumber}
+• Registration Date: ${new Date().toLocaleDateString()}
 
-⚠️ **Important:** Please change your password after your first login for security.
-
-🔐 **Security Notice:**
-• This password is temporary. Please change it immediately after logging in.
+⚠️ **Important Security Notice:**
+• This password is temporary. Please change it after your first login.
 • Never share your password with anyone.
 • If you suspect unauthorized access, contact support immediately.
 
-For security reasons, we recommend changing your password immediately upon first login.
+🔐 **What to do next:**
+1. Click the "Login to Dashboard" button below
+2. Use your email and the password above to login
+3. Change your password immediately after logging in
+4. Complete your organization profile
+5. Upload any additional documents if needed
+
+Need help? Contact our support team:
+📧 Email: info@kaccima.ng
+📞 Phone: +2347063174462
+
+We're excited to have you on board!
+
+Best regards,
+The KACCIMA Team
     `;
 
     const templateParams = {
-      to_email: email,  // Send to the organization email
+      to_email: email,
       company_name: companyName,
-      message: `Welcome to KACCIMA! Your organization account has been created.
-
-${credentialsMessage}`,
+      message: credentialsMessage,
       action_url: loginUrl,
-      action_text: 'Login to Your Account',
+      action_text: '🔐 Login to Dashboard',
       reply_to: 'pharouq900@gmail.com'
     };
 
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,
-      EMAILJS_CONFIG.templates.admin,  // Using the admin template
+      EMAILJS_CONFIG.templates.admin,
       templateParams
     );
 
-    console.log('✅ Organization credentials email sent successfully');
+    console.log('✅ Organization credentials email sent successfully via EmailJS');
     return { success: true, data: response };
   } catch (error) {
     console.error('❌ Failed to send credentials email:', error);
@@ -81,26 +89,29 @@ ${credentialsMessage}`,
 };
 
 // ============================================
-// ADMIN NOTIFICATIONS (New Registrations)
-// Uses the admin template (template_kwa5fnl)
+// ADMIN REGISTRATION NOTIFICATION
 // ============================================
 
 export const sendAdminRegistrationNotification = async (orgData) => {
   try {
     const templateParams = {
-      to_email: ADMIN_EMAIL,
+      to_email: 'pharouq900@gmail.com',
       company_name: orgData.company_name,
-      message: `A new organization has registered on the platform.
+      message: `🏢 New Organization Registration
 
-Registration Details:
+A new organization has registered on the platform.
+
+📋 Registration Details:
 • Company: ${orgData.company_name}
 • Email: ${orgData.email}
 • Phone: ${orgData.phone_number || 'N/A'}
 • CAC Number: ${orgData.cac_number || 'N/A'}
 • Business Nature: ${orgData.business_nature || 'N/A'}
-• Registration Date: ${new Date().toLocaleString()}`,
+• Registration Date: ${new Date().toLocaleString()}
+
+Click the button below to review and approve this registration.`,
       action_url: `${window.location.origin}/admin/organizations/${orgData.id}`,
-      action_text: 'Review Registration',
+      action_text: '📋 Review Registration',
       reply_to: orgData.email
     };
 
@@ -120,17 +131,18 @@ Registration Details:
 
 // ============================================
 // ADMIN PAYMENT NOTIFICATION
-// Uses the admin template (template_kwa5fnl)
 // ============================================
 
 export const sendAdminPaymentNotification = async (paymentData, organization) => {
   try {
     const templateParams = {
-      to_email: ADMIN_EMAIL,
+      to_email: 'pharouq900@gmail.com',
       company_name: organization.company_name,
-      message: `A new payment has been submitted and requires review.
+      message: `💰 New Payment Received
 
-Payment Details:
+A new payment has been submitted and requires review.
+
+💳 Payment Details:
 • Organization: ${organization.company_name}
 • Amount: ₦${paymentData.amount?.toLocaleString()}
 • Payment Type: ${paymentData.payment_type === 'first' ? 'First Payment' : 'Renewal'}
@@ -140,9 +152,9 @@ Payment Details:
 • Submission Date: ${new Date(paymentData.created_at).toLocaleString()}
 • Status: ${paymentData.status || 'pending'}
 
-Review this payment in the admin dashboard.`,
+Click the button below to review this payment.`,
       action_url: `${window.location.origin}/admin/payments/${paymentData.id}`,
-      action_text: 'Review Payment',
+      action_text: '💰 Review Payment',
       reply_to: organization.email
     };
 
@@ -162,7 +174,6 @@ Review this payment in the admin dashboard.`,
 
 // ============================================
 // PAYMENT APPROVAL EMAIL (To Organization)
-// Uses the org template (template_orimz2f)
 // ============================================
 
 export const sendPaymentApprovedEmail = async (email, companyName, amount, organizationStatus = 'pending') => {
@@ -240,18 +251,12 @@ Thank you for your continued trust in our services.`;
 
 // ============================================
 // PAYMENT REJECTION EMAIL (To Organization)
-// Uses the org template (template_orimz2f)
 // ============================================
 
 export const sendPaymentRejectedEmail = async (email, companyName, amount, rejectionReason, forceSend = false) => {
   try {
     if (!email) {
       throw new Error('Recipient email is required');
-    }
-
-    if (!EMAIL_CONFIG.SEND_REJECTION_EMAILS && !forceSend) {
-      console.log('⚠️ Rejection emails are disabled');
-      return { success: true, skipped: true, message: 'Rejection emails disabled' };
     }
 
     const templateParams = {
@@ -283,7 +288,7 @@ Please contact our support team for assistance or to resolve any issues with you
 };
 
 // ============================================
-// GENERATE RANDOM PASSWORD (Utility)
+// GENERATE RANDOM PASSWORD
 // ============================================
 
 export const generateRandomPassword = () => {

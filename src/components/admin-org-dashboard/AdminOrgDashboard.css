@@ -1,0 +1,50 @@
+/* components/admin-org-dashboard/AdminOrgDashboard.css */
+
+.admin-dashboard-container {
+  background: #f5f7fa;
+  min-height: 100vh;
+}
+
+.admin-dashboard-container .MuiCard-root {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.admin-dashboard-container .MuiCard-root:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.status-pulse {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.membership-timer {
+  background: linear-gradient(135deg, #15e420 0%, #0fa819 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+}
+
+.quick-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 600px) {
+  .quick-action-grid {
+    grid-template-columns: 1fr;
+  }
+}

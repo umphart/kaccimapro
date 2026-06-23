@@ -39,6 +39,35 @@ body::after {
   background-color: rgba(0, 0, 0, 0.3); /* Dark overlay */
   z-index: -1;
 }
+
+/* Add to App.css or create a new CSS file */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Scrollbar styling for dashboard */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #15e420;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #12c21e;
+}
 .App {
   display: flex;
   flex-direction: column;

@@ -1,3 +1,4 @@
+// components/Sidebar.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -13,7 +14,8 @@ import {
   Drawer,
   useTheme,
   useMediaQuery,
-  Badge
+  Badge,
+  Chip
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -25,7 +27,8 @@ import {
   Settings as SettingsIcon,
   Logout as LogoutIcon,
   Menu as MenuIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  AdminPanelSettings as AdminIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { supabase } from '../supabaseClient';
@@ -87,9 +90,9 @@ const StyledListItem = styled(ListItem)(({ active, theme }) => ({
 
 const MenuButton = styled(IconButton)(({ theme }) => ({
   position: 'fixed',
-  top: 16, // Changed from 80 to 16 to position at top
+  top: 16,
   left: 16,
-  zIndex: 1200, // Increased z-index to ensure it's above other elements
+  zIndex: 1200,
   backgroundColor: '#15e420',
   color: 'white',
   '&:hover': {
@@ -113,6 +116,16 @@ const StyledBadge = styled(Badge)(({ theme }) => ({
   }
 }));
 
+const OrganizationTypeChip = styled(Chip)(({ theme }) => ({
+  backgroundColor: 'rgba(255,255,255,0.2)',
+  color: 'white',
+  fontSize: '0.65rem',
+  height: '20px',
+  '& .MuiChip-label': {
+    padding: '0 8px'
+  }
+}));
+
 const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -122,6 +135,8 @@ const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
   const [user, setUser] = useState(null);
   const [organization, setOrganization] = useState(null);
+  const [orgType, setOrgType] = useState(null); // 'self' or 'admin'
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     checkUser();
@@ -136,7 +151,6 @@ const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
   // Set up real-time subscription for new notifications
   useEffect(() => {
     if (organization?.id) {
-      // Subscribe to new notifications
       const subscription = supabase
         .channel('sidebar_notifications_channel')
         .on(
@@ -148,13 +162,11 @@ const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
             filter: `organization_id=eq.${organization.id}`
           },
           (payload) => {
-            // Increment unread count when new notification arrives
             setUnreadCount(prev => prev + 1);
           }
         )
         .subscribe();
 
-      // Also subscribe to updates (when notifications are marked as read)
       const updateSubscription = supabase
         .channel('sidebar_notifications_update_channel')
         .on(
@@ -166,7 +178,6 @@ const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
             filter: `organization_id=eq.${organization.id}`
           },
           () => {
-            // Refresh unread count when notifications are updated
             fetchUnreadCount();
           }
         )
@@ -192,22 +203,83 @@ const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
 
   const fetchOrganizationData = async () => {
     try {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
+      setLoading(true);
+      let orgData = null;
+      let type = null;
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching organization:', error);
+      // Check for admin-created organization first (from organizations_registry)
+      // Method 1: Check by organization_id in user metadata
+      if (user.user_metadata?.organization_id) {
+        const { data, error } = await supabase
+          .from('organizations_registry')
+          .select('*')
+          .eq('id', user.user_metadata.organization_id)
+          .maybeSingle();
+
+        if (data) {
+          orgData = data;
+          type = 'admin';
+        }
       }
 
-      if (data) {
-        setOrganization(data);
-        await fetchUnreadCount(data.id);
+      // Method 2: Check by email
+      if (!orgData && user.email) {
+        const { data, error } = await supabase
+          .from('organizations_registry')
+          .select('*')
+          .eq('email', user.email)
+          .maybeSingle();
+
+        if (data) {
+          orgData = data;
+          type = 'admin';
+          // Update created_by if not set
+          if (!data.created_by) {
+            await supabase
+              .from('organizations_registry')
+              .update({ created_by: user.id })
+              .eq('id', data.id);
+          }
+        }
+      }
+
+      // Method 3: Check by created_by
+      if (!orgData) {
+        const { data, error } = await supabase
+          .from('organizations_registry')
+          .select('*')
+          .eq('created_by', user.id)
+          .maybeSingle();
+
+        if (data) {
+          orgData = data;
+          type = 'admin';
+        }
+      }
+
+      // If not found in admin orgs, check self-created organizations
+      if (!orgData) {
+        const { data, error } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (data) {
+          orgData = data;
+          type = 'self';
+        }
+      }
+
+      if (orgData) {
+        setOrganization(orgData);
+        setOrgType(type);
+        await fetchUnreadCount(orgData.id);
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error fetching organization:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -228,6 +300,7 @@ const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
     }
   };
 
+  // Menu items for organization users (both self and admin created)
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
     { path: '/profile', label: 'Profile', icon: <PersonIcon /> },
@@ -241,8 +314,13 @@ const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
         </StyledBadge>
       ) 
     },
-    { path: '/payment', label: 'Payment', icon: <PaymentIcon /> },
-   
+    // Payment route differs based on organization type
+    { 
+      path: orgType === 'admin' ? '/admin-org-payment' : '/payment', 
+      label: 'Payment', 
+      icon: <PaymentIcon /> 
+    },
+    { path: '/documents', label: 'Documents', icon: <DescriptionIcon /> },
     { path: '/settings', label: 'Settings', icon: <SettingsIcon /> }
   ];
 
@@ -298,6 +376,16 @@ const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
           <Typography variant="body2" sx={{ opacity: 0.9, fontFamily: '"Inter", sans-serif' }}>
             Kano Chamber of Commerce
           </Typography>
+          
+          {/* Organization Type Badge */}
+          {orgType && (
+            <Box sx={{ mt: 1 }}>
+              <OrganizationTypeChip
+                label={orgType === 'admin' ? 'Admin Created' : 'Self Registered'}
+                size="small"
+              />
+            </Box>
+          )}
         </SidebarHeader>
       )}
 
@@ -317,6 +405,20 @@ const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
             />
           </StyledListItem>
         ))}
+
+        <Divider sx={{ my: 2 }} />
+
+        {/* Organization Info */}
+        {organization && (
+          <Box sx={{ px: 2, py: 1 }}>
+            <Typography variant="caption" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
+              {organization.company_name || organization.company_name}
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#999', display: 'block', fontFamily: '"Inter", sans-serif' }}>
+              {organization.registration_number || 'No registration number'}
+            </Typography>
+          </Box>
+        )}
 
         <Divider sx={{ my: 2 }} />
 
