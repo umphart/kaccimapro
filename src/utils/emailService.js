@@ -15,7 +15,6 @@ emailjs.init(EMAILJS_CONFIG.publicKey);
 
 // ============================================
 // SEND ORGANIZATION CREDENTIALS EMAIL
-// Uses the admin template (template_kwa5fnl)
 // ============================================
 
 export const sendOrganizationCredentials = async (email, companyName, password, registrationNumber) => {
@@ -25,30 +24,29 @@ export const sendOrganizationCredentials = async (email, companyName, password, 
     }
 
     const loginUrl = `${window.location.origin}/login`;
-    const dashboardUrl = `${window.location.origin}/dashboard`;
 
-    const credentialsMessage = `
+    const fullMessage = `
 🎉 Welcome to KACCIMA!
 
-Your organization "${companyName}" has been successfully registered on the Kaduna Chamber of Commerce platform.
+Your organization "${companyName}" has been successfully registered on the Kano Chamber of Commerce platform.
 
-🔑 **Your Login Credentials:**
-━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔑 YOUR LOGIN CREDENTIALS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📧 Email: ${email}
 🔒 Password: ${password}
-━━━━━━━━━━━━━━━━━━━━━━━
+📋 Registration Number: ${registrationNumber}
+📅 Registration Date: ${new Date().toLocaleDateString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📋 **Registration Details:**
-• Company: ${companyName}
-• Registration Number: ${registrationNumber}
-• Registration Date: ${new Date().toLocaleDateString()}
-
-⚠️ **Important Security Notice:**
+⚠️ IMPORTANT SECURITY NOTICE:
 • This password is temporary. Please change it after your first login.
 • Never share your password with anyone.
 • If you suspect unauthorized access, contact support immediately.
 
-🔐 **What to do next:**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔐 WHAT TO DO NEXT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. Click the "Login to Dashboard" button below
 2. Use your email and the password above to login
 3. Change your password immediately after logging in
@@ -56,8 +54,8 @@ Your organization "${companyName}" has been successfully registered on the Kadun
 5. Upload any additional documents if needed
 
 Need help? Contact our support team:
-📧 Email: info@kaccima.ng
-📞 Phone: +2347063174462
+📧 info@kaccima.ng
+📞 +2347063174462
 
 We're excited to have you on board!
 
@@ -68,10 +66,10 @@ The KACCIMA Team
     const templateParams = {
       to_email: email,
       company_name: companyName,
-      message: credentialsMessage,
+      message: fullMessage,
       action_url: loginUrl,
       action_text: '🔐 Login to Dashboard',
-      reply_to: 'pharouq900@gmail.com'
+      reply_to: 'info@kaccima.ng'
     };
 
     const response = await emailjs.send(
@@ -80,10 +78,100 @@ The KACCIMA Team
       templateParams
     );
 
-    console.log('✅ Organization credentials email sent successfully via EmailJS');
+    console.log('✅ Organization credentials email sent successfully');
     return { success: true, data: response };
   } catch (error) {
     console.error('❌ Failed to send credentials email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// ============================================
+// SEND REFEREE CONFIRMATION EMAIL
+// ============================================
+
+export const sendRefereeConfirmationEmail = async ({ 
+  refereeEmail, 
+  refereeName, 
+  applicantName, 
+  applicantRegNumber,
+  applicantPhone,
+  applicantEmail,
+  status = 'pending'
+}) => {
+  try {
+    if (!refereeEmail) {
+      throw new Error('Referee email is required');
+    }
+
+    const confirmUrl = `${window.location.origin}/referee-confirm?referee=${encodeURIComponent(refereeEmail)}&applicant=${encodeURIComponent(applicantName)}`;
+    const rejectUrl = `${window.location.origin}/referee-reject?referee=${encodeURIComponent(refereeEmail)}&applicant=${encodeURIComponent(applicantName)}`;
+
+    const fullMessage = `
+Dear ${refereeName || 'Valued Member'},
+
+We hope this message finds you well.
+
+${applicantName} has submitted a membership application to KACCIMA and has kindly designated you as a referee. As a respected member of our Chamber, your professional endorsement is highly valued in this process.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 APPLICANT INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Company Name:        ${applicantName}
+Registration Number: ${applicantRegNumber || 'N/A'}
+Phone Number:        ${applicantPhone || 'N/A'}
+Email Address:       ${applicantEmail || 'N/A'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+We kindly request your professional assessment of the above-mentioned applicant. As a fellow member of the Chamber, your endorsement would significantly support their membership journey.
+
+Please confirm: Do you know and endorse ${applicantName} for membership with KACCIMA?
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 ACTION REQUIRED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ CONFIRM & ENDORSE:
+${confirmUrl}
+
+❌ DECLINE REQUEST:
+${rejectUrl}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 IMPORTANT NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Your response will be treated with strict confidentiality
+• This endorsement helps maintain the high standards of our Chamber membership
+• If you have any concerns, please contact our membership team
+
+Should you have any questions, please contact us:
+📧 membership@kaccima.ng
+📞 +2347063174462
+
+Thank you for your continued support of KACCIMA.
+
+Best regards,
+The KACCIMA Membership Team
+    `;
+
+    const templateParams = {
+      to_email: refereeEmail,
+      company_name: refereeName || 'Valued Member',
+      message: fullMessage,
+      action_url: confirmUrl,
+      action_text: '✅ Confirm & Endorse',
+      reply_to: 'membership@kaccima.ng'
+    };
+
+    const response = await emailjs.send(
+      EMAILJS_CONFIG.serviceId,
+      EMAILJS_CONFIG.templates.org,
+      templateParams
+    );
+
+    console.log('✅ Referee confirmation email sent successfully');
+    return { success: true, data: response };
+  } catch (error) {
+    console.error('❌ Failed to send referee confirmation email:', error);
     return { success: false, error: error.message };
   }
 };
@@ -94,22 +182,28 @@ The KACCIMA Team
 
 export const sendAdminRegistrationNotification = async (orgData) => {
   try {
-    const templateParams = {
-      to_email: 'pharouq900@gmail.com',
-      company_name: orgData.company_name,
-      message: `🏢 New Organization Registration
+    const fullMessage = `
+🏢 NEW ORGANIZATION REGISTRATION
 
 A new organization has registered on the platform.
 
-📋 Registration Details:
-• Company: ${orgData.company_name}
-• Email: ${orgData.email}
-• Phone: ${orgData.phone_number || 'N/A'}
-• CAC Number: ${orgData.cac_number || 'N/A'}
-• Business Nature: ${orgData.business_nature || 'N/A'}
-• Registration Date: ${new Date().toLocaleString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 REGISTRATION DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Company:        ${orgData.company_name}
+Email:          ${orgData.email}
+Phone:          ${orgData.phone_number || 'N/A'}
+CAC Number:     ${orgData.cac_number || 'N/A'}
+Business Nature: ${orgData.business_nature || 'N/A'}
+Registration Date: ${new Date().toLocaleString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Click the button below to review and approve this registration.`,
+Click the button below to review and approve this registration.`;
+
+    const templateParams = {
+      to_email: 'pharouq900@gmail.com',
+      company_name: orgData.company_name,
+      message: fullMessage,
       action_url: `${window.location.origin}/admin/organizations/${orgData.id}`,
       action_text: '📋 Review Registration',
       reply_to: orgData.email
@@ -135,24 +229,30 @@ Click the button below to review and approve this registration.`,
 
 export const sendAdminPaymentNotification = async (paymentData, organization) => {
   try {
-    const templateParams = {
-      to_email: 'pharouq900@gmail.com',
-      company_name: organization.company_name,
-      message: `💰 New Payment Received
+    const fullMessage = `
+💰 NEW PAYMENT RECEIVED
 
 A new payment has been submitted and requires review.
 
-💳 Payment Details:
-• Organization: ${organization.company_name}
-• Amount: ₦${paymentData.amount?.toLocaleString()}
-• Payment Type: ${paymentData.payment_type === 'first' ? 'First Payment' : 'Renewal'}
-• Payment Method: ${paymentData.payment_method || 'Bank Transfer'}
-• Payment Reference: ${paymentData.reference || 'N/A'}
-• Payment Year: ${paymentData.payment_year || new Date().getFullYear()}
-• Submission Date: ${new Date(paymentData.created_at).toLocaleString()}
-• Status: ${paymentData.status || 'pending'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💳 PAYMENT DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Organization:    ${organization.company_name}
+Amount:          ₦${paymentData.amount?.toLocaleString()}
+Payment Type:    ${paymentData.payment_type === 'first' ? 'First Payment' : 'Renewal'}
+Payment Method:  ${paymentData.payment_method || 'Bank Transfer'}
+Payment Reference: ${paymentData.reference || 'N/A'}
+Payment Year:    ${paymentData.payment_year || new Date().getFullYear()}
+Submission Date: ${new Date(paymentData.created_at).toLocaleString()}
+Status:          ${paymentData.status || 'pending'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Click the button below to review this payment.`,
+Click the button below to review this payment.`;
+
+    const templateParams = {
+      to_email: 'pharouq900@gmail.com',
+      company_name: organization.company_name,
+      message: fullMessage,
       action_url: `${window.location.origin}/admin/payments/${paymentData.id}`,
       action_text: '💰 Review Payment',
       reply_to: organization.email
@@ -184,14 +284,17 @@ export const sendPaymentApprovedEmail = async (email, companyName, amount, organ
 
     const isFirstTimeApproval = organizationStatus === 'pending' || organizationStatus === 'pending_approval';
     
-    const mainMessage = isFirstTimeApproval 
-      ? `🎉 Congratulations ${companyName}! Your payment of ₦${amount?.toLocaleString()} has been successfully approved and your organization is now fully activated on our platform.`
-      : `🎉 Great news ${companyName}! Your payment of ₦${amount?.toLocaleString()} has been approved. Thank you for your continued partnership.`;
-    
-    const detailsMessage = isFirstTimeApproval
-      ? `Your organization has been officially verified and activated. You now have complete access to all features including: document management, compliance tracking, notifications, and full dashboard functionality. We're excited to have you on board!
+    const fullMessage = isFirstTimeApproval 
+      ? `🎉 Congratulations ${companyName}!
 
-📋 **Important Documents Now Available:**
+Your payment of ₦${amount?.toLocaleString()} has been successfully approved and your organization is now fully activated on our platform.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ ACCOUNT ACTIVATED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Your organization has been officially verified and activated. You now have complete access to all features including: document management, compliance tracking, notifications, and full dashboard functionality. We're excited to have you on board!
+
+📋 IMPORTANT DOCUMENTS NOW AVAILABLE:
 • Your Membership Certificate is now ready for download from your dashboard
 • Payment Receipt/Invoice can be accessed and printed from the Payments section
 • Organization profile documents are available for viewing and download
@@ -202,10 +305,25 @@ To access these documents:
 3. Go to "Payments" history to view and download your payment receipt
 4. Visit "Organization Profile" to view all your registered details
 
-These documents serve as official proof of your membership with KACCIMA.`
-      : `Your renewal payment has been processed successfully. Your access to all platform features remains active. 
+These documents serve as official proof of your membership with KACCIMA.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📋 **Updated Documents Available:**
+Need help? Contact our support team:
+📧 info@kaccima.ng
+📞 +2347063174462
+
+Best regards,
+The KACCIMA Team`
+      : `🎉 Great news ${companyName}!
+
+Your payment of ₦${amount?.toLocaleString()} has been approved. Thank you for your continued partnership.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ RENEWAL COMPLETED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Your renewal payment has been processed successfully. Your access to all platform features remains active.
+
+📋 UPDATED DOCUMENTS AVAILABLE:
 • Your renewed Membership Certificate is now ready for download
 • Payment receipt for this renewal is available in the Payments section
 • Your membership validity has been extended for another year
@@ -216,23 +334,23 @@ To access your updated documents:
 3. View/print your payment receipt from "Payments" history
 4. Check your organization profile for updated membership expiry date
 
-Thank you for your continued trust in our services.`;
+Thank you for your continued trust in our services.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Need help? Contact our support team:
+📧 info@kaccima.ng
+📞 +2347063174462
+
+Best regards,
+The KACCIMA Team`;
 
     const templateParams = {
       to_email: email,
       company_name: companyName,
-      main_message: mainMessage,
-      details: detailsMessage,
+      message: fullMessage,
       action_url: `${window.location.origin}/dashboard`,
       action_text: 'Access Your Dashboard & Download Documents',
-      action_2_url: `${window.location.origin}/dashboard/documents`,
-      action_2_text: 'Go to Documents Section',
-      action_3_url: `${window.location.origin}/dashboard/payments`,
-      action_3_text: 'View Payment History',
-      reply_to: 'pharouq900@gmail.com',
-      help_text: 'Having trouble downloading? Visit our support page or contact us directly.',
-      support_email: 'info@kaccima.ng',
-      support_phone: '+2347063174462'
+      reply_to: 'info@kaccima.ng'
     };
 
     const response = await emailjs.send(
@@ -241,7 +359,7 @@ Thank you for your continued trust in our services.`;
       templateParams
     );
 
-    console.log('✅ Payment approval email sent to organization with document download instructions');
+    console.log('✅ Payment approval email sent to organization');
     return { success: true, data: response };
   } catch (error) {
     console.error('❌ Failed to send payment approval email:', error);
@@ -253,24 +371,39 @@ Thank you for your continued trust in our services.`;
 // PAYMENT REJECTION EMAIL (To Organization)
 // ============================================
 
-export const sendPaymentRejectedEmail = async (email, companyName, amount, rejectionReason, forceSend = false) => {
+export const sendPaymentRejectedEmail = async (email, companyName, amount, rejectionReason) => {
   try {
     if (!email) {
       throw new Error('Recipient email is required');
     }
 
+    const fullMessage = `
+Dear ${companyName},
+
+We regret to inform you that your payment of ₦${amount?.toLocaleString()} has been rejected.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ PAYMENT REJECTED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Reason for rejection: ${rejectionReason || 'Not specified'}
+
+Please contact our support team for assistance or to resolve any issues with your payment.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Need help? Contact us:
+📧 info@kaccima.ng
+📞 +2347063174462
+
+Best regards,
+The KACCIMA Team`;
+
     const templateParams = {
       to_email: email,
       company_name: companyName,
-      main_message: `Update regarding your payment of ₦${amount?.toLocaleString()}`,
-      details: `We regret to inform you that your payment has been rejected. 
-      
-Reason for rejection: ${rejectionReason || 'Not specified'}
-
-Please contact our support team for assistance or to resolve any issues with your payment.`,
+      message: fullMessage,
       action_url: `${window.location.origin}/support`,
       action_text: 'Contact Support',
-      reply_to: 'pharouq900@gmail.com'
+      reply_to: 'info@kaccima.ng'
     };
 
     const response = await emailjs.send(

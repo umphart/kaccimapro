@@ -1,0 +1,113 @@
+
+/* components/admin-org-dashboard/AdminOrgSidebar.css */
+
+/* Sidebar Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(21, 228, 32, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(21, 228, 32, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(21, 228, 32, 0);
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+.pulse-animation {
+  animation: pulse 2s infinite;
+}
+
+/* Custom scrollbar for sidebar */
+.admin-org-sidebar-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.admin-org-sidebar-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.admin-org-sidebar-list::-webkit-scrollbar-thumb {
+  background: #15e420;
+  border-radius: 3px;
+}
+
+.admin-org-sidebar-list::-webkit-scrollbar-thumb:hover {
+  background: #0fa819;
+}
+
+/* Active indicator glow */
+.active-indicator {
+  position: absolute;
+  right: 8px;
+  width: 4px;
+  height: 24px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #15e420 0%, #0fa819 100%);
+  box-shadow: 0 0 10px rgba(21, 228, 32, 0.3);
+}
+
+/* Hover effects */
+.sidebar-item-hover {
+  position: relative;
+  overflow: hidden;
+}
+
+.sidebar-item-hover::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 0;
+  height: 2px;
+  background: #15e420;
+  transition: width 0.3s ease;
+}
+
+.sidebar-item-hover:hover::after {
+  width: 100%;
+}
+
+/* Status badge styles */
+.status-badge {
+  transition: all 0.3s ease;
+}
+
+.status-badge:hover {
+  transform: scale(1.05);
+}
+
+/* Mobile sidebar specific styles */
+@media (max-width: 900px) {
+  .mobile-menu-button {
+    display: flex !important;
+    animation: pulse 2s infinite;
+  }
+  
+  .desktop-sidebar {
+    display: none;
+  }
+}
+
+/* Desktop sidebar specific styles */
+@media (min-width: 901px) {
+  .mobile-menu-button {
+    display: none;
+  }
+}

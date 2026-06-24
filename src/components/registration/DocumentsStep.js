@@ -15,10 +15,43 @@ const DocumentsStep = ({
       <p className="form-instruction">
         Please upload all required documents in PDF format (except logo which can be JPG/PNG).
         Maximum file size: 10MB for PDFs, 5MB for images.
-        <br />
-
       </p>
       
+      {/* NIN Section - Only means of identification */}
+      <div className="form-section">
+        <h3>National Identification Number (NIN) *</h3>
+        <div className="form-row">
+          <div className="form-group">
+            <label>NIN Number *</label>
+            <input
+              type="text"
+              name="nin"
+              value={formData.nin || ''}
+              onChange={handleInputChange}
+              placeholder="Enter your 11-digit NIN"
+              pattern="[0-9]{11}"
+              maxLength="11"
+              required
+            />
+            <small className="field-hint">NIN must be exactly 11 digits</small>
+          </div>
+          <div className="form-group">
+            <label>NIN Slip / ID Document *</label>
+            <input
+              type="file"
+              name="ninDocument"
+              onChange={handleFileChange}
+              accept=".pdf,.jpg,.jpeg,.png"
+              required
+            />
+            {fileNames.ninDocument && (
+              <small className="file-name">Selected: {fileNames.ninDocument}</small>
+            )}
+            <small className="field-hint">Accepted formats: PDF, JPG, JPEG, PNG</small>
+          </div>
+        </div>
+      </div>
+
       <div className="form-row">
         <div className="form-group">
           <label>Covering Letter *</label>
@@ -32,7 +65,6 @@ const DocumentsStep = ({
           {fileNames.coverLetter && (
             <small className="file-name">Selected: {fileNames.coverLetter}</small>
           )}
-        
         </div>
         <div className="form-group">
           <label>Memorandum & Articles <span style={{ color: '#666', fontWeight: 'normal' }}>(Optional)</span></label>
@@ -45,7 +77,6 @@ const DocumentsStep = ({
           {fileNames.memorandum && (
             <small className="file-name">Selected: {fileNames.memorandum}</small>
           )}
-
         </div>
       </div>
 
@@ -62,7 +93,6 @@ const DocumentsStep = ({
           {fileNames.registrationCert && (
             <small className="file-name">Selected: {fileNames.registrationCert}</small>
           )}
-          
         </div>
         <div className="form-group">
           <label>Incorporation Certificate *</label>
@@ -76,7 +106,6 @@ const DocumentsStep = ({
           {fileNames.incorporationCert && (
             <small className="file-name">Selected: {fileNames.incorporationCert}</small>
           )}
-          
         </div>
       </div>
 
@@ -92,7 +121,6 @@ const DocumentsStep = ({
           {fileNames.premisesCert && (
             <small className="file-name">Selected: {fileNames.premisesCert}</small>
           )}
-         
         </div>
         <div className="form-group">
           <label>Company Logo *</label>
@@ -106,56 +134,36 @@ const DocumentsStep = ({
           {fileNames.companyLogo && (
             <small className="file-name">Selected: {fileNames.companyLogo}</small>
           )}
-          
+          <small className="field-hint">Recommended: 200x200px, JPG/PNG format</small>
         </div>
       </div>
 
-      <div className="form-section">
-        <h3>Means of Identification</h3>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Select Identification Type *</label>
-            <select
-              name="idType"
-              value={formData.idType}
-              onChange={handleInputChange}
-              required
-            >
-              <option value="national_id">National ID</option>
-              <option value="driver_license">Driver's License</option>
-              <option value="voter_card">Voter's Card</option>
-              <option value="international_passport">International Passport</option>
-            </select>
-          </div>
+      <div className="form-row">
+        <div className="form-group">
+          <label>Form C07 <span style={{ color: '#666', fontWeight: 'normal' }}>(Optional)</span></label>
+          <input
+            type="file"
+            name="formC07"
+            accept=".pdf"
+            onChange={handleFileChange}
+          />
+          {fileNames.formC07 && (
+            <small className="file-name">Selected: {fileNames.formC07}</small>
+          )}
         </div>
-
-        <div className="form-row">
-          <div className="form-group">
-            <label>Form C07 <span style={{ color: '#666', fontWeight: 'normal' }}>(Optional)</span></label>
-            <input
-              type="file"
-              name="formC07"
-              accept=".pdf"
-              onChange={handleFileChange}
-            />
-            {fileNames.formC07 && (
-              <small className="file-name">Selected: {fileNames.formC07}</small>
-            )}
-          </div>
-          <div className="form-group">
-            <label>ID Document *</label>
-            <input
-              type="file"
-              name="idDocument"
-              accept=".pdf,.jpg,.jpeg,.png"
-              onChange={handleFileChange}
-              required
-            />
-            {fileNames.idDocument && (
-              <small className="file-name">Selected: {fileNames.idDocument}</small>
-            )}
-          
-          </div>
+        <div className="form-group">
+          <label>Passport Photograph *</label>
+          <input
+            type="file"
+            name="passport"
+            accept=".jpg,.jpeg,.png"
+            onChange={handleFileChange}
+            required
+          />
+          {fileNames.passport && (
+            <small className="file-name">Selected: {fileNames.passport}</small>
+          )}
+          <small className="field-hint">Accepted formats: JPG, JPEG, PNG</small>
         </div>
       </div>
 
@@ -175,6 +183,28 @@ const DocumentsStep = ({
           font-size: 11px;
           margin-top: 4px;
           font-style: italic;
+        }
+        .file-name {
+          display: inline-block;
+          margin-top: 5px;
+          padding: 4px 8px;
+          background-color: #e8f5e9;
+          color: #2e7d32;
+          border-radius: 4px;
+          font-size: 12px;
+        }
+        .form-section {
+          background-color: #f9f9f9;
+          padding: 20px;
+          border-radius: 8px;
+          margin: 20px 0;
+          border: 1px solid #e0e0e0;
+        }
+        .form-section h3 {
+          color: #333;
+          margin-bottom: 15px;
+          border-bottom: 2px solid #15e420;
+          padding-bottom: 10px;
         }
       `}</style>
     </div>

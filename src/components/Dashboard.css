@@ -339,3 +339,115 @@ body {
     text-align: center;
   }
 }
+/* No Organization Notification Styles */
+.no-organization-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+  padding: 20px;
+}
+
+.no-organization-paper {
+  max-width: 600px;
+  width: 100%;
+  padding: 40px;
+  text-align: center;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.no-organization-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 16px;
+  background: #e8f5e9;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.no-organization-icon .material-icons {
+  font-size: 48px;
+  color: #15e420;
+}
+
+.no-organization-title {
+  color: #15e420;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.no-organization-description {
+  color: #666;
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.no-organization-subtext {
+  color: #999;
+  margin-bottom: 24px;
+  font-size: 14px;
+}
+
+.no-organization-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-register-org {
+  background-color: #15e420;
+  color: white;
+  padding: 12px 30px;
+  font-size: 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  text-decoration: none;
+}
+
+.btn-register-org:hover {
+  background-color: #0fb815;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(21, 228, 32, 0.3);
+}
+
+.btn-logout-org {
+  background-color: transparent;
+  color: #15e420;
+  padding: 12px 30px;
+  font-size: 16px;
+  border: 2px solid #15e420;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-logout-org:hover {
+  background-color: rgba(21, 228, 32, 0.05);
+  transform: translateY(-2px);
+}
+
+@media (max-width: 600px) {
+  .no-organization-paper {
+    padding: 24px;
+  }
+  
+  .no-organization-actions {
+    flex-direction: column;
+  }
+  
+  .btn-register-org,
+  .btn-logout-org {
+    width: 100%;
+    justify-content: center;
+  }
+}

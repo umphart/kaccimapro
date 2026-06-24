@@ -11,14 +11,11 @@ import {
   Typography,
   CircularProgress,
   Card,
-  CardContent,
   Chip,
   Button,
   Divider,
   LinearProgress,
   Avatar,
-  IconButton,
-  Tooltip,
   Alert,
   Snackbar,
   useMediaQuery,
@@ -26,7 +23,6 @@ import {
   Badge
 } from '@mui/material';
 import {
-  Dashboard as DashboardIcon,
   Business as BusinessIcon,
   Payment as PaymentIcon,
   Description as DescriptionIcon,
@@ -35,21 +31,13 @@ import {
   Verified as VerifiedIcon,
   Pending as PendingIcon,
   Error as ErrorIcon,
-  CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   CalendarToday as CalendarIcon,
-  AttachMoney as MoneyIcon,
-  Person as PersonIcon,
-  Phone as PhoneIcon,
-  Email as EmailIcon,
-  LocationOn as LocationIcon,
   Refresh as RefreshIcon,
-  Download as DownloadIcon,
-  Visibility as VisibilityIcon,
   ArrowForward as ArrowForwardIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import Sidebar from '../Sidebar';
+import AdminOrgSidebar from './AdminOrgSidebar';
 import './AdminOrgDashboard.css';
 
 // Styled Components
@@ -78,7 +66,7 @@ const WelcomeCard = styled(Card)({
   }
 });
 
-const StatCard = styled(Card)(({ theme }) => ({
+const StatCard = styled(Card)({
   borderRadius: '16px',
   padding: '1.5rem',
   transition: 'transform 0.3s ease, box-shadow 0.3s ease',
@@ -87,7 +75,7 @@ const StatCard = styled(Card)(({ theme }) => ({
     transform: 'translateY(-4px)',
     boxShadow: '0 8px 30px rgba(0, 0, 0, 0.12)'
   }
-}));
+});
 
 const StatusBadge = styled(Chip)(({ status }) => ({
   backgroundColor: status === 'approved' ? '#d4edda' :
@@ -300,7 +288,7 @@ const AdminOrgDashboard = () => {
       if (user.user_metadata?.organization_id) {
         console.log('🔍 Looking up organization by metadata ID:', user.user_metadata.organization_id);
         
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('organizations_registry')
           .select('*')
           .eq('id', user.user_metadata.organization_id)
@@ -316,7 +304,7 @@ const AdminOrgDashboard = () => {
       if (!orgData && user.email) {
         console.log('🔍 Looking up organization by email:', user.email);
         
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('organizations_registry')
           .select('*')
           .eq('email', user.email)
@@ -341,7 +329,7 @@ const AdminOrgDashboard = () => {
       if (!orgData) {
         console.log('🔍 Looking up organization by created_by:', user.id);
         
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('organizations_registry')
           .select('*')
           .eq('created_by', user.id)
@@ -363,13 +351,13 @@ const AdminOrgDashboard = () => {
       setMembershipStatus(orgData.status || 'pending');
 
       // Fetch payments from admin_organization_payments
-      const { data: payments, error: paymentError } = await supabase
+      const { data: payments } = await supabase
         .from('admin_organization_payments')
         .select('*')
         .eq('organization_id', orgData.id)
         .order('created_at', { ascending: false });
 
-      if (!paymentError && payments) {
+      if (payments) {
         const approved = payments.filter(p => p.status === 'approved').length;
         const pending = payments.filter(p => p.status === 'pending').length;
         
@@ -401,12 +389,12 @@ const AdminOrgDashboard = () => {
       }
 
       // Fetch documents
-      const { data: documents, error: docError } = await supabase
+      const { data: documents } = await supabase
         .from('organization_documents')
         .select('*')
         .eq('organization_id', orgData.id);
 
-      if (!docError && documents) {
+      if (documents) {
         const pending = documents.filter(d => d.status === 'pending').length;
         const approved = documents.filter(d => d.status === 'approved').length;
         
@@ -419,14 +407,14 @@ const AdminOrgDashboard = () => {
       }
 
       // Fetch notifications
-      const { data: notifications, error: notifError } = await supabase
+      const { data: notifications } = await supabase
         .from('organization_notifications')
         .select('*')
         .eq('organization_id', orgData.id)
         .eq('read', false)
         .order('created_at', { ascending: false });
 
-      if (!notifError && notifications) {
+      if (notifications) {
         setUnreadNotifications(notifications.length);
         
         // Get recent activities
@@ -532,7 +520,11 @@ const AdminOrgDashboard = () => {
       </Snackbar>
 
       <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f5f7fa' }}>
-        <Sidebar />
+        {/* Updated to use AdminOrgSidebar with organization and membershipStatus props */}
+        <AdminOrgSidebar 
+          organization={organization}
+          membershipStatus={membershipStatus}
+        />
         
         <Box sx={{ flex: 1, overflow: 'auto' }}>
           <Container maxWidth="xl">
@@ -549,7 +541,7 @@ const AdminOrgDashboard = () => {
                       Welcome back, {organization?.company_name || 'Organization'}! 👋
                     </Typography>
                     <Typography variant="body1" sx={{ opacity: 0.9, mb: 2 }}>
-                      Here's what's happening with your organization account.
+                      Here's what's happening with your organization account...
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                       <StatusBadge
