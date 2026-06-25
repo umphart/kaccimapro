@@ -11,7 +11,7 @@ const PaymentSummary = ({
   isRenewalDue 
 }) => {
   const FIRST_PAYMENT_AMOUNT = 25000;
-  const RENEWAL_AMOUNT = 15000;
+  const RENEWAL_AMOUNT = 20000; // Changed from 15000 to 20000
   
   const currentAmount = amount || (paymentType === 'renewal' ? RENEWAL_AMOUNT : FIRST_PAYMENT_AMOUNT);
   const isRenewal = paymentType === 'renewal';
@@ -175,7 +175,7 @@ const PaymentSummary = ({
                 <p>Complete your membership registration by making payment through bank transfer.</p>
                 <p>Your membership will be valid from approval date until December 31st of the current year.</p>
                 <p className="note">
-                  <strong>Note:</strong> Annual renewals are due on January 1st of each year (₦15,000.00).
+                  <strong>Note:</strong> Annual renewals are due on January 1st of each year (₦20,000.00).
                 </p>
               </>
             ) : (
@@ -183,7 +183,7 @@ const PaymentSummary = ({
                 <p>Complete your annual renewal by making payment through bank transfer.</p>
                 <p>Your renewed membership will be valid from January 1st to December 31st, {new Date().getFullYear()}.</p>
                 <p className="note">
-                  <strong>Note:</strong> Renewal must be completed by January 31st to avoid late fees.
+                  <strong>Note:</strong> Annual renewal fee is ₦20,000.00. Renewal must be completed by January 31st to avoid late fees.
                 </p>
               </>
             )}

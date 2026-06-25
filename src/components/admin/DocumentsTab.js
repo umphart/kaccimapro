@@ -16,6 +16,7 @@ import {
   Select,
   MenuItem,
   Alert,
+  TextField,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import {
@@ -27,6 +28,7 @@ import {
   Info as InfoIcon,
   Delete as DeleteIcon,
   Warning as WarningIcon,
+  Person as PersonIcon,
 } from '@mui/icons-material';
 
 const FormSection = styled(Box)(({ theme }) => ({
@@ -90,7 +92,7 @@ const getDocumentIcon = (docType) => {
     case 'form_c07':
       return <PdfIcon sx={{ color: '#f44336' }} />;
     case 'company_logo':
-    case 'id_document':
+    case 'nin_document':
       return <ImageIcon sx={{ color: '#4caf50' }} />;
     default:
       return <DescriptionIcon sx={{ color: '#2196f3' }} />;
@@ -106,7 +108,7 @@ const getDocumentLabel = (docType) => {
     premises_cert: 'Business Premises Certificate',
     company_logo: 'Company Logo',
     form_c07: 'Form C07',
-    id_document: 'ID Document'
+    nin_document: 'NIN Document'
   };
   return labels[docType] || docType;
 };
@@ -141,10 +143,73 @@ const DocumentsTab = ({
         <Typography variant="body2">
           <strong>Documents are optional for now.</strong> You can skip this step and upload documents later.
           Required documents: Covering Letter, Registration Certificate, Incorporation Certificate, 
-          Company Logo, and ID Document.
+          Company Logo, and NIN Document.
         </Typography>
       </Alert>
 
+      {/* NIN Section */}
+      <FormSection>
+        <SectionTitle>
+          <PersonIcon sx={{ color: '#15e420' }} />
+          National Identification Number (NIN)
+        </SectionTitle>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="NIN Number *"
+              name="nin"
+              value={formData.nin || ''}
+              onChange={onFormChange}
+              placeholder="Enter 11-digit NIN"
+              required
+              error={!!formErrors.nin}
+              helperText={formErrors.nin || 'Must be exactly 11 digits'}
+              size="small"
+              inputProps={{
+                maxLength: 11,
+                pattern: '[0-9]{11}'
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <FileUploadArea disabled={!bucketReady}>
+              <input
+                type="file"
+                name="nin_document"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={onFileChange}
+                style={{ display: 'none' }}
+                id="nin_document_input"
+                disabled={!bucketReady}
+              />
+              <label htmlFor="nin_document_input" style={{ cursor: bucketReady ? 'pointer' : 'not-allowed', display: 'block' }}>
+                <AttachFileIcon sx={{ fontSize: 32, color: bucketReady ? '#15e420' : '#999' }} />
+                <Typography variant="body2" sx={{ mt: 1, fontWeight: 500, color: bucketReady ? 'inherit' : '#999' }}>
+                  {fileNames.nin_document || 'Upload NIN Document (PDF/JPG/PNG)'}
+                </Typography>
+                {fileNames.nin_document && (
+                  <Chip
+                    label={fileNames.nin_document}
+                    size="small"
+                    sx={{ mt: 1, maxWidth: 200 }}
+                  />
+                )}
+                {formErrors.nin_document && (
+                  <Typography variant="caption" color="error">{formErrors.nin_document}</Typography>
+                )}
+                {!bucketReady && (
+                  <Typography variant="caption" color="warning" sx={{ display: 'block', mt: 1 }}>
+                    Upload disabled - storage not available
+                  </Typography>
+                )}
+              </label>
+            </FileUploadArea>
+          </Grid>
+        </Grid>
+      </FormSection>
+
+      {/* Uploaded Documents */}
       {editingOrg && uploadedFiles.length > 0 && (
         <FormSection>
           <SectionTitle>
@@ -189,6 +254,7 @@ const DocumentsTab = ({
         </FormSection>
       )}
 
+      {/* Document Upload Section */}
       <FormSection>
         <SectionTitle>
           <UploadIcon sx={{ color: '#15e420' }} />
@@ -444,63 +510,6 @@ const DocumentsTab = ({
                 )}
               </label>
             </FileUploadArea>
-          </Grid>
-
-          {/* ID Document */}
-          <Grid item xs={12} md={6}>
-            <FileUploadArea disabled={!bucketReady}>
-              <input
-                type="file"
-                name="id_document"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={onFileChange}
-                style={{ display: 'none' }}
-                id="id_document_input"
-                disabled={!bucketReady}
-              />
-              <label htmlFor="id_document_input" style={{ cursor: bucketReady ? 'pointer' : 'not-allowed', display: 'block' }}>
-                <AttachFileIcon sx={{ fontSize: 32, color: bucketReady ? '#15e420' : '#999' }} />
-                <Typography variant="body2" sx={{ mt: 1, fontWeight: 500, color: bucketReady ? 'inherit' : '#999' }}>
-                  {fileNames.id_document || 'Upload ID Document (PDF/JPG/PNG)'}
-                </Typography>
-                {fileNames.id_document && (
-                  <Chip
-                    label={fileNames.id_document}
-                    size="small"
-                    sx={{ mt: 1, maxWidth: 200 }}
-                  />
-                )}
-                {formErrors.id_document && (
-                  <Typography variant="caption" color="error">{formErrors.id_document}</Typography>
-                )}
-                {!bucketReady && (
-                  <Typography variant="caption" color="warning" sx={{ display: 'block', mt: 1 }}>
-                    Upload disabled - storage not available
-                  </Typography>
-                )}
-              </label>
-            </FileUploadArea>
-          </Grid>
-
-          {/* Identification Type */}
-          <Grid item xs={12}>
-            <FormControl fullWidth size="small" error={!!formErrors.id_type}>
-              <InputLabel>Identification Type (Optional)</InputLabel>
-              <Select
-                name="id_type"
-                value={formData.id_type}
-                onChange={onFormChange}
-                label="Identification Type (Optional)"
-              >
-                <MenuItem value="national_id">National ID</MenuItem>
-                <MenuItem value="driver_license">Driver's License</MenuItem>
-                <MenuItem value="voter_card">Voter's Card</MenuItem>
-                <MenuItem value="international_passport">International Passport</MenuItem>
-              </Select>
-              {formErrors.id_type && (
-                <Typography variant="caption" color="error">{formErrors.id_type}</Typography>
-              )}
-            </FormControl>
           </Grid>
         </Grid>
       </FormSection>

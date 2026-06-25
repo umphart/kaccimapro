@@ -133,41 +133,39 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
     init();
   }, []);
 
-  // REMOVED: registration_number from formData - database will generate it
-  const [formData, setFormData] = useState({
-    company_name: '',
-    // registration_number: '', // ❌ REMOVED - database generates this
-    cac_number: '',
-    house_number: '',
-    street: '',
-    lga: '',
-    state: '',
-    landmark: '',
-    business_nature: [],
-    phone_number1: '',
-    phone_number2: '',
-    email: '',
-    registration_date: new Date().toISOString().split('T')[0],
-    contact_person: '',
-    representative: '',
-    nigerian_directors: 0,
-    non_nigerian_directors: 0,
-    nigerian_employees: 0,
-    non_nigerian_employees: 0,
-    id_type: '',
-    referee_name: '',
-    referee_business: '',
-    referee_phone: '',
-    referee_reg_number: '',
-    cover_letter: null,
-    memorandum: null,
-    registration_cert: null,
-    incorporation_cert: null,
-    premises_cert: null,
-    company_logo: null,
-    form_c07: null,
-    id_document: null
-  });
+const [formData, setFormData] = useState({
+  company_name: '',
+  cac_number: '',
+  house_number: '',
+  street: '',
+  lga: '',
+  state: '',
+  landmark: '',
+  business_nature: [],
+  phone_number1: '',
+  phone_number2: '',
+  email: '',
+  registration_date: new Date().toISOString().split('T')[0],
+  contact_person: '',
+  representative: '',
+  nigerian_directors: 0,
+  non_nigerian_directors: 0,
+  nigerian_employees: 0,
+  non_nigerian_employees: 0,
+  id_type: '',
+  referee_name: '',
+  referee_business: '',
+  referee_phone: '',
+  referee_reg_number: '',
+  cover_letter: null,
+  memorandum: null,
+  registration_cert: null,
+  incorporation_cert: null,
+  premises_cert: null,
+  company_logo: null,
+  form_c07: null,
+  id_document: null
+});
 
   useEffect(() => {
     if (formData.state) {
@@ -349,24 +347,24 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
     return documentFields.some(field => formData[field] instanceof File);
   };
 
-  const validateStep1 = () => {
-    const errors = {};
-    if (!formData.company_name?.trim()) errors.company_name = 'Company name is required';
-    // ❌ REMOVED: registration_number validation - database handles it
-    // if (!formData.registration_number?.trim()) errors.registration_number = 'Registration number is required';
-    if (!formData.business_nature || formData.business_nature.length === 0) {
-      errors.business_nature = 'At least one business nature is required';
-    }
-    if (!formData.house_number?.trim()) errors.house_number = 'House number is required';
-    if (!formData.street?.trim()) errors.street = 'Street is required';
-    if (!formData.lga) errors.lga = 'Local Government Area is required';
-    if (!formData.state) errors.state = 'State is required';
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      errors.email = 'Invalid email format';
-    }
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
+const validateStep1 = () => {
+  const errors = {};
+  if (!formData.company_name?.trim()) errors.company_name = 'Company name is required';
+  // REMOVED: registration_number validation
+  // if (!formData.registration_number?.trim()) errors.registration_number = 'Registration number is required';
+  if (!formData.business_nature || formData.business_nature.length === 0) {
+    errors.business_nature = 'At least one business nature is required';
+  }
+  if (!formData.house_number?.trim()) errors.house_number = 'House number is required';
+  if (!formData.street?.trim()) errors.street = 'Street is required';
+  if (!formData.lga) errors.lga = 'Local Government Area is required';
+  if (!formData.state) errors.state = 'State is required';
+  if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    errors.email = 'Invalid email format';
+  }
+  setFormErrors(errors);
+  return Object.keys(errors).length === 0;
+};
 
   const validateStep2 = () => {
     return true;
@@ -521,35 +519,36 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
         }
       }
 
-      // ❌ IMPORTANT: Do NOT include registration_number - database will generate it
-      const orgData = {
-        company_name: formData.company_name?.trim() || '',
-        // registration_number is OMITTED - database trigger handles it
-        cac_number: formData.cac_number?.trim() || '',
-        house_number: formData.house_number?.trim() || '',
-        street: formData.street?.trim() || '',
-        lga: formData.lga || '',
-        state: formData.state || '',
-        landmark: formData.landmark?.trim() || '',
-        business_nature: JSON.stringify(formData.business_nature || []),
-        phone_number1: formData.phone_number1?.trim() || '',
-        phone_number2: formData.phone_number2?.trim() || '',
-        email: formData.email?.trim() || '',
-        registration_date: formData.registration_date || new Date().toISOString().split('T')[0],
-        contact_person: formData.contact_person?.trim() || '',
-        representative: formData.representative?.trim() || '',
-        nigerian_directors: parseInt(formData.nigerian_directors) || 0,
-        non_nigerian_directors: parseInt(formData.non_nigerian_directors) || 0,
-        nigerian_employees: parseInt(formData.nigerian_employees) || 0,
-        non_nigerian_employees: parseInt(formData.non_nigerian_employees) || 0,
-        id_type: formData.id_type || '',
-        referee_name: formData.referee_name?.trim() || '',
-        referee_business: formData.referee_business?.trim() || '',
-        referee_phone: formData.referee_phone?.trim() || '',
-        referee_reg_number: formData.referee_reg_number?.trim() || '',
-        status: orgStatus,
-        updated_at: now
-      };
+
+const orgData = {
+  company_name: formData.company_name?.trim() || '',
+  cac_number: formData.cac_number?.trim() || '',
+  house_number: formData.house_number?.trim() || '',
+  street: formData.street?.trim() || '',
+  lga: formData.lga || '',
+  state: formData.state || '',
+  landmark: formData.landmark?.trim() || '',
+  business_nature: JSON.stringify(formData.business_nature || []),
+  phone_number1: formData.phone_number1?.trim() || '',
+  phone_number2: formData.phone_number2?.trim() || '',
+  email: formData.email?.trim() || '',
+  registration_date: formData.registration_date || new Date().toISOString().split('T')[0],
+  contact_person: formData.contact_person?.trim() || '',
+  representative: formData.representative?.trim() || '',
+  nigerian_directors: parseInt(formData.nigerian_directors) || 0,
+  non_nigerian_directors: parseInt(formData.non_nigerian_directors) || 0,
+  nigerian_employees: parseInt(formData.nigerian_employees) || 0,
+  non_nigerian_employees: parseInt(formData.non_nigerian_employees) || 0,
+  id_type: formData.id_type || '',
+  referee_name: formData.referee_name?.trim() || '',
+  referee_business: formData.referee_business?.trim() || '',
+  referee_phone: formData.referee_phone?.trim() || '',
+  referee_reg_number: formData.referee_reg_number?.trim() || '',
+  // ADD NIN FIELD
+  nin: formData.nin?.trim() || null,
+  status: orgStatus,
+  updated_at: now
+};
 
       let orgId;
 
