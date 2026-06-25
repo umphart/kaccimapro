@@ -4,7 +4,6 @@ import { supabase } from '../../supabaseClient';
 import {
   Box,
   Container,
-  Grid,
   Paper,
   Typography,
   Card,
@@ -25,6 +24,7 @@ import {
   useTheme,
   useMediaQuery
 } from '@mui/material';
+import Grid from '@mui/material/Grid';
 import {
   People as PeopleIcon,
   Payment as PaymentIcon,
@@ -33,7 +33,10 @@ import {
   Visibility as VisibilityIcon,
   Warning as WarningIcon,
   Business as BusinessIcon,
-  Receipt as ReceiptIcon
+  Receipt as ReceiptIcon,
+  Approval as ApprovalIcon,
+  AdminPanelSettings as AdminIcon,
+  Person as PersonIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import {
@@ -101,6 +104,9 @@ const StatCard = ({ title, value, icon, color, subtitle }) => {
 };
 
 const AdminDashboard = () => {
+  console.log('🗄️ Using tables: organizations_registry, admin_organization_payments, payments');
+  console.log('📁 Using storage bucket: organization-docs');
+  
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -109,14 +115,17 @@ const AdminDashboard = () => {
   const [stats, setStats] = useState({
     totalOrganizations: 0,
     pendingOrganizations: 0,
+    pendingReviewOrganizations: 0,
     approvedOrganizations: 0,
     rejectedOrganizations: 0,
     totalPayments: 0,
     pendingPayments: 0,
-    approvedPayments: 0,
-    rejectedPayments: 0,
+    completedPayments: 0,
+    failedPayments: 0,
     totalRevenue: 0,
-    monthlyRegistrations: []
+    monthlyRegistrations: [],
+    adminPayments: 0,
+    selfPayments: 0
   });
   const [recentActivities, setRecentActivities] = useState([]);
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
@@ -176,40 +185,93 @@ const AdminDashboard = () => {
 
   const fetchStats = async () => {
     try {
+      console.log('📊 Fetching organization stats from organizations_registry');
+      
+      // Organization stats
       const { data: allOrgs, error: orgsError } = await supabase
-        .from('organizations')
+        .from('organizations_registry')
         .select('*');
       
-      if (orgsError) throw orgsError;
+      if (orgsError) {
+        console.error('❌ Error fetching organizations:', orgsError);
+        throw orgsError;
+      }
       
       const totalOrgs = allOrgs?.length || 0;
       const pendingOrgs = allOrgs?.filter(o => o.status?.toLowerCase() === 'pending').length || 0;
+      const pendingReviewOrgs = allOrgs?.filter(o => o.status?.toLowerCase() === 'pending_review').length || 0;
       const approvedOrgs = allOrgs?.filter(o => o.status?.toLowerCase() === 'approved').length || 0;
       const rejectedOrgs = allOrgs?.filter(o => o.status?.toLowerCase() === 'rejected').length || 0;
 
-      const { data: allPayments, error: paymentsError } = await supabase
+      console.log(`📊 Found ${totalOrgs} organizations`);
+
+      // Admin Payments stats
+      const { data: adminPayments, error: adminPaymentsError } = await supabase
+        .from('admin_organization_payments')
+        .select('*');
+      
+      if (adminPaymentsError) {
+        console.error('❌ Error fetching admin payments:', adminPaymentsError);
+        throw adminPaymentsError;
+      }
+
+      // Self Payments stats
+      const { data: selfPayments, error: selfPaymentsError } = await supabase
         .from('payments')
         .select('*');
       
-      if (paymentsError) throw paymentsError;
-      
-      const totalPayments = allPayments?.length || 0;
-      const pendingPayments = allPayments?.filter(p => p.status?.toLowerCase() === 'pending').length || 0;
-      const approvedPayments = allPayments?.filter(p => p.status?.toLowerCase() === 'approved').length || 0;
-      const rejectedPayments = allPayments?.filter(p => p.status?.toLowerCase() === 'rejected').length || 0;
-      
-      const totalRevenue = allPayments
+      if (selfPaymentsError) {
+        console.error('❌ Error fetching self payments:', selfPaymentsError);
+        throw selfPaymentsError;
+      }
+
+      // Combine payment stats
+      const adminTotal = adminPayments?.length || 0;
+      const selfTotal = selfPayments?.length || 0;
+      const totalPayments = adminTotal + selfTotal;
+
+      // Admin payments by status
+      const adminPending = adminPayments?.filter(p => p.status?.toLowerCase() === 'pending').length || 0;
+      const adminCompleted = adminPayments?.filter(p => p.status?.toLowerCase() === 'approved').length || 0;
+      const adminFailed = adminPayments?.filter(p => p.status?.toLowerCase() === 'rejected').length || 0;
+
+      // Self payments by status (uses completed/failed)
+      const selfPending = selfPayments?.filter(p => p.status?.toLowerCase() === 'pending').length || 0;
+      const selfCompleted = selfPayments?.filter(p => p.status?.toLowerCase() === 'completed').length || 0;
+      const selfFailed = selfPayments?.filter(p => p.status?.toLowerCase() === 'failed').length || 0;
+
+      // Total combined status counts
+      const totalPending = adminPending + selfPending;
+      const totalCompleted = adminCompleted + selfCompleted;
+      const totalFailed = adminFailed + selfFailed;
+
+      // Calculate total revenue (admin approved + self completed)
+      const adminRevenue = adminPayments
         ?.filter(p => p.status?.toLowerCase() === 'approved')
         .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) || 0;
 
+      const selfRevenue = selfPayments
+        ?.filter(p => p.status?.toLowerCase() === 'completed')
+        .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) || 0;
+
+      const totalRevenue = adminRevenue + selfRevenue;
+
+      console.log(`💰 Total revenue: ₦${totalRevenue.toLocaleString()}`);
+      console.log(`📊 Payments: ${totalPayments} total (${adminTotal} admin, ${selfTotal} self)`);
+
+      // Monthly registrations
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-      const { data: registrations } = await supabase
-        .from('organizations')
+      const { data: registrations, error: regError } = await supabase
+        .from('organizations_registry')
         .select('created_at')
         .gte('created_at', sixMonthsAgo.toISOString())
         .order('created_at');
+
+      if (regError) {
+        console.error('❌ Error fetching registrations:', regError);
+      }
 
       const monthlyData = {};
       registrations?.forEach(reg => {
@@ -228,55 +290,92 @@ const AdminDashboard = () => {
       setStats({
         totalOrganizations: totalOrgs,
         pendingOrganizations: pendingOrgs,
+        pendingReviewOrganizations: pendingReviewOrgs,
         approvedOrganizations: approvedOrgs,
         rejectedOrganizations: rejectedOrgs,
         totalPayments,
-        pendingPayments,
-        approvedPayments,
-        rejectedPayments,
+        pendingPayments: totalPending,
+        completedPayments: totalCompleted,
+        failedPayments: totalFailed,
         totalRevenue,
-        monthlyRegistrations
+        monthlyRegistrations,
+        adminPayments: adminTotal,
+        selfPayments: selfTotal
       });
 
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      console.error('❌ Error fetching stats:', error);
       showAlert('error', 'Failed to load statistics: ' + error.message);
     }
   };
 
   const fetchRecentActivities = async () => {
     try {
+      console.log('📋 Fetching recent activities from organizations_registry');
+      
       const { data: recentOrgs, error } = await supabase
-        .from('organizations')
-        .select(`
-          id,
-          company_name,
-          status,
-          created_at,
-          payments (
-            id,
-            amount,
-            status,
-            created_at
-          )
-        `)
+        .from('organizations_registry')
+        .select('*')
         .order('created_at', { ascending: false })
-        .limit(5);
+        .limit(10);
 
       if (error) throw error;
 
-      const activities = recentOrgs?.map(org => ({
-        id: org.id,
-        company: org.company_name,
-        status: org.status,
-        date: org.created_at,
-        hasPayment: org.payments && org.payments.length > 0,
-        paymentStatus: org.payments?.[0]?.status
-      })) || [];
+      const activities = [];
+      for (const org of recentOrgs || []) {
+        // Check admin payments
+        const { data: adminPayments } = await supabase
+          .from('admin_organization_payments')
+          .select('id, amount, status, created_at, payment_type')
+          .eq('organization_id', org.id)
+          .order('created_at', { ascending: false })
+          .limit(1);
 
-      setRecentActivities(activities);
+        // Check self payments
+        const { data: selfPayments } = await supabase
+          .from('payments')
+          .select('id, amount, status, created_at')
+          .eq('organization_id', org.id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        // Determine payment source and status
+        let payment = null;
+        let source = null;
+        let paymentStatus = null;
+        let paymentAmount = null;
+
+        if (adminPayments && adminPayments.length > 0) {
+          payment = adminPayments[0];
+          source = 'admin';
+          paymentStatus = payment.status === 'approved' ? 'Paid' : 'Pending';
+          paymentAmount = payment.amount;
+        } else if (selfPayments && selfPayments.length > 0) {
+          payment = selfPayments[0];
+          source = 'self';
+          paymentStatus = payment.status === 'completed' ? 'Paid' : 'Pending';
+          paymentAmount = payment.amount;
+        }
+
+        activities.push({
+          id: org.id,
+          company: org.company_name,
+          registration_number: org.registration_number,
+          status: org.status,
+          date: org.created_at,
+          hasPayment: !!payment,
+          paymentStatus: paymentStatus,
+          paymentAmount: paymentAmount,
+          paymentSource: source,
+          paymentType: payment?.payment_type || 'N/A'
+        });
+      }
+
+      setRecentActivities(activities.slice(0, 5));
+      console.log(`✅ Found ${activities.length} recent activities`);
+
     } catch (error) {
-      console.error('Error fetching activities:', error);
+      console.error('❌ Error fetching activities:', error);
     }
   };
 
@@ -293,8 +392,12 @@ const AdminDashboard = () => {
     
     const config = {
       pending: { color: 'warning', icon: <PendingIcon />, label: 'Pending' },
+      pending_review: { color: 'warning', icon: <ApprovalIcon />, label: 'Pending Review' },
       approved: { color: 'success', icon: <CheckCircleIcon />, label: 'Approved' },
-      rejected: { color: 'error', icon: <WarningIcon />, label: 'Rejected' }
+      rejected: { color: 'error', icon: <WarningIcon />, label: 'Rejected' },
+      active: { color: 'success', icon: <CheckCircleIcon />, label: 'Active' },
+      draft: { color: 'default', icon: <PendingIcon />, label: 'Draft' },
+      deleted: { color: 'error', icon: <WarningIcon />, label: 'Deleted' }
     };
     
     const statusConfig = config[normalizedStatus] || config.pending;
@@ -306,6 +409,30 @@ const AdminDashboard = () => {
         size="small"
         color={statusConfig.color}
         sx={{ fontFamily: '"Inter", sans-serif', height: '24px', fontSize: '0.75rem' }}
+      />
+    );
+  };
+
+  const getPaymentSourceChip = (source) => {
+    if (!source) return null;
+    const config = {
+      admin: { icon: <AdminIcon />, label: 'Admin', color: '#15e420' },
+      self: { icon: <PersonIcon />, label: 'Self', color: '#1976d2' }
+    };
+    const sourceConfig = config[source] || config.admin;
+    return (
+      <Chip
+        icon={sourceConfig.icon}
+        label={sourceConfig.label}
+        size="small"
+        sx={{ 
+          fontFamily: '"Inter", sans-serif',
+          backgroundColor: sourceConfig.color + '20',
+          color: sourceConfig.color,
+          height: '20px',
+          fontSize: '0.65rem',
+          fontWeight: 500
+        }}
       />
     );
   };
@@ -351,14 +478,15 @@ const AdminDashboard = () => {
   };
 
   const doughnutData = {
-    labels: ['Pending', 'Approved', 'Rejected'],
+    labels: ['Pending', 'Pending Reviewa', 'Approved', 'Rejected'],
     datasets: [{
       data: [
         stats.pendingOrganizations,
+        stats.pendingReviewOrganizations,
         stats.approvedOrganizations,
         stats.rejectedOrganizations
       ],
-      backgroundColor: ['#ffc107', '#15e420', '#dc3545'],
+      backgroundColor: ['#ffc107', '#ff9800', '#15e420', '#dc3545'],
       borderWidth: 0,
       hoverOffset: 4
     }]
@@ -416,7 +544,7 @@ const AdminDashboard = () => {
 
             {/* Stats Cards - Organizations */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={6} sm={3}>
+              <Grid item xs={6} sm={2.4}>
                 <StatCard
                   title="Total Organizations"
                   value={stats.totalOrganizations}
@@ -424,15 +552,23 @@ const AdminDashboard = () => {
                   color="#15e420"
                 />
               </Grid>
-              <Grid item xs={6} sm={3}>
+              <Grid item xs={6} sm={2.4}>
                 <StatCard
-                  title="Pending Reviews"
+                  title="Pending"
                   value={stats.pendingOrganizations}
                   icon={<PendingIcon />}
                   color="#ffc107"
                 />
               </Grid>
-              <Grid item xs={6} sm={3}>
+              <Grid item xs={6} sm={2.4}>
+                <StatCard
+                  title="Pending Review"
+                  value={stats.pendingReviewOrganizations}
+                  icon={<ApprovalIcon />}
+                  color="#ff9800"
+                />
+              </Grid>
+              <Grid item xs={6} sm={2.4}>
                 <StatCard
                   title="Approved"
                   value={stats.approvedOrganizations}
@@ -440,7 +576,7 @@ const AdminDashboard = () => {
                   color="#28a745"
                 />
               </Grid>
-              <Grid item xs={6} sm={3}>
+              <Grid item xs={6} sm={2.4}>
                 <StatCard
                   title="Rejected"
                   value={stats.rejectedOrganizations}
@@ -458,6 +594,7 @@ const AdminDashboard = () => {
                   value={stats.totalPayments}
                   icon={<PaymentIcon />}
                   color="#17a2b8"
+                  subtitle={`${stats.adminPayments} admin, ${stats.selfPayments} self`}
                 />
               </Grid>
               <Grid item xs={6} sm={3}>
@@ -470,8 +607,8 @@ const AdminDashboard = () => {
               </Grid>
               <Grid item xs={6} sm={3}>
                 <StatCard
-                  title="Approved Payments"
-                  value={stats.approvedPayments}
+                  title="Completed/Approved"
+                  value={stats.completedPayments}
                   icon={<CheckCircleIcon />}
                   color="#28a745"
                 />
@@ -588,9 +725,11 @@ const AdminDashboard = () => {
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Company</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem', display: { xs: 'none', md: 'table-cell' } }}>Reg. Number</TableCell>
                       <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem', display: { xs: 'none', sm: 'table-cell' } }}>Date</TableCell>
                       <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Status</TableCell>
                       <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Payment</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Source</TableCell>
                       <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
@@ -601,6 +740,9 @@ const AdminDashboard = () => {
                           <TableCell sx={{ fontSize: '0.85rem' }}>
                             {activity.company}
                           </TableCell>
+                          <TableCell sx={{ fontSize: '0.85rem', display: { xs: 'none', md: 'table-cell' } }}>
+                            {activity.registration_number || 'N/A'}
+                          </TableCell>
                           <TableCell sx={{ fontSize: '0.85rem', display: { xs: 'none', sm: 'table-cell' } }}>
                             {new Date(activity.date).toLocaleDateString()}
                           </TableCell>
@@ -610,10 +752,10 @@ const AdminDashboard = () => {
                           <TableCell>
                             {activity.hasPayment ? (
                               <Chip
-                                icon={<CheckCircleIcon />}
-                                label={activity.paymentStatus === 'approved' ? 'Paid' : 'Pending'}
+                                icon={activity.paymentStatus === 'Paid' ? <CheckCircleIcon /> : <PendingIcon />}
+                                label={activity.paymentStatus || 'Pending'}
                                 size="small"
-                                color={activity.paymentStatus === 'approved' ? 'success' : 'warning'}
+                                color={activity.paymentStatus === 'Paid' ? 'success' : 'warning'}
                                 sx={{ height: '24px', fontSize: '0.7rem' }}
                               />
                             ) : (
@@ -625,6 +767,9 @@ const AdminDashboard = () => {
                                 sx={{ height: '24px', fontSize: '0.7rem' }}
                               />
                             )}
+                          </TableCell>
+                          <TableCell>
+                            {getPaymentSourceChip(activity.paymentSource)}
                           </TableCell>
                           <TableCell>
                             <IconButton
@@ -639,7 +784,7 @@ const AdminDashboard = () => {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                        <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
                           <Typography variant="body2" sx={{ color: '#666' }}>
                             No recent activities found
                           </Typography>

@@ -30,6 +30,14 @@ import {
   FormControl,
   InputLabel,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Stepper,
+  Step,
+  StepLabel,
+  Divider
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -41,6 +49,7 @@ import {
   Business as BusinessIcon,
   People as PeopleIcon,
   Warning as WarningIcon,
+  Approval as ApprovalIcon,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminSidebar from './AdminSidebar';
@@ -71,10 +80,12 @@ const StatusChip = styled(Chip)(({ status }) => ({
   fontWeight: 500,
   backgroundColor: 
     status === 'approved' || status === 'active' ? '#e8f5e9' :
+    status === 'pending_review' ? '#fff3e0' :
     status === 'rejected' ? '#ffebee' :
     '#fff3e0',
   color: 
     status === 'approved' || status === 'active' ? '#2e7d32' :
+    status === 'pending_review' ? '#e65100' :
     status === 'rejected' ? '#c62828' :
     '#e65100',
   '& .MuiChip-icon': {
@@ -95,10 +106,17 @@ const AdminOrganizations = () => {
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [selectedOrg, setSelectedOrg] = useState(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
-  const [stats, setStats] = useState({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, pendingReview: 0, approved: 0, rejected: 0 });
+  
+  // Approval Dialog
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  const [approvalNote, setApprovalNote] = useState('');
+  const [approvalStep, setApprovalStep] = useState(0);
 
   useEffect(() => {
     if (filter === 'pending') setStatusFilter('pending');
+    else if (filter === 'pending_review') setStatusFilter('pending_review');
     else if (filter === 'approved') setStatusFilter('approved');
     else if (filter === 'rejected') setStatusFilter('rejected');
     else setStatusFilter('all');
@@ -180,6 +198,11 @@ const AdminOrganizations = () => {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending');
 
+      const { count: pendingReview } = await supabase
+        .from('organizations_registry')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending_review');
+
       const { count: approved } = await supabase
         .from('organizations_registry')
         .select('*', { count: 'exact', head: true })
@@ -193,6 +216,7 @@ const AdminOrganizations = () => {
       setStats({
         total: total || 0,
         pending: pending || 0,
+        pendingReview: pendingReview || 0,
         approved: approved || 0,
         rejected: rejected || 0
       });
@@ -230,9 +254,134 @@ const AdminOrganizations = () => {
     setSelectedOrg(null);
   };
 
+  // ============================================================
+  // APPROVAL HANDLERS
+  // ============================================================
+  
+  const handleOpenApproval = (org) => {
+    setSelectedOrg(org);
+    setApprovalStep(0);
+    setApprovalNote('');
+    setApprovalDialogOpen(true);
+  };
+
+  const handleCloseApproval = () => {
+    setApprovalDialogOpen(false);
+    setSelectedOrg(null);
+    setApprovalNote('');
+    setApprovalStep(0);
+  };
+
+  const getApprovalSteps = () => {
+    if (!selectedOrg) return [];
+    
+    const hasDocuments = selectedOrg.documents && selectedOrg.documents.length > 0;
+    const hasPayment = selectedOrg.payment_status === 'paid' || selectedOrg.payment_status === 'completed';
+    
+    return [
+      {
+        label: 'Review Organization Details',
+        description: 'Verify company information and contact details',
+        completed: true
+      },
+      {
+        label: 'Check Documents',
+        description: hasDocuments ? `${selectedOrg.documents.length} document(s) uploaded` : 'No documents uploaded yet',
+        completed: hasDocuments
+      },
+      {
+        label: 'Verify Payment',
+        description: hasPayment ? 'Payment verified' : 'Payment pending verification',
+        completed: hasPayment
+      }
+    ];
+  };
+
+  const handleApproveOrganization = async () => {
+    if (!selectedOrg) return;
+
+    setApprovalLoading(true);
+    try {
+      const hasDocuments = selectedOrg.documents && selectedOrg.documents.length > 0;
+      
+      let newStatus = 'approved';
+      if (!hasDocuments) {
+        newStatus = 'pending_review';
+        showAlert('warning', `Organization approved but no documents uploaded. Status set to "Pending Review".`);
+      } else {
+        showAlert('success', 'Organization approved successfully!');
+      }
+
+      const { error: updateError } = await supabase
+        .from('organizations_registry')
+        .update({ 
+          status: newStatus,
+          approved_date: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedOrg.id);
+
+      if (updateError) throw updateError;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error: logError } = await supabase
+        .from('registration_audit_log')
+        .insert([{
+          organization_id: selectedOrg.id,
+          action: 'organization_approved',
+          new_data: { 
+            status: newStatus,
+            approved_by: user?.id,
+            note: approvalNote || 'No additional notes'
+          },
+          created_at: new Date().toISOString()
+        }]);
+
+      if (logError) {
+        console.warn('Failed to log approval:', logError);
+      }
+
+      handleCloseApproval();
+      fetchOrganizations();
+      fetchStats();
+
+    } catch (error) {
+      console.error('Error approving organization:', error);
+      showAlert('error', 'Failed to approve organization: ' + error.message);
+    } finally {
+      setApprovalLoading(false);
+    }
+  };
+
+  const handleRejectOrganization = async (orgId) => {
+    const reason = window.prompt('Please provide a reason for rejection:');
+    if (reason === null) return;
+
+    try {
+      const { error } = await supabase
+        .from('organizations_registry')
+        .update({ 
+          status: 'rejected',
+          rejection_reason: reason || 'No reason provided',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', orgId);
+
+      if (error) throw error;
+
+      showAlert('success', 'Organization rejected successfully');
+      fetchOrganizations();
+      fetchStats();
+    } catch (error) {
+      console.error('Error rejecting organization:', error);
+      showAlert('error', 'Failed to reject organization');
+    }
+  };
+
   const getStatusChip = (status) => {
     const statusMap = {
       pending: { label: 'Pending', icon: <PendingIcon /> },
+      pending_review: { label: 'Pending Review', icon: <ApprovalIcon /> },
       approved: { label: 'Approved', icon: <CheckCircleIcon /> },
       rejected: { label: 'Rejected', icon: <CancelIcon /> },
       active: { label: 'Active', icon: <CheckCircleIcon /> }
@@ -319,7 +468,7 @@ const AdminOrganizations = () => {
           <Container maxWidth="xl" sx={{ py: { xs: 1, md: 2 } }}>
             {/* Stats Cards */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={6} sm={3}>
+              <Grid item xs={6} sm={2.4}>
                 <StyledCard>
                   <CardContent sx={{ p: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -334,7 +483,7 @@ const AdminOrganizations = () => {
                   </CardContent>
                 </StyledCard>
               </Grid>
-              <Grid item xs={6} sm={3}>
+              <Grid item xs={6} sm={2.4}>
                 <StyledCard>
                   <CardContent sx={{ p: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -349,7 +498,22 @@ const AdminOrganizations = () => {
                   </CardContent>
                 </StyledCard>
               </Grid>
-              <Grid item xs={6} sm={3}>
+              <Grid item xs={6} sm={2.4}>
+                <StyledCard>
+                  <CardContent sx={{ p: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Avatar sx={{ bgcolor: '#ff9800', width: 40, height: 40 }}>
+                        <ApprovalIcon />
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" sx={{ color: '#666', fontWeight: 500 }}>Pending Review</Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>{stats.pendingReview}</Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </StyledCard>
+              </Grid>
+              <Grid item xs={6} sm={2.4}>
                 <StyledCard>
                   <CardContent sx={{ p: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -364,7 +528,7 @@ const AdminOrganizations = () => {
                   </CardContent>
                 </StyledCard>
               </Grid>
-              <Grid item xs={6} sm={3}>
+              <Grid item xs={6} sm={2.4}>
                 <StyledCard>
                   <CardContent sx={{ p: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -398,11 +562,12 @@ const AdminOrganizations = () => {
                     ),
                   }}
                 />
-                <FormControl size="small" sx={{ minWidth: 120 }}>
+                <FormControl size="small" sx={{ minWidth: 150 }}>
                   <InputLabel>Status</InputLabel>
                   <Select value={statusFilter} onChange={handleStatusFilter} label="Status">
                     <MenuItem value="all">All</MenuItem>
                     <MenuItem value="pending">Pending</MenuItem>
+                    <MenuItem value="pending_review">Pending Review</MenuItem>
                     <MenuItem value="approved">Approved</MenuItem>
                     <MenuItem value="rejected">Rejected</MenuItem>
                   </Select>
@@ -449,6 +614,7 @@ const AdminOrganizations = () => {
                         
                         const requiredDocsStatus = getRequiredDocsStatus(org.documents);
                         const isFullyUploaded = requiredDocsStatus.allUploaded;
+                        const isPending = org.status === 'pending' || org.status === 'pending_review';
                         
                         return (
                           <TableRow key={org.id} hover>
@@ -458,10 +624,23 @@ const AdminOrganizations = () => {
                             <TableCell sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 {org.company_name}
-                                {!isFullyUploaded && org.status === 'pending' && (
+                                {!isFullyUploaded && isPending && (
                                   <Tooltip title="Missing required documents">
                                     <WarningIcon sx={{ color: '#ff9800', fontSize: '16px' }} />
                                   </Tooltip>
+                                )}
+                                {org.registration_type === 'self' && (
+                                  <Chip 
+                                    label="Self" 
+                                    size="small" 
+                                    sx={{ 
+                                      ml: 1, 
+                                      height: '18px', 
+                                      fontSize: '0.55rem',
+                                      backgroundColor: '#e3f2fd',
+                                      color: '#1565c0'
+                                    }} 
+                                  />
                                 )}
                                 {businessNature.length > 0 && (
                                   <Chip 
@@ -512,15 +691,39 @@ const AdminOrganizations = () => {
                               </Box>
                             </TableCell>
                             <TableCell>
-                              <Tooltip title="View Full Details">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleViewDetails(org)}
-                                  sx={{ color: '#15e420' }}
-                                >
-                                  <VisibilityIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
+                              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                <Tooltip title="View Full Details">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => handleViewDetails(org)}
+                                    sx={{ color: '#15e420' }}
+                                  >
+                                    <VisibilityIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                {(org.status === 'pending' || org.status === 'pending_review') && (
+                                  <>
+                                    <Tooltip title="Approve Organization">
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => handleOpenApproval(org)}
+                                        sx={{ color: '#28a745' }}
+                                      >
+                                        <CheckCircleIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                    <Tooltip title="Reject Organization">
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => handleRejectOrganization(org.id)}
+                                        sx={{ color: '#dc3545' }}
+                                      >
+                                        <CancelIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </>
+                                )}
+                              </Box>
                             </TableCell>
                           </TableRow>
                         );
@@ -561,6 +764,115 @@ const AdminOrganizations = () => {
         organization={selectedOrg}
         navigate={navigate}
       />
+
+      {/* Approval Dialog */}
+      <Dialog
+        open={approvalDialogOpen}
+        onClose={handleCloseApproval}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '16px' } }}
+      >
+        <DialogTitle sx={{ bgcolor: '#f8f9fa', borderBottom: '1px solid #e0e0e0' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ApprovalIcon sx={{ color: '#28a745' }} /> Approve Organization
+            </Typography>
+            <IconButton onClick={handleCloseApproval} size="small">
+              <CancelIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent sx={{ pt: 3 }}>
+          {selectedOrg && (
+            <>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                {selectedOrg.company_name}
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#666', mb: 3 }}>
+                Registration: {selectedOrg.registration_number}
+              </Typography>
+
+              <Stepper activeStep={approvalStep} orientation="vertical" sx={{ mb: 3 }}>
+                {getApprovalSteps().map((step, index) => (
+                  <Step key={index}>
+                    <StepLabel
+                      StepIconComponent={() => (
+                        step.completed ? (
+                          <CheckCircleIcon sx={{ color: '#28a745' }} />
+                        ) : (
+                          <PendingIcon sx={{ color: '#ffc107' }} />
+                        )
+                      )}
+                    >
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {step.label}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: '#666' }}>
+                          {step.description}
+                        </Typography>
+                      </Box>
+                    </StepLabel>
+                  </Step>
+                ))}
+              </Stepper>
+
+              <Divider sx={{ my: 2 }} />
+
+              <Typography variant="body2" sx={{ color: '#666', mb: 2 }}>
+                {selectedOrg.documents && selectedOrg.documents.length > 0 
+                  ? `Documents uploaded: ${selectedOrg.documents.length} file(s)` 
+                  : '⚠️ No documents uploaded yet'}
+              </Typography>
+
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Approval Notes (Optional)"
+                placeholder="Add any notes about this approval..."
+                value={approvalNote}
+                onChange={(e) => setApprovalNote(e.target.value)}
+                sx={{ mb: 2 }}
+              />
+
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  By approving this organization, you confirm that:
+                </Typography>
+                <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
+                  <li>All provided information is verified and accurate</li>
+                  <li>The organization meets all membership requirements</li>
+                  <li>{selectedOrg.documents && selectedOrg.documents.length > 0 
+                    ? 'All required documents are submitted' 
+                    : '⚠️ No documents are uploaded - status will be set to "Pending Review"'}</li>
+                </ul>
+              </Alert>
+            </>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ p: 3, borderTop: '1px solid #e0e0e0' }}>
+          <Button onClick={handleCloseApproval} variant="outlined" sx={{ textTransform: 'none' }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleApproveOrganization}
+            disabled={approvalLoading}
+            startIcon={approvalLoading ? <CircularProgress size={20} /> : <CheckCircleIcon />}
+            sx={{
+              bgcolor: '#28a745',
+              textTransform: 'none',
+              '&:hover': { bgcolor: '#218838' }
+            }}
+          >
+            {approvalLoading ? 'Processing...' : 'Confirm Approval'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

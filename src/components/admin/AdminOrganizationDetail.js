@@ -340,7 +340,7 @@ const AdminOrganizationDetail = () => {
                     </Grid>
                     <Grid item xs={12} md={6}>
                       <DetailRow>
-                        <DetailLabel>Registration Number</DetailLabel>
+                        <DetailLabel>Registration Numbeer</DetailLabel>
                         <DetailValue>{organization.registration_number}</DetailValue>
                       </DetailRow>
                     </Grid>

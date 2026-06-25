@@ -12,36 +12,41 @@ export const useRegistration = () => {
   const [formData, setFormData] = useState({
     // Step 1 - Company Information
     companyName: '',
-    officeAddress: '',
-    businessNature: '',
+    email: '',
+    phoneNumber: '',
+    cacNumber: '',
+    businessNature: [],
+    specifiedGoods: '',
+    goodsDetails: '',
+    houseNumber: '',
+    streetName: '',
+    lga: '',
+    state: '',
+    landmark: '',
     
     // Step 2 - Company Details
     nigerianDirectors: '',
     nonNigerianDirectors: '',
     nigerianEmployees: '',
     nonNigerianEmployees: '',
-    bankers: '',
     contactPerson: '',
     representative: '',
-    email: '',
-    cacNumber: '',
-    phoneNumber: '',
     
-    // Step 3 - Referees
-    referee1Name: '',
-    referee1Business: '',
-    referee1Phone: '',
-    referee1RegNumber: '',
-    referee2Name: '',
-    referee2Business: '',
-    referee2Phone: '',
-    referee2RegNumber: '',
+    // Step 3 - Single Referee
+    refereeName: '',
+    refereeBusiness: '',
+    refereePhone: '',
+    refereeEmail: '',
+    refereeRegNumber: '',
+    refereeId: '',
+    refereeEmailSent: false,
     
     // Step 4 - Documents
-    idType: '',
+    nin: '',
   });
 
   const [files, setFiles] = useState({
+    ninDocument: null,
     coverLetter: null,
     memorandum: null,
     registrationCert: null,
@@ -49,10 +54,11 @@ export const useRegistration = () => {
     premisesCert: null,
     companyLogo: null,
     formC07: null,
-    idDocument: null,
+    passport: null,
   });
 
   const [fileNames, setFileNames] = useState({
+    ninDocument: '',
     coverLetter: '',
     memorandum: '',
     registrationCert: '',
@@ -60,14 +66,16 @@ export const useRegistration = () => {
     premisesCert: '',
     companyLogo: '',
     formC07: '',
-    idDocument: '',
+    passport: '',
   });
 
   const [organizationId, setOrganizationId] = useState(null);
   const [paymentStep, setPaymentStep] = useState(false);
+  const [registrationNumber, setRegistrationNumber] = useState(null);
 
   // Document type mapping for the database
   const documentTypeMapping = {
+    ninDocument: 'nin_document',
     coverLetter: 'cover_letter',
     memorandum: 'memorandum',
     registrationCert: 'registration_cert',
@@ -75,11 +83,11 @@ export const useRegistration = () => {
     premisesCert: 'premises_cert',
     companyLogo: 'company_logo',
     formC07: 'form_c07',
-    idDocument: 'id_document'
+    passport: 'passport'
   };
 
   // Required documents
-  const requiredDocuments = ['coverLetter', 'registrationCert', 'incorporationCert', 'companyLogo', 'idDocument'];
+  const requiredDocuments = ['ninDocument', 'coverLetter', 'registrationCert', 'incorporationCert', 'companyLogo', 'passport'];
 
   useEffect(() => {
     checkUser();
@@ -150,6 +158,7 @@ export const useRegistration = () => {
   const uploadFile = async (file, documentType, organizationId) => {
     try {
       if (!user) throw new Error('You must be logged in to upload files');
+      if (!file) throw new Error('No file provided');
 
       // Validate file size
       const maxSize = file.type.startsWith('image/') ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
@@ -159,38 +168,51 @@ export const useRegistration = () => {
 
       // Create unique filename
       const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 8);
       const cleanFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_').replace(/\s+/g, '_');
-      const fileName = `${timestamp}_${cleanFileName}`;
+      const fileName = `${timestamp}_${randomStr}_${cleanFileName}`;
       
-      // Determine folder structure: user_id/document_type/
-      const filePath = `${user.id}/${documentType}/${fileName}`;
+      // Use organization-docs bucket
+      const bucket = 'organization-docs';
+      const folder = file.type.startsWith('image/') ? 'logos' : 'documents';
+      const filePath = `${folder}/${user.id}/${documentType}/${fileName}`;
       
-      // Determine bucket based on file type
-      const bucket = file.type.startsWith('image/') ? 'logos' : 'documents';
-      
-      // Upload to Supabase Storage
+      console.log(`📤 Uploading to ${bucket}/${filePath}`);
+
+      // Upload file
       const { data, error } = await supabase.storage
         .from(bucket)
         .upload(filePath, file, { 
           cacheControl: '3600', 
-          upsert: false 
+          upsert: false,
+          contentType: file.type
         });
 
       if (error) throw error;
       
-      return filePath;
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(filePath);
+      
+      console.log(`✅ Upload successful: ${publicUrl}`);
+      
+      return {
+        file_path: filePath,
+        file_url: publicUrl
+      };
       
     } catch (error) {
-      console.error('Upload error:', error);
-      throw error;
+      console.error('❌ Upload error:', error);
+      throw new Error(`Failed to upload ${file.name}: ${error.message}`);
     }
   };
 
   const checkExistingRegistration = async (userId) => {
     try {
       const { data, error } = await supabase
-        .from('organizations')
-        .select('id, status')
+        .from('organizations_registry')
+        .select('id, status, registration_number')
         .eq('user_id', userId)
         .maybeSingle();
       
@@ -219,6 +241,12 @@ export const useRegistration = () => {
         return null;
       }
 
+      // Validate NIN
+      if (!formData.nin || formData.nin.length !== 11) {
+        showAlert('error', 'Please enter a valid 11-digit NIN');
+        return null;
+      }
+
       // Validate required files are present
       const missingFiles = requiredDocuments.filter(key => !files[key]);
       if (missingFiles.length > 0) {
@@ -227,36 +255,44 @@ export const useRegistration = () => {
         return null;
       }
 
-      // 1. First, insert the organization data
+      // 1. First, insert the organization data into organizations_registry
       const organizationData = {
         user_id: user.id,
         company_name: formData.companyName.trim(),
-        office_address: formData.officeAddress.trim(),
-        business_nature: formData.businessNature,
+        email: formData.email.trim().toLowerCase(),
+        phone_number1: formData.phoneNumber.trim(),
+        cac_number: formData.cacNumber.trim(),
+        business_nature: formData.businessNature || [],
+        specified_goods: formData.specifiedGoods?.trim() || '',
+        goods_details: formData.goodsDetails?.trim() || '',
+        house_number: formData.houseNumber?.trim() || '',
+        street: formData.streetName?.trim() || '',
+        lga: formData.lga?.trim() || '',
+        state: formData.state?.trim() || '',
+        landmark: formData.landmark?.trim() || '',
         nigerian_directors: parseInt(formData.nigerianDirectors) || 0,
         non_nigerian_directors: parseInt(formData.nonNigerianDirectors) || 0,
         nigerian_employees: parseInt(formData.nigerianEmployees) || 0,
         non_nigerian_employees: parseInt(formData.nonNigerianEmployees) || 0,
-        bankers: formData.bankers?.trim() || '',
         contact_person: formData.contactPerson?.trim() || '',
         representative: formData.representative?.trim() || '',
-        email: formData.email.trim().toLowerCase(),
-        cac_number: formData.cacNumber.trim(),
-        phone_number: formData.phoneNumber.trim(),
-        referee1_name: formData.referee1Name?.trim() || '',
-        referee1_business: formData.referee1Business?.trim() || '',
-        referee1_phone: formData.referee1Phone?.trim() || '',
-        referee1_reg_number: formData.referee1RegNumber?.trim() || '',
-        referee2_name: formData.referee2Name?.trim() || '',
-        referee2_business: formData.referee2Business?.trim() || '',
-        referee2_phone: formData.referee2Phone?.trim() || '',
-        referee2_reg_number: formData.referee2RegNumber?.trim() || '',
+        referee_name: formData.refereeName?.trim() || '',
+        referee_business: formData.refereeBusiness?.trim() || '',
+        referee_phone: formData.refereePhone?.trim() || '',
+        referee_email: formData.refereeEmail?.trim() || '',
+        referee_reg_number: formData.refereeRegNumber?.trim() || '',
+        referee_confirmed: false,
+        nin: formData.nin.trim(),
         status: 'pending',
+        payment_status: 'pending',
+        registration_type: 'self',  // Important: mark as self-registered
         registration_date: new Date().toISOString()
       };
 
+      console.log('📝 Inserting into organizations_registry:', organizationData);
+
       const { data: orgData, error: orgError } = await supabase
-        .from('organizations')
+        .from('organizations_registry')
         .insert([organizationData])
         .select()
         .single();
@@ -267,7 +303,11 @@ export const useRegistration = () => {
       }
 
       const newOrganizationId = orgData.id;
+      const newRegistrationNumber = orgData.registration_number;
       setOrganizationId(newOrganizationId);
+      setRegistrationNumber(newRegistrationNumber);
+
+      console.log(`✅ Organization created with registration number: ${newRegistrationNumber}`);
 
       // 2. Upload all files and create document records
       const documentUploads = [];
@@ -277,13 +317,14 @@ export const useRegistration = () => {
         if (file) {
           try {
             const documentType = documentTypeMapping[key];
-            const filePath = await uploadFile(file, documentType, newOrganizationId);
+            const uploadResult = await uploadFile(file, documentType, newOrganizationId);
 
             // Create document record in organization_documents table
             const docRecord = {
               organization_id: newOrganizationId,
               document_type: documentType,
-              file_path: filePath,
+              file_url: uploadResult.file_url,
+              file_path: uploadResult.file_path,
               file_name: file.name,
               file_size: file.size,
               mime_type: file.type,
@@ -295,6 +336,7 @@ export const useRegistration = () => {
 
             documentUploads.push(docRecord);
           } catch (uploadError) {
+            console.error(`Error uploading ${key}:`, uploadError);
             uploadErrors.push(`${key}: ${uploadError.message}`);
           }
         }
@@ -315,6 +357,7 @@ export const useRegistration = () => {
           console.error('Document insert error:', docsError);
           throw docsError;
         }
+        console.log(`✅ ${documentUploads.length} documents inserted successfully`);
       }
 
       // 3. Log the registration in audit log
@@ -326,7 +369,8 @@ export const useRegistration = () => {
           action: 'registration_submitted',
           new_data: { 
             status: 'pending',
-            company_name: formData.companyName.trim()
+            company_name: formData.companyName.trim(),
+            registration_number: newRegistrationNumber
           },
           created_at: new Date().toISOString()
         }]);
@@ -343,6 +387,7 @@ export const useRegistration = () => {
       try {
         const notificationData = {
           id: newOrganizationId,
+          registration_number: newRegistrationNumber,
           company_name: formData.companyName.trim(),
           email: formData.email.trim().toLowerCase(),
           phone_number: formData.phoneNumber.trim(),
@@ -357,7 +402,7 @@ export const useRegistration = () => {
         console.warn('⚠️ Failed to send admin notification:', emailError);
       }
       
-      showAlert('success', 'Registration submitted successfully!');
+      showAlert('success', `Registration submitted successfully! Registration Number: ${newRegistrationNumber}`);
       return newOrganizationId;
       
     } catch (error) {
@@ -393,6 +438,7 @@ export const useRegistration = () => {
     files,
     fileNames,
     organizationId,
+    registrationNumber,
     paymentStep,
     businessNatureOptions: [
       "Manufacturing and Small-Scale/Cottage Industries",

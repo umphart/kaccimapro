@@ -3,16 +3,13 @@ import {
   Box,
   Dialog,
   DialogContent,
-  DialogActions,
   Button,
   Stepper,
   Step,
   StepLabel,
-  Paper,
   Typography,
   IconButton,
   CircularProgress,
-  Alert,
 } from '@mui/material';
 import { Close as CloseIcon, Save as SaveIcon } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
@@ -76,7 +73,7 @@ const NavigationButtons = styled(Box)(({ theme }) => ({
 // Function to check if bucket exists
 const checkBucketAccess = async () => {
   try {
-    console.log(`Checking access to bucket: ${BUCKET_NAME}`);
+    console.log(`🔍 Checking access to bucket: ${BUCKET_NAME}`);
     
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
@@ -86,15 +83,15 @@ const checkBucketAccess = async () => {
       });
     
     if (error) {
-      console.error('Error accessing bucket:', error);
+      console.error('❌ Error accessing bucket:', error);
       
       if (error.message?.includes('bucket not found') || error.message?.includes('not found')) {
-        console.log(`Bucket ${BUCKET_NAME} does not exist`);
+        console.log(`❌ Bucket ${BUCKET_NAME} does not exist`);
         return false;
       }
       
       if (error.message?.includes('permission')) {
-        console.log(`Bucket ${BUCKET_NAME} exists but no list permission`);
+        console.log(`⚠️ Bucket ${BUCKET_NAME} exists but no list permission`);
         return true;
       }
       
@@ -104,7 +101,7 @@ const checkBucketAccess = async () => {
     console.log(`✅ Bucket ${BUCKET_NAME} is accessible`);
     return true;
   } catch (error) {
-    console.error('Error checking bucket access:', error);
+    console.error('❌ Error checking bucket access:', error);
     return false;
   }
 };
@@ -136,9 +133,10 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
     init();
   }, []);
 
+  // REMOVED: registration_number from formData - database will generate it
   const [formData, setFormData] = useState({
     company_name: '',
-    registration_number: '',
+    // registration_number: '', // ❌ REMOVED - database generates this
     cac_number: '',
     house_number: '',
     street: '',
@@ -193,7 +191,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
       
       setFormData({
         company_name: editingOrg.company_name || '',
-        registration_number: editingOrg.registration_number || '',
+        // registration_number: editingOrg.registration_number || '', // REMOVED
         cac_number: editingOrg.cac_number || '',
         house_number: editingOrg.house_number || '',
         street: editingOrg.street || '',
@@ -230,10 +228,10 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
         fetchOrganizationDocuments(editingOrg.id);
       }
     } else {
-      generateRegistrationNumber();
+      // ❌ REMOVED: generateRegistrationNumber() - database will handle it
       setFormData({
         company_name: '',
-        registration_number: '',
+        // registration_number: '', // REMOVED
         cac_number: '',
         house_number: '',
         street: '',
@@ -274,41 +272,25 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
     setActiveStep(0);
   }, [editingOrg, open]);
 
-  const generateRegistrationNumber = async () => {
-    try {
-      const year = new Date().getFullYear();
-      const { count } = await supabase
-        .from('organizations_registry')
-        .select('id', { count: 'exact', head: true })
-        .gte('created_at', `${year}-01-01`)
-        .lt('created_at', `${year + 1}-01-01`);
-
-      const serialNumber = String((count || 0) + 1).padStart(4, '0');
-      setFormData(prev => ({ ...prev, registration_number: `KCC/${year}/${serialNumber}` }));
-    } catch (error) {
-      console.error('Error generating registration number:', error);
-      const timestamp = Date.now().toString().slice(-4);
-      setFormData(prev => ({ ...prev, registration_number: `KCC/${new Date().getFullYear()}/${timestamp}` }));
-    }
-  };
+  // ❌ REMOVED: generateRegistrationNumber function entirely
 
   const fetchOrganizationDocuments = async (orgId) => {
     try {
-      console.log('Fetching documents for org:', orgId);
+      console.log(`📄 Fetching documents for org: ${orgId}`);
       const { data, error } = await supabase
         .from('organization_documents')
         .select('*')
         .eq('organization_id', orgId);
 
       if (error) {
-        console.error('Error fetching documents:', error);
+        console.error('❌ Error fetching documents:', error);
         throw error;
       }
       
-      console.log('Documents found:', data);
+      console.log(`✅ Documents found: ${data?.length || 0}`);
       setUploadedFiles(data || []);
     } catch (error) {
-      console.error('Error fetching documents:', error);
+      console.error('❌ Error fetching documents:', error);
     }
   };
 
@@ -340,7 +322,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
     const { name, files } = e.target;
     if (files && files[0]) {
       const file = files[0];
-      console.log('File selected:', name, file.name, file.size);
+      console.log(`📎 File selected: ${name} - ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
       setFormData(prev => ({ ...prev, [name]: file }));
       setFileNames(prev => ({ ...prev, [name]: file.name }));
     }
@@ -370,7 +352,8 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
   const validateStep1 = () => {
     const errors = {};
     if (!formData.company_name?.trim()) errors.company_name = 'Company name is required';
-    if (!formData.registration_number?.trim()) errors.registration_number = 'Registration number is required';
+    // ❌ REMOVED: registration_number validation - database handles it
+    // if (!formData.registration_number?.trim()) errors.registration_number = 'Registration number is required';
     if (!formData.business_nature || formData.business_nature.length === 0) {
       errors.business_nature = 'At least one business nature is required';
     }
@@ -407,12 +390,12 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
 
   const uploadDocument = async (file, orgId, docType) => {
     if (!file) {
-      console.log('No file to upload for:', docType);
+      console.log(`⚠️ No file to upload for: ${docType}`);
       return null;
     }
 
     try {
-      console.log('Uploading document:', docType, file.name);
+      console.log(`📤 Uploading document: ${docType} - ${file.name}`);
       
       if (!bucketReady) { 
         const accessible = await checkBucketAccess();
@@ -427,8 +410,8 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
       const fileName = `${orgId}/${docType}_${timestamp}.${fileExt}`;
       const filePath = `organization_documents/${fileName}`;
 
-      console.log('Uploading to path:', filePath);
-      console.log('Using bucket:', BUCKET_NAME);
+      console.log(`📁 Uploading to path: ${filePath}`);
+      console.log(`📦 Using bucket: ${BUCKET_NAME}`);
 
       const { error: uploadError, data: uploadData } = await supabase.storage
         .from(BUCKET_NAME)
@@ -438,17 +421,17 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
         });
 
       if (uploadError) {
-        console.error('Upload error:', uploadError);
+        console.error('❌ Upload error:', uploadError);
         throw uploadError;
       }
 
-      console.log('Upload successful:', uploadData);
+      console.log(`✅ Upload successful: ${file.name}`);
 
       const { data: { publicUrl } } = supabase.storage
         .from(BUCKET_NAME)
         .getPublicUrl(filePath);
 
-      console.log('Public URL:', publicUrl);
+      console.log(`🔗 Public URL: ${publicUrl}`);
 
       const docRecord = {
         organization_id: orgId,
@@ -461,8 +444,6 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
         updated_at: new Date().toISOString()
       };
 
-      console.log('Saving document record:', docRecord);
-
       const { data: docData, error: docError } = await supabase
         .from('organization_documents')
         .insert([docRecord])
@@ -470,7 +451,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
         .single();
 
       if (docError) {
-        console.error('Document record error:', docError);
+        console.error('❌ Document record error:', docError);
         
         if (uploadData) {
           await supabase.storage
@@ -481,249 +462,245 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
         throw new Error(`Failed to save document record: ${docError.message}`);
       }
 
-      console.log('Document record saved:', docData);
+      console.log(`✅ Document record saved: ${docType}`);
       return docData;
     } catch (error) {
-      console.error('Error in uploadDocument:', error);
+      console.error('❌ Error in uploadDocument:', error);
       throw error;
     }
   };
 
-const handleSaveOrganization = async (skipDocs = false) => {
-  setUploadLoading(true);
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    const now = new Date().toISOString();
-
-    // Generate a random password for the organization
-    const generatedPassword = generateRandomPassword();
-    console.log('Generated password for organization:', generatedPassword);
-
-    // Determine organization status based on documents
-    let orgStatus;
-    let statusChanged = false;
+  const handleSaveOrganization = async (skipDocs = false) => {
+    console.log('🗄️ Inserting into table: organizations_registry');
+    console.log('📁 Using storage bucket:', BUCKET_NAME);
+    console.log('📝 Registration number will be auto-generated by database (shared sequence with self-registrations)');
     
-    if (editingOrg) {
-      // Check if documents are being uploaded
-      const hasNewDocuments = hasDocumentsUploaded();
-      const currentStatus = editingOrg.status || 'pending';
+    setUploadLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const now = new Date().toISOString();
+
+      // Generate a random password for the organization
+      const generatedPassword = generateRandomPassword();
+      console.log('🔑 Generated password for organization:', generatedPassword);
+
+      // Determine organization status based on documents
+      let orgStatus;
+      let statusChanged = false;
       
-      // If documents are being uploaded and current status is pending or rejected
-      if (hasNewDocuments) {
-        // Check if there are any existing documents in the database
-        const { data: existingDocs, error: docsError } = await supabase
-          .from('organization_documents')
-          .select('*')
-          .eq('organization_id', editingOrg.id);
-
-        if (docsError) {
-          console.error('Error checking existing documents:', docsError);
-        }
-
-        // If there are existing documents OR new documents being uploaded
-        const hasExistingDocs = existingDocs && existingDocs.length > 0;
+      if (editingOrg) {
+        const hasNewDocuments = hasDocumentsUploaded();
+        const currentStatus = editingOrg.status || 'pending';
         
-        if (hasExistingDocs || hasNewDocuments) {
-          // Check if all required documents are uploaded
-          // For now, we'll consider that if any documents exist, it's approved
-          // You can make this more strict by checking specific document types
-          orgStatus = 'approved';
-          statusChanged = true;
+        if (hasNewDocuments) {
+          const { data: existingDocs, error: docsError } = await supabase
+            .from('organization_documents')
+            .select('*')
+            .eq('organization_id', editingOrg.id);
+
+          if (docsError) {
+            console.error('❌ Error checking existing documents:', docsError);
+          }
+
+          const hasExistingDocs = existingDocs && existingDocs.length > 0;
+          
+          if (hasExistingDocs || hasNewDocuments) {
+            orgStatus = 'approved';
+            statusChanged = true;
+          } else {
+            orgStatus = currentStatus;
+          }
         } else {
           orgStatus = currentStatus;
         }
       } else {
-        // No new documents uploaded, keep existing status
-        orgStatus = currentStatus;
-      }
-    } else {
-      // For new organizations
-      // Check if documents are uploaded (not skipped)
-      if (!skipDocs && !skipDocuments && hasDocumentsUploaded()) {
-        orgStatus = 'approved';
-      } else {
-        orgStatus = 'pending';
-      }
-    }
-
-    const orgData = {
-      company_name: formData.company_name?.trim() || '',
-      registration_number: formData.registration_number?.trim() || '',
-      cac_number: formData.cac_number?.trim() || '',
-      house_number: formData.house_number?.trim() || '',
-      street: formData.street?.trim() || '',
-      lga: formData.lga || '',
-      state: formData.state || '',
-      landmark: formData.landmark?.trim() || '',
-      business_nature: JSON.stringify(formData.business_nature || []),
-      phone_number1: formData.phone_number1?.trim() || '',
-      phone_number2: formData.phone_number2?.trim() || '',
-      email: formData.email?.trim() || '',
-      registration_date: formData.registration_date || new Date().toISOString().split('T')[0],
-      contact_person: formData.contact_person?.trim() || '',
-      representative: formData.representative?.trim() || '',
-      nigerian_directors: parseInt(formData.nigerian_directors) || 0,
-      non_nigerian_directors: parseInt(formData.non_nigerian_directors) || 0,
-      nigerian_employees: parseInt(formData.nigerian_employees) || 0,
-      non_nigerian_employees: parseInt(formData.non_nigerian_employees) || 0,
-      id_type: formData.id_type || '',
-      referee_name: formData.referee_name?.trim() || '',
-      referee_business: formData.referee_business?.trim() || '',
-      referee_phone: formData.referee_phone?.trim() || '',
-      referee_reg_number: formData.referee_reg_number?.trim() || '',
-      status: orgStatus,
-      updated_at: now
-    };
-
-    let orgId;
-
-    if (editingOrg) {
-      const { error } = await supabase
-        .from('organizations_registry')
-        .update(orgData)
-        .eq('id', editingOrg.id);
-
-      if (error) throw error;
-      orgId = editingOrg.id;
-      
-      if (statusChanged) {
-        showAlert('success', `✅ Organization updated successfully! Status changed to: ${orgStatus.toUpperCase()}`);
-      } else {
-        showAlert('success', `Organization updated successfully. Current status: ${orgStatus}`);
-      }
-    } else {
-      orgData.created_by = user?.id || null;
-      orgData.created_at = now;
-
-      // First, create the organization record
-      const { data, error } = await supabase
-        .from('organizations_registry')
-        .insert([orgData])
-        .select()
-        .single();
-
-      if (error) throw error;
-      orgId = data.id;
-      
-      // Create user using signUp - NO EMAIL will be sent by Supabase
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email?.trim(),
-        password: generatedPassword,
-        options: {
-          data: {
-            company_name: formData.company_name?.trim(),
-            organization_id: orgId,
-            role: 'organization'
-          }
+        if (!skipDocs && !skipDocuments && hasDocumentsUploaded()) {
+          orgStatus = 'approved';
+        } else {
+          orgStatus = 'pending';
         }
-      });
-
-      if (authError) {
-        console.error('Error creating auth user:', authError);
-        // If auth user creation fails, delete the organization record
-        await supabase
-          .from('organizations_registry')
-          .delete()
-          .eq('id', orgId);
-        throw new Error(`Failed to create user account: ${authError.message}`);
       }
 
-      console.log('Auth user created successfully:', authData);
-
-      // Send ONLY EmailJS email with credentials (no Supabase email)
-      const emailSent = await sendOrganizationCredentials(
-        formData.email?.trim(),
-        formData.company_name?.trim(),
-        generatedPassword,
-        formData.registration_number
-      );
-
-      if (emailSent.success) {
-        showAlert('success', `✅ Organization created! Status: ${orgStatus.toUpperCase()}. Login credentials sent to organization email.`);
-      } else {
-        console.warn('Failed to send credentials email:', emailSent.error);
-        showAlert('warning', `⚠️ Organization created (Status: ${orgStatus}) but credential email could not be sent.`);
-      }
-    }
-
-    // Upload documents if not skipped
-    if (!skipDocs && !skipDocuments && orgId) {
-      console.log('Uploading documents for org:', orgId);
-      
-      const documentTypes = {
-        cover_letter: 'cover_letter',
-        memorandum: 'memorandum',
-        registration_cert: 'registration_cert',
-        incorporation_cert: 'incorporation_cert',
-        premises_cert: 'premises_cert',
-        company_logo: 'company_logo',
-        form_c07: 'form_c07',
-        id_document: 'id_document'
+      // ❌ IMPORTANT: Do NOT include registration_number - database will generate it
+      const orgData = {
+        company_name: formData.company_name?.trim() || '',
+        // registration_number is OMITTED - database trigger handles it
+        cac_number: formData.cac_number?.trim() || '',
+        house_number: formData.house_number?.trim() || '',
+        street: formData.street?.trim() || '',
+        lga: formData.lga || '',
+        state: formData.state || '',
+        landmark: formData.landmark?.trim() || '',
+        business_nature: JSON.stringify(formData.business_nature || []),
+        phone_number1: formData.phone_number1?.trim() || '',
+        phone_number2: formData.phone_number2?.trim() || '',
+        email: formData.email?.trim() || '',
+        registration_date: formData.registration_date || new Date().toISOString().split('T')[0],
+        contact_person: formData.contact_person?.trim() || '',
+        representative: formData.representative?.trim() || '',
+        nigerian_directors: parseInt(formData.nigerian_directors) || 0,
+        non_nigerian_directors: parseInt(formData.non_nigerian_directors) || 0,
+        nigerian_employees: parseInt(formData.nigerian_employees) || 0,
+        non_nigerian_employees: parseInt(formData.non_nigerian_employees) || 0,
+        id_type: formData.id_type || '',
+        referee_name: formData.referee_name?.trim() || '',
+        referee_business: formData.referee_business?.trim() || '',
+        referee_phone: formData.referee_phone?.trim() || '',
+        referee_reg_number: formData.referee_reg_number?.trim() || '',
+        status: orgStatus,
+        updated_at: now
       };
 
-      let uploadedCount = 0;
-      let errors = [];
+      let orgId;
 
-      for (const [key, docType] of Object.entries(documentTypes)) {
-        if (formData[key] instanceof File) {
-          try {
-            console.log(`Uploading ${docType}...`);
-            await uploadDocument(formData[key], orgId, docType);
-            uploadedCount++;
-          } catch (error) {
-            console.error(`Failed to upload ${docType}:`, error);
-            errors.push(`${docType}: ${error.message}`);
-          }
-        }
-      }
-      
-      if (uploadedCount > 0 && errors.length === 0) {
-        // After documents are uploaded, update status to approved if it's still pending
-        if (orgStatus === 'pending') {
-          const { error: statusUpdateError } = await supabase
-            .from('organizations_registry')
-            .update({ status: 'approved' })
-            .eq('id', orgId);
-          
-          if (!statusUpdateError) {
-            orgStatus = 'approved';
-            showAlert('success', `${uploadedCount} document(s) uploaded successfully. Organization status updated to APPROVED!`);
-          } else {
-            showAlert('success', `${uploadedCount} document(s) uploaded successfully.`);
-          }
+      if (editingOrg) {
+        const { error } = await supabase
+          .from('organizations_registry')
+          .update(orgData)
+          .eq('id', editingOrg.id);
+
+        if (error) throw error;
+        orgId = editingOrg.id;
+        
+        if (statusChanged) {
+          showAlert('success', `✅ Organization updated successfully! Status changed to: ${orgStatus.toUpperCase()}`);
         } else {
-          showAlert('success', `${uploadedCount} document(s) uploaded successfully.`);
+          showAlert('success', `✅ Organization updated successfully. Current status: ${orgStatus}`);
         }
-      } else if (uploadedCount > 0 && errors.length > 0) {
-        showAlert('warning', `${uploadedCount} document(s) uploaded. ${errors.length} failed: ${errors.join(', ')}`);
-      } else if (errors.length > 0) {
-        showAlert('error', `Failed to upload documents: ${errors.join(', ')}`);
+      } else {
+        orgData.created_by = user?.id || null;
+        orgData.created_at = now;
+
+        // Create the organization record - database will generate registration_number
+        const { data, error } = await supabase
+          .from('organizations_registry')
+          .insert([orgData])
+          .select('id, registration_number')
+          .single();
+
+        if (error) throw error;
+        orgId = data.id;
+        const generatedRegNumber = data.registration_number;
+
+        console.log(`✅ Organization created with registration number: ${generatedRegNumber}`);
+        
+        // Create user using signUp
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: formData.email?.trim(),
+          password: generatedPassword,
+          options: {
+            data: {
+              company_name: formData.company_name?.trim(),
+              organization_id: orgId,
+              role: 'organization'
+            }
+          }
+        });
+
+        if (authError) {
+          console.error('❌ Error creating auth user:', authError);
+          await supabase
+            .from('organizations_registry')
+            .delete()
+            .eq('id', orgId);
+          throw new Error(`Failed to create user account: ${authError.message}`);
+        }
+
+        console.log(`✅ Auth user created successfully: ${authData.user?.email}`);
+
+        // Send credentials email with the generated registration number
+        const emailSent = await sendOrganizationCredentials(
+          formData.email?.trim(),
+          formData.company_name?.trim(),
+          generatedPassword,
+          generatedRegNumber  // Use the database-generated number
+        );
+
+        if (emailSent.success) {
+          showAlert('success', `✅ Organization created! Registration Number: ${generatedRegNumber}. Status: ${orgStatus.toUpperCase()}. Login credentials sent.`);
+        } else {
+          console.warn('⚠️ Failed to send credentials email:', emailSent.error);
+          showAlert('warning', `⚠️ Organization created (Reg: ${generatedRegNumber}, Status: ${orgStatus}) but credential email could not be sent.`);
+        }
       }
-    }
 
-    // Refresh documents list
-    if (orgId) {
-      await fetchOrganizationDocuments(orgId);
-    }
+      // Upload documents if not skipped
+      if (!skipDocs && !skipDocuments && orgId) {
+        console.log(`📄 Uploading documents for org: ${orgId}`);
+        
+        const documentTypes = {
+          cover_letter: 'cover_letter',
+          memorandum: 'memorandum',
+          registration_cert: 'registration_cert',
+          incorporation_cert: 'incorporation_cert',
+          premises_cert: 'premises_cert',
+          company_logo: 'company_logo',
+          form_c07: 'form_c07',
+          id_document: 'id_document'
+        };
 
-    onSaveSuccess();
-  } catch (error) {
-    console.error('Error saving organization:', error);
-    if (error.code === '23505') {
-      showAlert('error', 'Registration number or CAC number already exists');
-    } else if (error.message?.includes('Could not find')) {
-      showAlert('error', 'Database column missing. Please run database migrations.');
-    } else if (error.message?.includes('bucket') || error.message?.includes('storage')) {
-      showAlert('error', 'Storage issue. Please ensure the organization-docs bucket exists.');
-    } else if (error.message?.includes('rate limit')) {
-      showAlert('error', 'Rate limit hit. Please wait a moment and try again.');
-    } else {
-      showAlert('error', 'Failed to save organization: ' + error.message);
+        let uploadedCount = 0;
+        let errors = [];
+
+        for (const [key, docType] of Object.entries(documentTypes)) {
+          if (formData[key] instanceof File) {
+            try {
+              console.log(`📤 Uploading ${docType}...`);
+              await uploadDocument(formData[key], orgId, docType);
+              uploadedCount++;
+            } catch (error) {
+              console.error(`❌ Failed to upload ${docType}:`, error);
+              errors.push(`${docType}: ${error.message}`);
+            }
+          }
+        }
+        
+        if (uploadedCount > 0 && errors.length === 0) {
+          if (orgStatus === 'pending') {
+            const { error: statusUpdateError } = await supabase
+              .from('organizations_registry')
+              .update({ status: 'approved' })
+              .eq('id', orgId);
+            
+            if (!statusUpdateError) {
+              orgStatus = 'approved';
+              showAlert('success', `✅ ${uploadedCount} document(s) uploaded successfully. Organization status updated to APPROVED!`);
+            } else {
+              showAlert('success', `✅ ${uploadedCount} document(s) uploaded successfully.`);
+            }
+          } else {
+            showAlert('success', `✅ ${uploadedCount} document(s) uploaded successfully.`);
+          }
+        } else if (uploadedCount > 0 && errors.length > 0) {
+          showAlert('warning', `⚠️ ${uploadedCount} document(s) uploaded. ${errors.length} failed: ${errors.join(', ')}`);
+        } else if (errors.length > 0) {
+          showAlert('error', `❌ Failed to upload documents: ${errors.join(', ')}`);
+        }
+      }
+
+      // Refresh documents list
+      if (orgId) {
+        await fetchOrganizationDocuments(orgId);
+      }
+
+      onSaveSuccess();
+    } catch (error) {
+      console.error('❌ Error saving organization:', error);
+      if (error.code === '23505') {
+        showAlert('error', 'Registration number or CAC number already exists');
+      } else if (error.message?.includes('Could not find')) {
+        showAlert('error', 'Database column missing. Please run database migrations.');
+      } else if (error.message?.includes('bucket') || error.message?.includes('storage')) {
+        showAlert('error', 'Storage issue. Please ensure the organization-docs bucket exists.');
+      } else if (error.message?.includes('rate limit')) {
+        showAlert('error', 'Rate limit hit. Please wait a moment and try again.');
+      } else {
+        showAlert('error', 'Failed to save organization: ' + error.message);
+      }
+    } finally {
+      setUploadLoading(false);
     }
-  } finally {
-    setUploadLoading(false);
-  }
-};
+  };
 
   const handleDeleteDocument = async (docId, filePath) => {
     if (!window.confirm('Are you sure you want to delete this document?')) return;
@@ -734,7 +711,7 @@ const handleSaveOrganization = async (skipDocs = false) => {
         .remove([filePath]);
 
       if (storageError) {
-        console.error('Storage delete error:', storageError);
+        console.error('❌ Storage delete error:', storageError);
       }
 
       const { error } = await supabase
@@ -745,9 +722,9 @@ const handleSaveOrganization = async (skipDocs = false) => {
       if (error) throw error;
 
       setUploadedFiles(prev => prev.filter(d => d.id !== docId));
-      showAlert('success', 'Document deleted successfully');
+      showAlert('success', '✅ Document deleted successfully');
     } catch (error) {
-      console.error('Error deleting document:', error);
+      console.error('❌ Error deleting document:', error);
       showAlert('error', 'Failed to delete document');
     }
   };

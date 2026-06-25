@@ -541,7 +541,7 @@ const AdminOrgDashboard = () => {
                       Welcome back, {organization?.company_name || 'Organization'}! 👋
                     </Typography>
                     <Typography variant="body1" sx={{ opacity: 0.9, mb: 2 }}>
-                      Here's what's happening with your organization account...
+                      Here's what's happening with your organization account.
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                       <StatusBadge

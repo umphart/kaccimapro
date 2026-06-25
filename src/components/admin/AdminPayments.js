@@ -35,7 +35,9 @@ import {
   DialogActions,
   Autocomplete,
   Tooltip,
-  LinearProgress
+  LinearProgress,
+  Tabs,
+  Tab
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -50,7 +52,9 @@ import {
   Upload as UploadIcon,
   Download as DownloadIcon,
   Close as CloseIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
+  AdminPanelSettings as AdminIcon,
+  Person as PersonIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminSidebar from './AdminSidebar';
@@ -79,6 +83,9 @@ const StyledCard = styled(Card)(({ theme }) => ({
 }));
 
 const AdminPayments = () => {
+  console.log('🗄️ Fetching payments from: admin_organization_payments and payments tables');
+  console.log('📁 Using storage bucket: organization-docs');
+  
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -89,13 +96,16 @@ const AdminPayments = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [paymentTypeFilter, setPaymentTypeFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
-    approved: 0,
-    rejected: 0,
-    totalAmount: 0
+    completed: 0,
+    failed: 0,
+    totalAmount: 0,
+    adminPayments: 0,
+    selfPayments: 0
   });
   
   // Payment Form Dialog
@@ -125,9 +135,9 @@ const AdminPayments = () => {
   const [newStatus, setNewStatus] = useState('');
 
   useEffect(() => {
-    fetchPayments();
+    fetchAllPayments();
     fetchStats();
-  }, [page, rowsPerPage, searchTerm, statusFilter, paymentTypeFilter]);
+  }, [page, rowsPerPage, searchTerm, statusFilter, paymentTypeFilter, sourceFilter]);
 
   const showAlert = (type, message) => {
     setAlert({ open: true, type, message });
@@ -137,48 +147,143 @@ const AdminPayments = () => {
     setAlert({ ...alert, open: false });
   };
 
-  const fetchPayments = async () => {
+  // Helper function to fetch organization data for a payment
+  const fetchOrganizationForPayment = async (organizationId) => {
+    if (!organizationId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('organizations_registry')
+        .select('company_name, email, registration_number, status')
+        .eq('id', organizationId)
+        .maybeSingle();
+      
+      if (error) {
+        console.error('Error fetching organization:', error);
+        return null;
+      }
+      return data;
+    } catch (error) {
+      console.error('Error fetching organization:', error);
+      return null;
+    }
+  };
+
+  const fetchAllPayments = async () => {
     setLoading(true);
     try {
-      let query = supabase
+      console.log('📊 Fetching payments from both tables...');
+      
+      // Fetch from admin_organization_payments with join
+      let adminQuery = supabase
         .from('admin_organization_payments')
-        .select('*, organizations:organizations_registry(company_name, email, registration_number)', { count: 'exact' });
+        .select('*, organizations:organizations_registry(company_name, email, registration_number, status)');
 
-      // Apply status filter
+      // Fetch from payments without join (we'll fetch org data separately)
+      let selfQuery = supabase
+        .from('payments')
+        .select('*');
+
+      // Apply filters for admin payments
       if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
+        adminQuery = adminQuery.eq('status', statusFilter);
+        // Map status filter for self payments
+        let selfStatusFilter = statusFilter;
+        if (statusFilter === 'approved') selfStatusFilter = 'completed';
+        if (statusFilter === 'rejected') selfStatusFilter = 'failed';
+        selfQuery = selfQuery.eq('status', selfStatusFilter);
       }
 
-      // Apply payment type filter
       if (paymentTypeFilter !== 'all') {
-        query = query.eq('payment_type', paymentTypeFilter);
+        adminQuery = adminQuery.eq('payment_type', paymentTypeFilter);
+        // self payments table might not have payment_type, so skip filter
       }
 
-      // Apply search
+      // Execute both queries
+      const [adminResult, selfResult] = await Promise.all([
+        adminQuery.order('created_at', { ascending: false }),
+        selfQuery.order('created_at', { ascending: false })
+      ]);
+
+      if (adminResult.error) {
+        console.error('❌ Error fetching admin payments:', adminResult.error);
+        throw adminResult.error;
+      }
+      if (selfResult.error) {
+        console.error('❌ Error fetching self payments:', selfResult.error);
+        throw selfResult.error;
+      }
+
+      // Process admin payments
+      let adminPayments = [];
+      if (adminResult.data) {
+        adminPayments = adminResult.data.map(p => ({
+          ...p,
+          source: 'admin',
+          source_label: 'Admin Created'
+        }));
+      }
+
+      // Process self payments - fetch organization data for each
+      let selfPayments = [];
+      if (selfResult.data) {
+        console.log(`📊 Processing ${selfResult.data.length} self payments...`);
+        
+        for (const payment of selfResult.data) {
+          let orgData = null;
+          if (payment.organization_id) {
+            orgData = await fetchOrganizationForPayment(payment.organization_id);
+          }
+          
+          selfPayments.push({
+            ...payment,
+            source: 'self',
+            source_label: 'Self Registration',
+            organizations: orgData // Add organization data
+          });
+        }
+      }
+
+      // Combine all payments
+      let allPayments = [...adminPayments, ...selfPayments];
+
+      // Apply source filter
+      if (sourceFilter !== 'all') {
+        allPayments = allPayments.filter(p => p.source === sourceFilter);
+      }
+
+      // Apply search filter
       if (searchTerm) {
-        query = query.or(
-          `organizations_registry.company_name.ilike.%${searchTerm}%,` +
-          `organizations_registry.email.ilike.%${searchTerm}%,` +
-          `payment_reference.ilike.%${searchTerm}%,` +
-          `organizations_registry.registration_number.ilike.%${searchTerm}%`
-        );
+        const searchLower = searchTerm.toLowerCase();
+        allPayments = allPayments.filter(p => {
+          const companyName = p.organizations?.company_name?.toLowerCase() || '';
+          const email = p.organizations?.email?.toLowerCase() || '';
+          const regNumber = p.organizations?.registration_number?.toLowerCase() || '';
+          const reference = p.payment_reference?.toLowerCase() || '';
+          
+          return companyName.includes(searchLower) ||
+                 email.includes(searchLower) ||
+                 regNumber.includes(searchLower) ||
+                 reference.includes(searchLower);
+        });
       }
 
-      // Apply pagination
+      // Sort by created_at descending
+      allPayments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+      // Set total count and paginate
+      setTotalCount(allPayments.length);
+      
       const from = page * rowsPerPage;
-      const to = from + rowsPerPage - 1;
+      const to = from + rowsPerPage;
+      const paginatedPayments = allPayments.slice(from, to);
+      
+      setPayments(paginatedPayments);
+      
+      console.log(`✅ Found ${allPayments.length} total payments (${adminPayments.length} admin, ${selfPayments.length} self)`);
 
-      const { data, error, count } = await query
-        .order('created_at', { ascending: false })
-        .range(from, to);
-
-      if (error) throw error;
-
-      setPayments(data || []);
-      setTotalCount(count || 0);
     } catch (error) {
-      console.error('Error fetching payments:', error);
-      showAlert('error', 'Failed to load payments');
+      console.error('❌ Error fetching payments:', error);
+      showAlert('error', 'Failed to load payments: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -186,41 +291,81 @@ const AdminPayments = () => {
 
   const fetchStats = async () => {
     try {
-      const { count: total } = await supabase
+      console.log('📊 Fetching payment stats...');
+      
+      // Get admin payments stats
+      const { count: adminTotal } = await supabase
         .from('admin_organization_payments')
         .select('*', { count: 'exact', head: true });
 
-      const { count: pending } = await supabase
+      const { count: adminPending } = await supabase
         .from('admin_organization_payments')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending');
 
-      const { count: approved } = await supabase
+      const { count: adminApproved } = await supabase
         .from('admin_organization_payments')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'approved');
 
-      const { count: rejected } = await supabase
+      const { count: adminRejected } = await supabase
         .from('admin_organization_payments')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'rejected');
 
-      const { data: approvedPayments } = await supabase
+      // Get self payments stats
+      const { count: selfTotal } = await supabase
+        .from('payments')
+        .select('*', { count: 'exact', head: true });
+
+      const { count: selfPending } = await supabase
+        .from('payments')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+      const { count: selfCompleted } = await supabase
+        .from('payments')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'completed');
+
+      const { count: selfFailed } = await supabase
+        .from('payments')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'failed');
+
+      // Get total amount from approved/completed payments
+      const { data: adminApprovedData } = await supabase
         .from('admin_organization_payments')
         .select('amount')
         .eq('status', 'approved');
 
-      const totalAmount = approvedPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+      const { data: selfCompletedData } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('status', 'completed');
+
+      const adminTotalAmount = adminApprovedData?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+      const selfTotalAmount = selfCompletedData?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+
+      const totalPending = (adminPending || 0) + (selfPending || 0);
+      const totalCompleted = (adminApproved || 0) + (selfCompleted || 0);
+      const totalFailed = (adminRejected || 0) + (selfFailed || 0);
+      const totalPayments = (adminTotal || 0) + (selfTotal || 0);
 
       setStats({
-        total: total || 0,
-        pending: pending || 0,
-        approved: approved || 0,
-        rejected: rejected || 0,
-        totalAmount
+        total: totalPayments,
+        pending: totalPending,
+        completed: totalCompleted,
+        failed: totalFailed,
+        totalAmount: adminTotalAmount + selfTotalAmount,
+        adminPayments: adminTotal || 0,
+        selfPayments: selfTotal || 0
       });
+
+      console.log(`📊 Stats: ${totalPayments} total payments (${adminTotal || 0} admin, ${selfTotal || 0} self)`);
+
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      console.error('❌ Error fetching stats:', error);
     }
   };
 
@@ -274,6 +419,11 @@ const AdminPayments = () => {
     setPage(0);
   };
 
+  const handleSourceFilter = (event, newValue) => {
+    setSourceFilter(newValue);
+    setPage(0);
+  };
+
   // Payment Form Handlers
   const handleOpenPaymentDialog = () => {
     setPaymentForm({
@@ -308,7 +458,6 @@ const AdminPayments = () => {
 
   const handlePaymentFormChange = (field, value) => {
     setPaymentForm(prev => ({ ...prev, [field]: value }));
-    // Clear error for the field
     if (formErrors[field]) {
       setFormErrors(prev => ({ ...prev, [field]: '' }));
     }
@@ -317,14 +466,12 @@ const AdminPayments = () => {
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
     if (file) {
-      // Validate file type
       const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'];
       if (!allowedTypes.includes(file.type)) {
         showAlert('error', 'Please upload a valid image (JPEG, PNG, GIF) or PDF file');
         return;
       }
       
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         showAlert('error', 'File size must be less than 5MB');
         return;
@@ -361,7 +508,6 @@ const AdminPayments = () => {
     setUploadProgress(0);
     
     try {
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         showAlert('error', 'You must be logged in');
@@ -371,13 +517,11 @@ const AdminPayments = () => {
       let receiptPath = null;
       let receiptFilename = null;
 
-      // Upload receipt if file is provided
       if (paymentForm.receipt_file) {
         const fileExt = paymentForm.receipt_file.name.split('.').pop();
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `payment_receipts/${paymentForm.organization_id}/${fileName}`;
 
-        // Simulate upload progress
         const progressInterval = setInterval(() => {
           setUploadProgress(prev => {
             if (prev >= 90) {
@@ -404,11 +548,10 @@ const AdminPayments = () => {
         receiptFilename = paymentForm.receipt_file.name;
       }
 
-      // Generate payment reference if not provided
       const paymentReference = paymentForm.payment_reference || 
         `PAY-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
-      // Insert payment record
+      // Insert into admin_organization_payments
       const { error: insertError } = await supabase
         .from('admin_organization_payments')
         .insert({
@@ -429,7 +572,7 @@ const AdminPayments = () => {
 
       showAlert('success', 'Payment recorded successfully');
       handleClosePaymentDialog();
-      fetchPayments();
+      fetchAllPayments();
       fetchStats();
     } catch (error) {
       console.error('Error recording payment:', error);
@@ -446,6 +589,11 @@ const AdminPayments = () => {
 
   // View Payment Handlers
   const handleViewPayment = async (payment) => {
+    // If payment is from self and doesn't have organization data, fetch it
+    if (payment.source === 'self' && !payment.organizations && payment.organization_id) {
+      const orgData = await fetchOrganizationForPayment(payment.organization_id);
+      payment.organizations = orgData;
+    }
     setSelectedPayment(payment);
     setViewDialogOpen(true);
   };
@@ -455,10 +603,26 @@ const AdminPayments = () => {
     setSelectedPayment(null);
   };
 
-  // Status Update Handlers
+  // ============================================================
+  // FIXED: Status Update Handlers - Correct mapping for payments table
+  // payments table uses: pending, completed, failed, refunded
+  // admin_organization_payments uses: pending, approved, rejected, refunded
+  // ============================================================
+  
   const handleOpenStatusDialog = (payment, status) => {
     setSelectedPayment(payment);
-    setNewStatus(status);
+    
+    // Map status for self payments (payments table)
+    let dbStatus = status;
+    if (payment.source === 'self') {
+      // Map UI status to database status for payments table
+      if (status === 'approved') dbStatus = 'completed';
+      else if (status === 'rejected') dbStatus = 'failed';
+      // pending and refunded stay the same
+    }
+    
+    console.log(`📝 Setting status for ${payment.source} payment to: ${dbStatus} (original: ${status})`);
+    setNewStatus(dbStatus);
     setStatusDialogOpen(true);
   };
 
@@ -472,23 +636,53 @@ const AdminPayments = () => {
     if (!selectedPayment || !newStatus) return;
 
     try {
-      const { error } = await supabase
-        .from('admin_organization_payments')
+      const table = selectedPayment.source === 'admin' ? 'admin_organization_payments' : 'payments';
+      let statusToUpdate = newStatus;
+      
+      if (table === 'payments') {
+        // payments table only accepts: pending, completed, failed, refunded
+        // Map if needed
+        if (statusToUpdate === 'approved') statusToUpdate = 'completed';
+        else if (statusToUpdate === 'rejected') statusToUpdate = 'failed';
+        
+        // Validate status is allowed
+        if (!['pending', 'completed', 'failed', 'refunded'].includes(statusToUpdate)) {
+          console.warn(`⚠️ Invalid status "${statusToUpdate}" for payments table, defaulting to "pending"`);
+          statusToUpdate = 'pending';
+        }
+      }
+      
+      console.log(`🔄 Updating payment in ${table} (ID: ${selectedPayment.id}) from "${selectedPayment.status}" to "${statusToUpdate}"`);
+      
+      const { data, error } = await supabase
+        .from(table)
         .update({ 
-          status: newStatus,
+          status: statusToUpdate,
           updated_at: new Date().toISOString()
         })
-        .eq('id', selectedPayment.id);
+        .eq('id', selectedPayment.id)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Database error:', error);
+        throw error;
+      }
 
-      showAlert('success', `Payment ${newStatus} successfully`);
+      console.log('✅ Update successful:', data);
+
+      // Display appropriate status name
+      const displayStatus = statusToUpdate === 'completed' ? 'Approved' : 
+                           statusToUpdate === 'failed' ? 'Rejected' : 
+                           statusToUpdate === 'pending' ? 'Pending' :
+                           statusToUpdate === 'refunded' ? 'Refunded' : statusToUpdate;
+      
+      showAlert('success', `Payment ${displayStatus} successfully`);
       handleCloseStatusDialog();
-      fetchPayments();
+      fetchAllPayments();
       fetchStats();
     } catch (error) {
-      console.error('Error updating payment status:', error);
-      showAlert('error', 'Failed to update payment status');
+      console.error('❌ Error updating payment status:', error);
+      showAlert('error', 'Failed to update payment status: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -506,7 +700,6 @@ const AdminPayments = () => {
 
       if (error) throw error;
 
-      // Create download link
       const url = URL.createObjectURL(data);
       const link = document.createElement('a');
       link.href = url;
@@ -521,21 +714,58 @@ const AdminPayments = () => {
     }
   };
 
-  const getStatusChip = (status) => {
-    const config = {
-      pending: { color: 'warning', icon: <PendingIcon />, label: 'Pending' },
-      approved: { color: 'success', icon: <CheckCircleIcon />, label: 'Approved' },
-      rejected: { color: 'error', icon: <CancelIcon />, label: 'Rejected' },
-      refunded: { color: 'default', icon: <CancelIcon />, label: 'Refunded' }
-    };
-    const statusConfig = config[status] || config.pending;
+  // Display status chip - maps database status to display status
+  const getStatusChip = (status, source) => {
+    let displayLabel = status;
+    let color = 'default';
+    let icon = <PendingIcon />;
+    
+    // For self payments, map database status to display status
+    if (source === 'self') {
+      if (status === 'completed') {
+        displayLabel = 'Approved';
+        color = 'success';
+        icon = <CheckCircleIcon />;
+      } else if (status === 'failed') {
+        displayLabel = 'Rejected';
+        color = 'error';
+        icon = <CancelIcon />;
+      } else if (status === 'pending') {
+        displayLabel = 'Pending';
+        color = 'warning';
+        icon = <PendingIcon />;
+      } else if (status === 'refunded') {
+        displayLabel = 'Refunded';
+        color = 'default';
+        icon = <CancelIcon />;
+      }
+    } else {
+      // Admin payments use: pending, approved, rejected, refunded
+      if (status === 'approved') {
+        displayLabel = 'Approved';
+        color = 'success';
+        icon = <CheckCircleIcon />;
+      } else if (status === 'rejected') {
+        displayLabel = 'Rejected';
+        color = 'error';
+        icon = <CancelIcon />;
+      } else if (status === 'pending') {
+        displayLabel = 'Pending';
+        color = 'warning';
+        icon = <PendingIcon />;
+      } else if (status === 'refunded') {
+        displayLabel = 'Refunded';
+        color = 'default';
+        icon = <CancelIcon />;
+      }
+    }
 
     return (
       <Chip
-        icon={statusConfig.icon}
-        label={statusConfig.label}
+        icon={icon}
+        label={displayLabel}
         size="small"
-        color={statusConfig.color}
+        color={color}
         sx={{ fontFamily: '"Inter", sans-serif' }}
       />
     );
@@ -546,9 +776,31 @@ const AdminPayments = () => {
       registration: 'Registration',
       renewal: 'Renewal',
       annual_subscription: 'Annual Subscription',
+      first: 'First Payment',
       other: 'Other'
     };
     return types[type] || type;
+  };
+
+  const getSourceChip = (source) => {
+    const config = {
+      admin: { icon: <AdminIcon />, label: 'Admin Created', color: '#15e420' },
+      self: { icon: <PersonIcon />, label: 'Self Registration', color: '#1976d2' }
+    };
+    const sourceConfig = config[source] || config.admin;
+    return (
+      <Chip
+        icon={sourceConfig.icon}
+        label={sourceConfig.label}
+        size="small"
+        sx={{ 
+          fontFamily: '"Inter", sans-serif',
+          backgroundColor: sourceConfig.color + '20',
+          color: sourceConfig.color,
+          fontWeight: 500
+        }}
+      />
+    );
   };
 
   if (loading && payments.length === 0) {
@@ -598,7 +850,7 @@ const AdminPayments = () => {
                     color: '#666'
                   }}
                 >
-                  Record and manage organization payments
+                  Manage all payments from admin-created and self-registered organizations
                 </Typography>
               </Box>
               <Button
@@ -670,10 +922,10 @@ const AdminPayments = () => {
                       </Avatar>
                       <Box>
                         <Typography variant="body2" sx={{ color: '#666' }}>
-                          Approved
+                          Completed/Approved
                         </Typography>
                         <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                          {stats.approved}
+                          {stats.completed}
                         </Typography>
                       </Box>
                     </Box>
@@ -689,10 +941,10 @@ const AdminPayments = () => {
                       </Avatar>
                       <Box>
                         <Typography variant="body2" sx={{ color: '#666' }}>
-                          Rejected
+                          Failed/Rejected
                         </Typography>
                         <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                          {stats.rejected}
+                          {stats.failed}
                         </Typography>
                       </Box>
                     </Box>
@@ -708,7 +960,7 @@ const AdminPayments = () => {
                       </Avatar>
                       <Box>
                         <Typography variant="body2" sx={{ color: '#666' }}>
-                          Total Amount
+                          Total Revenue
                         </Typography>
                         <Typography variant="h4" sx={{ fontWeight: 700 }}>
                           ₦{stats.totalAmount.toLocaleString()}
@@ -720,68 +972,70 @@ const AdminPayments = () => {
               </Grid>
             </Grid>
 
-            {/* Filters */}
+            {/* Source Filter Tabs */}
             <Paper sx={{ p: 2, mb: 3, borderRadius: '12px' }}>
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} md={4}>
-                  <TextField
-                    fullWidth
-                    placeholder="Search by company, email, reference or reg number..."
-                    value={searchTerm}
-                    onChange={handleSearch}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <SearchIcon sx={{ color: '#15e420' }} />
-                        </InputAdornment>
-                      ),
-                    }}
-                    size="small"
-                  />
-                </Grid>
-                <Grid item xs={12} md={2.5}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Status Filter</InputLabel>
-                    <Select
-                      value={statusFilter}
-                      onChange={handleStatusFilter}
-                      label="Status Filter"
-                    >
-                      <MenuItem value="all">All Status</MenuItem>
-                      <MenuItem value="pending">Pending</MenuItem>
-                      <MenuItem value="approved">Approved</MenuItem>
-                      <MenuItem value="rejected">Rejected</MenuItem>
-                      <MenuItem value="refunded">Refunded</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={2.5}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Payment Type</InputLabel>
-                    <Select
-                      value={paymentTypeFilter}
-                      onChange={handlePaymentTypeFilter}
-                      label="Payment Type"
-                    >
-                      <MenuItem value="all">All Types</MenuItem>
-                      <MenuItem value="registration">Registration</MenuItem>
-                      <MenuItem value="renewal">Renewal</MenuItem>
-                      <MenuItem value="annual_subscription">Annual Subscription</MenuItem>
-                      <MenuItem value="other">Other</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={3} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<RefreshIcon />}
-                    onClick={fetchPayments}
-                    sx={{ borderColor: '#15e420', color: '#15e420' }}
+              <Tabs
+                value={sourceFilter}
+                onChange={handleSourceFilter}
+                sx={{ mb: 2 }}
+              >
+                <Tab label="All Payments" value="all" />
+                <Tab label="Admin Created" value="admin" />
+                <Tab label="Self Registered" value="self" />
+              </Tabs>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <TextField
+                  placeholder="Search by company, email, reference or reg number..."
+                  value={searchTerm}
+                  onChange={handleSearch}
+                  size="small"
+                  sx={{ flex: 1, minWidth: 200 }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ color: '#15e420' }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={statusFilter}
+                    onChange={handleStatusFilter}
+                    label="Status"
                   >
-                    Refresh
-                  </Button>
-                </Grid>
-              </Grid>
+                    <MenuItem value="all">All Status</MenuItem>
+                    <MenuItem value="pending">Pending</MenuItem>
+                    <MenuItem value="approved">Approved</MenuItem>
+                    <MenuItem value="rejected">Rejected</MenuItem>
+                    <MenuItem value="refunded">Refunded</MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Payment Type</InputLabel>
+                  <Select
+                    value={paymentTypeFilter}
+                    onChange={handlePaymentTypeFilter}
+                    label="Payment Type"
+                  >
+                    <MenuItem value="all">All Types</MenuItem>
+                    <MenuItem value="registration">Registration</MenuItem>
+                    <MenuItem value="renewal">Renewal</MenuItem>
+                    <MenuItem value="annual_subscription">Annual Subscription</MenuItem>
+                    <MenuItem value="first">First Payment</MenuItem>
+                    <MenuItem value="other">Other</MenuItem>
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={() => { fetchAllPayments(); fetchStats(); }}
+                  sx={{ borderColor: '#15e420', color: '#15e420' }}
+                >
+                  Refresh
+                </Button>
+              </Box>
             </Paper>
 
             {/* Table */}
@@ -794,7 +1048,7 @@ const AdminPayments = () => {
                       <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Organization</TableCell>
                       <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Amount</TableCell>
                       <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Type</TableCell>
-                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Method</TableCell>
+                      <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Source</TableCell>
                       <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Date</TableCell>
                       <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Status</TableCell>
                       <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>Actions</TableCell>
@@ -802,7 +1056,7 @@ const AdminPayments = () => {
                   </TableHead>
                   <TableBody>
                     {payments.map((payment) => (
-                      <TableRow key={payment.id} hover>
+                      <TableRow key={`${payment.source}-${payment.id}`} hover>
                         <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
                           <Chip
                             label={payment.payment_reference}
@@ -841,14 +1095,14 @@ const AdminPayments = () => {
                             sx={{ backgroundColor: '#e8f5e9', color: '#15e420', fontFamily: '"Inter", sans-serif' }}
                           />
                         </TableCell>
-                        <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
-                          {payment.payment_method}
+                        <TableCell>
+                          {getSourceChip(payment.source)}
                         </TableCell>
                         <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
                           {new Date(payment.payment_date || payment.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
-                          {getStatusChip(payment.status)}
+                          {getStatusChip(payment.status, payment.source)}
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -874,7 +1128,7 @@ const AdminPayments = () => {
                             )}
                             {payment.status === 'pending' && (
                               <>
-                                <Tooltip title="Approve">
+                                <Tooltip title="Approve/Complete">
                                   <IconButton
                                     size="small"
                                     onClick={() => handleOpenStatusDialog(payment, 'approved')}
@@ -883,7 +1137,7 @@ const AdminPayments = () => {
                                     <CheckCircleIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title="Reject">
+                                <Tooltip title="Reject/Fail">
                                   <IconButton
                                     size="small"
                                     onClick={() => handleOpenStatusDialog(payment, 'rejected')}
@@ -1042,6 +1296,7 @@ const AdminPayments = () => {
                   <MenuItem value="registration">Registration</MenuItem>
                   <MenuItem value="renewal">Renewal</MenuItem>
                   <MenuItem value="annual_subscription">Annual Subscription</MenuItem>
+                  <MenuItem value="first">First Payment</MenuItem>
                   <MenuItem value="other">Other</MenuItem>
                 </Select>
               </FormControl>
@@ -1217,7 +1472,7 @@ const AdminPayments = () => {
                     Status
                   </Typography>
                   <Box sx={{ mt: 0.5, mb: 2 }}>
-                    {getStatusChip(selectedPayment.status)}
+                    {getStatusChip(selectedPayment.status, selectedPayment.source)}
                   </Box>
                 </Grid>
                 <Grid item xs={12} md={6}>
@@ -1254,6 +1509,14 @@ const AdminPayments = () => {
                       size="small"
                       sx={{ backgroundColor: '#e8f5e9', color: '#15e420', fontFamily: '"Inter", sans-serif' }}
                     />
+                  </Box>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
+                    Source
+                  </Typography>
+                  <Box sx={{ mt: 0.5, mb: 2 }}>
+                    {getSourceChip(selectedPayment.source)}
                   </Box>
                 </Grid>
                 <Grid item xs={12} md={6}>
@@ -1382,8 +1645,14 @@ const AdminPayments = () => {
         <DialogContent>
           <Typography sx={{ fontFamily: '"Inter", sans-serif', color: '#666' }}>
             Are you sure you want to mark this payment as{' '}
-            <strong style={{ color: newStatus === 'approved' ? '#28a745' : '#dc3545' }}>
-              {newStatus}
+            <strong style={{ 
+              color: newStatus === 'completed' || newStatus === 'approved' ? '#28a745' : 
+                     newStatus === 'failed' || newStatus === 'rejected' ? '#dc3545' : 
+                     '#ffc107' 
+            }}>
+              {newStatus === 'completed' || newStatus === 'approved' ? 'Completed/Approved' : 
+               newStatus === 'failed' || newStatus === 'rejected' ? 'Failed/Rejected' : 
+               newStatus === 'pending' ? 'Pending' : newStatus}
             </strong>?
           </Typography>
           {selectedPayment && (
@@ -1396,6 +1665,9 @@ const AdminPayments = () => {
               </Typography>
               <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif' }}>
                 Organization: {selectedPayment.organizations?.company_name || 'N/A'}
+              </Typography>
+              <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif' }}>
+                Source: {selectedPayment.source_label || selectedPayment.source}
               </Typography>
             </Box>
           )}
@@ -1415,19 +1687,25 @@ const AdminPayments = () => {
             variant="contained"
             onClick={handleUpdateStatus}
             sx={{
-              backgroundColor: newStatus === 'approved' ? '#28a745' : '#dc3545',
-              color: '#fff',
+              backgroundColor: newStatus === 'completed' || newStatus === 'approved' ? '#28a745' : 
+                             newStatus === 'failed' || newStatus === 'rejected' ? '#dc3545' : 
+                             '#ffc107',
+              color: newStatus === 'pending' ? '#333' : '#fff',
               fontFamily: '"Inter", sans-serif',
               textTransform: 'none',
               fontWeight: 600,
               borderRadius: '8px',
               px: 4,
               '&:hover': {
-                backgroundColor: newStatus === 'approved' ? '#218838' : '#c82333'
+                backgroundColor: newStatus === 'completed' || newStatus === 'approved' ? '#218838' : 
+                               newStatus === 'failed' || newStatus === 'rejected' ? '#c82333' : 
+                               '#e0a800'
               }
             }}
           >
-            Confirm {newStatus === 'approved' ? 'Approval' : 'Rejection'}
+            Confirm {newStatus === 'completed' || newStatus === 'approved' ? 'Completion' : 
+                     newStatus === 'failed' || newStatus === 'rejected' ? 'Rejection' : 
+                     'Pending'}
           </Button>
         </DialogActions>
       </Dialog>
