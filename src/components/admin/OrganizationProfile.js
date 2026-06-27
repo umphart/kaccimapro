@@ -34,6 +34,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Pending as PendingIcon,
   Cancel as CancelIcon,
+  ContactMail as ContactMailIcon,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminSidebar from './AdminSidebar';
@@ -111,8 +112,6 @@ const OrganizationProfile = () => {
   const fetchOrganization = async () => {
     setLoading(true);
     try {
-      console.log('Fetching organization with ID:', id);
-      
       // Fetch organization details from organizations_registry
       const { data: orgData, error: orgError } = await supabase
         .from('organizations_registry')
@@ -121,7 +120,6 @@ const OrganizationProfile = () => {
         .single();
 
       if (orgError) {
-        console.error('Error fetching organization:', orgError);
         if (orgError.code === 'PGRST116') {
           setAlert({ open: true, type: 'error', message: 'Organization not found' });
           setOrganization(null);
@@ -138,8 +136,6 @@ const OrganizationProfile = () => {
         return;
       }
 
-      console.log('Organization found:', orgData);
-
       // Fetch documents for this organization
       const { data: docData, error: docError } = await supabase
         .from('organization_documents')
@@ -147,10 +143,8 @@ const OrganizationProfile = () => {
         .eq('organization_id', id);
 
       if (docError) {
-        console.error('Error fetching documents:', docError);
         setDocuments([]);
       } else {
-        console.log('Documents found:', docData);
         setDocuments(docData || []);
       }
 

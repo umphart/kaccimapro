@@ -109,9 +109,6 @@ const DropZone = styled(Box)(({ theme }) => ({
 }));
 
 const AdminPayments = () => {
-  console.log('🗄️ Fetching payments from: admin_organization_payments and payments tables');
-  console.log('📁 Using storage bucket: organization-docs');
-  
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -200,8 +197,6 @@ const AdminPayments = () => {
   const fetchAllPayments = async () => {
     setLoading(true);
     try {
-      console.log('📊 Fetching payments from both tables...');
-      
       // Fetch from admin_organization_payments with join
       let adminQuery = supabase
         .from('admin_organization_payments')
@@ -240,11 +235,11 @@ const AdminPayments = () => {
       ]);
 
       if (adminResult.error) {
-        console.error('❌ Error fetching admin payments:', adminResult.error);
+        console.error('Error fetching admin payments:', adminResult.error);
         throw adminResult.error;
       }
       if (selfResult.error) {
-        console.error('❌ Error fetching self payments:', selfResult.error);
+        console.error('Error fetching self payments:', selfResult.error);
         throw selfResult.error;
       }
 
@@ -262,8 +257,6 @@ const AdminPayments = () => {
       // Process self payments - fetch organization data for each
       let selfPayments = [];
       if (selfResult.data) {
-        console.log(`📊 Processing ${selfResult.data.length} self payments...`);
-        
         for (const payment of selfResult.data) {
           let orgData = null;
           if (payment.organization_id) {
@@ -315,11 +308,9 @@ const AdminPayments = () => {
       const paginatedPayments = allPayments.slice(from, to);
       
       setPayments(paginatedPayments);
-      
-      console.log(`✅ Found ${allPayments.length} total payments (${adminPayments.length} admin, ${selfPayments.length} self)`);
 
     } catch (error) {
-      console.error('❌ Error fetching payments:', error);
+      console.error('Error fetching payments:', error);
       showAlert('error', 'Failed to load payments: ' + error.message);
     } finally {
       setLoading(false);
@@ -328,8 +319,6 @@ const AdminPayments = () => {
 
   const fetchStats = async () => {
     try {
-      console.log('📊 Fetching payment stats...');
-      
       // Get admin payments stats
       const { count: adminTotal } = await supabase
         .from('admin_organization_payments')
@@ -411,10 +400,8 @@ const AdminPayments = () => {
         selfPayments: selfTotal || 0
       });
 
-      console.log(`📊 Stats: ${totalPayments} total payments (${adminTotal || 0} admin, ${selfTotal || 0} self)`);
-
     } catch (error) {
-      console.error('❌ Error fetching stats:', error);
+      console.error('Error fetching stats:', error);
     }
   };
 
@@ -714,8 +701,6 @@ const AdminPayments = () => {
         else statusToUpdate = 'pending';
       }
       
-      console.log(`🔄 Updating payment in ${table} (ID: ${selectedPayment.id}) from "${selectedPayment.status}" to "${statusToUpdate}"`);
-      
       const { error } = await supabase
         .from(table)
         .update({ 
@@ -735,7 +720,7 @@ const AdminPayments = () => {
       fetchAllPayments();
       fetchStats();
     } catch (error) {
-      console.error('❌ Error updating payment status:', error);
+      console.error('Error updating payment status:', error);
       showAlert('error', 'Failed to update payment status: ' + (error.message || 'Unknown error'));
     } finally {
       setStatusUpdateLoading(false);
@@ -1290,7 +1275,7 @@ const AdminPayments = () => {
         </Box>
       </Box>
 
-      {/* Record Payment Dialog - Professional Design */}
+      {/* Record Payment Dialog */}
       <Dialog 
         open={paymentDialogOpen} 
         onClose={handleClosePaymentDialog}

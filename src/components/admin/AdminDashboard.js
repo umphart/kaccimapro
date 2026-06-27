@@ -104,9 +104,6 @@ const StatCard = ({ title, value, icon, color, subtitle }) => {
 };
 
 const AdminDashboard = () => {
-  console.log('🗄️ Using tables: organizations_registry, admin_organization_payments, payments');
-  console.log('📁 Using storage bucket: organization-docs');
-  
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -185,15 +182,12 @@ const AdminDashboard = () => {
 
   const fetchStats = async () => {
     try {
-      console.log('📊 Fetching organization stats from organizations_registry');
-      
       // Organization stats
       const { data: allOrgs, error: orgsError } = await supabase
         .from('organizations_registry')
         .select('*');
       
       if (orgsError) {
-        console.error('❌ Error fetching organizations:', orgsError);
         throw orgsError;
       }
       
@@ -203,15 +197,12 @@ const AdminDashboard = () => {
       const approvedOrgs = allOrgs?.filter(o => o.status?.toLowerCase() === 'approved').length || 0;
       const rejectedOrgs = allOrgs?.filter(o => o.status?.toLowerCase() === 'rejected').length || 0;
 
-      console.log(`📊 Found ${totalOrgs} organizations`);
-
       // Admin Payments stats
       const { data: adminPayments, error: adminPaymentsError } = await supabase
         .from('admin_organization_payments')
         .select('*');
       
       if (adminPaymentsError) {
-        console.error('❌ Error fetching admin payments:', adminPaymentsError);
         throw adminPaymentsError;
       }
 
@@ -221,7 +212,6 @@ const AdminDashboard = () => {
         .select('*');
       
       if (selfPaymentsError) {
-        console.error('❌ Error fetching self payments:', selfPaymentsError);
         throw selfPaymentsError;
       }
 
@@ -256,9 +246,6 @@ const AdminDashboard = () => {
 
       const totalRevenue = adminRevenue + selfRevenue;
 
-      console.log(`💰 Total revenue: ₦${totalRevenue.toLocaleString()}`);
-      console.log(`📊 Payments: ${totalPayments} total (${adminTotal} admin, ${selfTotal} self)`);
-
       // Monthly registrations
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
@@ -270,7 +257,7 @@ const AdminDashboard = () => {
         .order('created_at');
 
       if (regError) {
-        console.error('❌ Error fetching registrations:', regError);
+        // Silently handle error
       }
 
       const monthlyData = {};
@@ -304,15 +291,13 @@ const AdminDashboard = () => {
       });
 
     } catch (error) {
-      console.error('❌ Error fetching stats:', error);
+      console.error('Error fetching stats:', error);
       showAlert('error', 'Failed to load statistics: ' + error.message);
     }
   };
 
   const fetchRecentActivities = async () => {
     try {
-      console.log('📋 Fetching recent activities from organizations_registry');
-      
       const { data: recentOrgs, error } = await supabase
         .from('organizations_registry')
         .select('*')
@@ -372,10 +357,9 @@ const AdminDashboard = () => {
       }
 
       setRecentActivities(activities.slice(0, 5));
-      console.log(`✅ Found ${activities.length} recent activities`);
 
     } catch (error) {
-      console.error('❌ Error fetching activities:', error);
+      console.error('Error fetching activities:', error);
     }
   };
 
@@ -478,7 +462,7 @@ const AdminDashboard = () => {
   };
 
   const doughnutData = {
-    labels: ['Pending', 'Pending Reviewa', 'Approved', 'Rejected'],
+    labels: ['Pending', 'Pending Review', 'Approved', 'Rejected'],
     datasets: [{
       data: [
         stats.pendingOrganizations,

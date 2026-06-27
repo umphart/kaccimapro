@@ -414,7 +414,6 @@ const OrganizationProfile = () => {
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
-          console.log('Organization updated:', payload);
           setOrganization(payload.new);
           fetchDocumentStatuses(payload.new.id);
         }
@@ -428,7 +427,6 @@ const OrganizationProfile = () => {
           filter: `organization_id=eq.${organization?.id}`
         },
         (payload) => {
-          console.log('New notification:', payload);
           if (organization?.id) {
             fetchDocumentStatuses(organization.id);
           }
@@ -575,9 +573,7 @@ const OrganizationProfile = () => {
     }
   };
 
-// In OrganizationProfile.js, update getDocumentUrl:
-
-const getDocumentUrl = (path) => {
+  const getDocumentUrl = (path) => {
     if (!path) return null;
     
     // If it's already a full URL, use it directly
@@ -597,6 +593,7 @@ const getDocumentUrl = (path) => {
       return null;
     }
   };
+
   const getDocumentsList = (orgData) => {
     return [
       { key: 'cover_letter_path', name: 'Covering Letter', icon: 'description' },
@@ -1134,167 +1131,166 @@ const getDocumentUrl = (path) => {
       </Layout>
 
       {/* Document Modal */}
-{/* Document Modal - Updated with better sizing */}
-<Dialog
-  open={modalOpen}
-  onClose={() => setModalOpen(false)}
-  maxWidth={false}
-  fullWidth={false}
-  PaperProps={{
-    sx: {
-      borderRadius: '16px',
-      overflow: 'hidden',
-      maxWidth: '90vw',
-      maxHeight: '90vh',
-      width: 'auto',
-      height: 'auto'
-    }
-  }}
->
-  <DialogTitle sx={{ 
-    display: 'flex', 
-    justifyContent: 'space-between', 
-    alignItems: 'center',
-    fontFamily: '"Poppins", sans-serif',
-    fontWeight: 600,
-    borderBottom: '1px solid #eee',
-    bgcolor: '#f8f9fa',
-    py: 1.5,
-    px: 2
-  }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <DescriptionIcon sx={{ color: '#15e420' }} />
-      <Box>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-          {selectedDocument?.name}
-        </Typography>
-        {organization?.company_name && (
-          <Typography variant="caption" color="textSecondary">
-            {organization.company_name}
-          </Typography>
-        )}
-      </Box>
-    </Box>
-    <Box>
-      <IconButton 
-        onClick={() => {
-          if (selectedDocument?.url) {
-            window.open(selectedDocument.url, '_blank');
+      <Dialog
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        maxWidth={false}
+        fullWidth={false}
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            overflow: 'hidden',
+            maxWidth: '90vw',
+            maxHeight: '90vh',
+            width: 'auto',
+            height: 'auto'
           }
-        }} 
-        sx={{ color: '#15e420', mr: 1 }}
-      >
-        <DownloadIcon />
-      </IconButton>
-      <IconButton onClick={() => setModalOpen(false)}>
-        <CloseIcon />
-      </IconButton>
-    </Box>
-  </DialogTitle>
-  
-  <DialogContent sx={{ p: 0, bgcolor: '#f5f5f5', height: '70vh', width: '80vw' }}>
-    <Box sx={{ height: '100%', width: '100%', position: 'relative' }}>
-      {/* Watermark */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          opacity: 0.03,
-          pointerEvents: 'none',
-          zIndex: 0,
-          width: '200px',
-          height: '200px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
         }}
       >
-        <img src="/static/logo.png" alt="Watermark" style={{ maxWidth: '100%', maxHeight: '100%' }} />
-      </Box>
-
-      {/* Document Viewer */}
-      {selectedDocument?.url ? (
-        (() => {
-          const url = selectedDocument.url;
-          const isPdf = url.toLowerCase().endsWith('.pdf');
-          const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url);
-          
-          if (isPdf) {
-            return (
-              <iframe
-                src={`${url}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
-                title={selectedDocument.name}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                  position: 'relative',
-                  zIndex: 1,
-                  backgroundColor: '#fff'
-                }}
-              />
-            );
-          } else if (isImage) {
-            return (
-              <Box sx={{
-                height: '100%',
-                width: '100%',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                backgroundColor: '#fafafa',
-                overflow: 'auto',
-                p: 2
-              }}>
-                <img
-                  src={url}
-                  alt={selectedDocument.name}
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                  }}
-                />
-              </Box>
-            );
-          } else {
-            return (
-              <Box sx={{
-                height: '100%',
-                width: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-                gap: 2,
-                backgroundColor: '#fff'
-              }}>
-                <DescriptionIcon sx={{ fontSize: 64, color: '#ccc' }} />
-                <Typography variant="h6" sx={{ color: '#666' }}>
-                  Cannot preview this file type
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          fontFamily: '"Poppins", sans-serif',
+          fontWeight: 600,
+          borderBottom: '1px solid #eee',
+          bgcolor: '#f8f9fa',
+          py: 1.5,
+          px: 2
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <DescriptionIcon sx={{ color: '#15e420' }} />
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                {selectedDocument?.name}
+              </Typography>
+              {organization?.company_name && (
+                <Typography variant="caption" color="textSecondary">
+                  {organization.company_name}
                 </Typography>
-                <Button
-                  variant="contained"
-                  onClick={() => window.open(url, '_blank')}
-                  sx={{ bgcolor: '#15e420', '&:hover': { bgcolor: '#12c21e' } }}
-                >
-                  Open in New Tab
-                </Button>
+              )}
+            </Box>
+          </Box>
+          <Box>
+            <IconButton 
+              onClick={() => {
+                if (selectedDocument?.url) {
+                  window.open(selectedDocument.url, '_blank');
+                }
+              }} 
+              sx={{ color: '#15e420', mr: 1 }}
+            >
+              <DownloadIcon />
+            </IconButton>
+            <IconButton onClick={() => setModalOpen(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        
+        <DialogContent sx={{ p: 0, bgcolor: '#f5f5f5', height: '70vh', width: '80vw' }}>
+          <Box sx={{ height: '100%', width: '100%', position: 'relative' }}>
+            {/* Watermark */}
+            <Box
+              sx={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                opacity: 0.03,
+                pointerEvents: 'none',
+                zIndex: 0,
+                width: '200px',
+                height: '200px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <img src="/static/logo.png" alt="Watermark" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+            </Box>
+
+            {/* Document Viewer */}
+            {selectedDocument?.url ? (
+              (() => {
+                const url = selectedDocument.url;
+                const isPdf = url.toLowerCase().endsWith('.pdf');
+                const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(url);
+                
+                if (isPdf) {
+                  return (
+                    <iframe
+                      src={`${url}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
+                      title={selectedDocument.name}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        position: 'relative',
+                        zIndex: 1,
+                        backgroundColor: '#fff'
+                      }}
+                    />
+                  );
+                } else if (isImage) {
+                  return (
+                    <Box sx={{
+                      height: '100%',
+                      width: '100%',
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      backgroundColor: '#fafafa',
+                      overflow: 'auto',
+                      p: 2
+                    }}>
+                      <img
+                        src={url}
+                        alt={selectedDocument.name}
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '100%',
+                          objectFit: 'contain',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                        }}
+                      />
+                    </Box>
+                  );
+                } else {
+                  return (
+                    <Box sx={{
+                      height: '100%',
+                      width: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      gap: 2,
+                      backgroundColor: '#fff'
+                    }}>
+                      <DescriptionIcon sx={{ fontSize: 64, color: '#ccc' }} />
+                      <Typography variant="h6" sx={{ color: '#666' }}>
+                        Cannot preview this file type
+                      </Typography>
+                      <Button
+                        variant="contained"
+                        onClick={() => window.open(url, '_blank')}
+                        sx={{ bgcolor: '#15e420', '&:hover': { bgcolor: '#12c21e' } }}
+                      >
+                        Open in New Tab
+                      </Button>
+                    </Box>
+                  );
+                }
+              })()
+            ) : (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                <CircularProgress style={{ color: '#15e420' }} />
               </Box>
-            );
-          }
-        })()
-      ) : (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-          <CircularProgress style={{ color: '#15e420' }} />
-        </Box>
-      )}
-    </Box>
-  </DialogContent>
-</Dialog>
+            )}
+          </Box>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

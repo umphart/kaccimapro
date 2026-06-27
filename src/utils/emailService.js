@@ -78,10 +78,9 @@ The KACCIMA Team
       templateParams
     );
 
-    console.log('✅ Organization credentials email sent successfully');
     return { success: true, data: response };
   } catch (error) {
-    console.error('❌ Failed to send credentials email:', error);
+    console.error('Failed to send credentials email:', error);
     return { success: false, error: error.message };
   }
 };
@@ -168,10 +167,9 @@ The KACCIMA Membership Team
       templateParams
     );
 
-    console.log('✅ Referee confirmation email sent successfully');
     return { success: true, data: response };
   } catch (error) {
-    console.error('❌ Failed to send referee confirmation email:', error);
+    console.error('Failed to send referee confirmation email:', error);
     return { success: false, error: error.message };
   }
 };
@@ -215,10 +213,9 @@ Click the button below to review and approve this registration.`;
       templateParams
     );
 
-    console.log('✅ Admin registration notification sent');
     return { success: true, data: response };
   } catch (error) {
-    console.error('❌ Failed to send admin notification:', error);
+    console.error('Failed to send admin notification:', error);
     return { success: false, error: error.message };
   }
 };
@@ -264,10 +261,9 @@ Click the button below to review this payment.`;
       templateParams
     );
 
-    console.log('✅ Admin payment notification sent successfully');
     return { success: true, data: response };
   } catch (error) {
-    console.error('❌ Failed to send admin payment notification:', error);
+    console.error('Failed to send admin payment notification:', error);
     return { success: false, error: error.message };
   }
 };
@@ -359,10 +355,9 @@ The KACCIMA Team`;
       templateParams
     );
 
-    console.log('✅ Payment approval email sent to organization');
     return { success: true, data: response };
   } catch (error) {
-    console.error('❌ Failed to send payment approval email:', error);
+    console.error('Failed to send payment approval email:', error);
     return { success: false, error: error.message };
   }
 };
@@ -412,10 +407,9 @@ The KACCIMA Team`;
       templateParams
     );
 
-    console.log('✅ Payment rejection email sent to organization');
     return { success: true, data: response };
   } catch (error) {
-    console.error('❌ Failed to send payment rejection email:', error);
+    console.error('Failed to send payment rejection email:', error);
     return { success: false, error: error.message };
   }
 };

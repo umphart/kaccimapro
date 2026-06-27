@@ -215,7 +215,6 @@ const AdminOrgDashboard = () => {
           filter: `organization_id=eq.${organization.id}`
         },
         (payload) => {
-          console.log('New payment:', payload);
           fetchOrganizationData();
         }
       )
@@ -228,7 +227,6 @@ const AdminOrgDashboard = () => {
           filter: `organization_id=eq.${organization.id}`
         },
         (payload) => {
-          console.log('Payment updated:', payload);
           fetchOrganizationData();
         }
       )
@@ -241,7 +239,6 @@ const AdminOrgDashboard = () => {
           filter: `organization_id=eq.${organization.id}`
         },
         (payload) => {
-          console.log('New notification:', payload);
           setUnreadNotifications(prev => prev + 1);
           fetchOrganizationData();
         }
@@ -280,14 +277,10 @@ const AdminOrgDashboard = () => {
     try {
       if (!user) return;
 
-      console.log('🔍 Fetching organization data for user:', user.id);
-
       // METHOD 1: Get organization from user metadata
       let orgData = null;
 
       if (user.user_metadata?.organization_id) {
-        console.log('🔍 Looking up organization by metadata ID:', user.user_metadata.organization_id);
-        
         const { data } = await supabase
           .from('organizations_registry')
           .select('*')
@@ -295,15 +288,12 @@ const AdminOrgDashboard = () => {
           .maybeSingle();
 
         if (data) {
-          console.log('✅ Found organization by metadata ID:', data.company_name);
           orgData = data;
         }
       }
 
       // METHOD 2: If not found, try by email
       if (!orgData && user.email) {
-        console.log('🔍 Looking up organization by email:', user.email);
-        
         const { data } = await supabase
           .from('organizations_registry')
           .select('*')
@@ -311,7 +301,6 @@ const AdminOrgDashboard = () => {
           .maybeSingle();
 
         if (data) {
-          console.log('✅ Found organization by email:', data.company_name);
           orgData = data;
           
           // Update created_by if not set
@@ -320,15 +309,12 @@ const AdminOrgDashboard = () => {
               .from('organizations_registry')
               .update({ created_by: user.id })
               .eq('id', data.id);
-            console.log('✅ Updated organization with created_by');
           }
         }
       }
 
       // METHOD 3: Finally try by created_by
       if (!orgData) {
-        console.log('🔍 Looking up organization by created_by:', user.id);
-        
         const { data } = await supabase
           .from('organizations_registry')
           .select('*')
@@ -336,13 +322,11 @@ const AdminOrgDashboard = () => {
           .maybeSingle();
 
         if (data) {
-          console.log('✅ Found organization by created_by:', data.company_name);
           orgData = data;
         }
       }
 
       if (!orgData) {
-        console.log('❌ No organization found');
         showAlert('error', 'Organization not found. Please contact admin.');
         return;
       }
@@ -431,7 +415,7 @@ const AdminOrgDashboard = () => {
       }
 
     } catch (error) {
-      console.error('❌ Error fetching organization data:', error);
+      console.error('Error fetching organization data:', error);
       showAlert('error', 'Failed to load dashboard data');
     } finally {
       setLoading(false);
@@ -520,7 +504,6 @@ const AdminOrgDashboard = () => {
       </Snackbar>
 
       <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f5f7fa' }}>
-        {/* Updated to use AdminOrgSidebar with organization and membershipStatus props */}
         <AdminOrgSidebar 
           organization={organization}
           membershipStatus={membershipStatus}
@@ -590,7 +573,7 @@ const AdminOrgDashboard = () => {
 
               {/* Stats Cards */}
               <Grid container spacing={3} sx={{ mb: 4 }}>
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
                   <StatCard onClick={() => navigate('/admin-org-payment')}>
                     <Box display="flex" justifyContent="space-between" alignItems="center">
                       <Box>
@@ -620,7 +603,7 @@ const AdminOrgDashboard = () => {
                   </StatCard>
                 </Grid>
 
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
                   <StatCard onClick={() => navigate('/documents')}>
                     <Box display="flex" justifyContent="space-between" alignItems="center">
                       <Box>
@@ -650,7 +633,7 @@ const AdminOrgDashboard = () => {
                   </StatCard>
                 </Grid>
 
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
                   <StatCard onClick={() => navigate('/notifications')}>
                     <Box display="flex" justifyContent="space-between" alignItems="center">
                       <Box>
@@ -671,7 +654,7 @@ const AdminOrgDashboard = () => {
                   </StatCard>
                 </Grid>
 
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
                   <StatCard>
                     <Box display="flex" justifyContent="space-between" alignItems="center">
                       <Box>
@@ -700,7 +683,7 @@ const AdminOrgDashboard = () => {
                   Quick Actions
                 </Typography>
                 <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
                     <QuickActionButton
                       className="primary"
                       fullWidth
@@ -710,7 +693,7 @@ const AdminOrgDashboard = () => {
                       Make Payment
                     </QuickActionButton>
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
                     <QuickActionButton
                       className="secondary"
                       fullWidth
@@ -720,7 +703,7 @@ const AdminOrgDashboard = () => {
                       Manage Documents
                     </QuickActionButton>
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
                     <QuickActionButton
                       className="secondary"
                       fullWidth
@@ -730,7 +713,7 @@ const AdminOrgDashboard = () => {
                       View Profile
                     </QuickActionButton>
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
                     <QuickActionButton
                       className="secondary"
                       fullWidth
@@ -745,7 +728,7 @@ const AdminOrgDashboard = () => {
 
               {/* Recent Activity & Status */}
               <Grid container spacing={3}>
-                <Grid size={{ xs: 12, md: 8 }}>
+                <Grid item xs={12} md={8}>
                   <Paper sx={{ p: 3, borderRadius: '16px' }}>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                       <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -791,7 +774,7 @@ const AdminOrgDashboard = () => {
                   </Paper>
                 </Grid>
 
-                <Grid size={{ xs: 12, md: 4 }}>
+                <Grid item xs={12} md={4}>
                   <Paper sx={{ p: 3, borderRadius: '16px' }}>
                     <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
                       Membership Status
@@ -894,25 +877,25 @@ const AdminOrgDashboard = () => {
                   Organization Summary
                 </Typography>
                 <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
                     <Typography variant="caption" sx={{ color: '#666' }}>Registration Number</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       {organization?.registration_number || 'N/A'}
                     </Typography>
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
                     <Typography variant="caption" sx={{ color: '#666' }}>CAC Number</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       {organization?.cac_number || 'N/A'}
                     </Typography>
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
                     <Typography variant="caption" sx={{ color: '#666' }}>Email</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       {organization?.email || 'N/A'}
                     </Typography>
                   </Grid>
-                  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
                     <Typography variant="caption" sx={{ color: '#666' }}>Phone</Typography>
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       {organization?.phone_number1 || 'N/A'}

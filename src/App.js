@@ -117,16 +117,10 @@ const DashboardRouter = () => {
         return;
       }
 
-      console.log('🔍 Checking organization for user:', user.id);
-      console.log('📧 User email:', user.email);
-      console.log('📋 User metadata:', user.user_metadata);
-
       let adminOrg = null;
 
       // METHOD 1: Check by organization_id in user metadata
       if (user.user_metadata?.organization_id) {
-        console.log('🔍 Checking by organization_id from metadata:', user.user_metadata.organization_id);
-        
         const { data: metaOrg } = await supabase
           .from('organizations_registry')
           .select('*')
@@ -134,7 +128,6 @@ const DashboardRouter = () => {
           .maybeSingle();
 
         if (metaOrg) {
-          console.log('✅ Found organization by metadata ID:', metaOrg.company_name);
           adminOrg = metaOrg;
           
           // Update created_by if not set
@@ -143,15 +136,12 @@ const DashboardRouter = () => {
               .from('organizations_registry')
               .update({ created_by: user.id })
               .eq('id', metaOrg.id);
-            console.log('✅ Updated organization with created_by:', user.id);
           }
         }
       }
 
       // METHOD 2: Check by created_by (if not found above)
       if (!adminOrg) {
-        console.log('🔍 Checking by created_by:', user.id);
-        
         const { data: adminOrgData } = await supabase
           .from('organizations_registry')
           .select('*')
@@ -159,15 +149,12 @@ const DashboardRouter = () => {
           .maybeSingle();
 
         if (adminOrgData) {
-          console.log('✅ Found organization by created_by:', adminOrgData.company_name);
           adminOrg = adminOrgData;
         }
       }
 
       // METHOD 3: Check by email (if not found above)
       if (!adminOrg) {
-        console.log('🔍 Checking by email:', user.email);
-        
         const { data: emailOrg } = await supabase
           .from('organizations_registry')
           .select('*')
@@ -175,7 +162,6 @@ const DashboardRouter = () => {
           .maybeSingle();
 
         if (emailOrg) {
-          console.log('✅ Found organization by email:', emailOrg.company_name);
           adminOrg = emailOrg;
           
           // Update created_by if not set
@@ -184,20 +170,16 @@ const DashboardRouter = () => {
               .from('organizations_registry')
               .update({ created_by: user.id })
               .eq('id', emailOrg.id);
-            console.log('✅ Updated organization with created_by:', user.id);
           }
         }
       }
 
       if (adminOrg) {
-        console.log('✅ Admin-created organization found:', adminOrg.company_name);
         setIsAdminCreated(true);
         setHasOrganization(true);
         setShowNoOrgMessage(false);
       } else {
         // Check if user has a self-created organization
-        console.log('🔍 Checking for self-created organization...');
-        
         const { data: selfOrg } = await supabase
           .from('organizations')
           .select('*')
@@ -205,19 +187,17 @@ const DashboardRouter = () => {
           .maybeSingle();
 
         if (selfOrg) {
-          console.log('✅ Self-created organization found:', selfOrg.company_name);
           setIsAdminCreated(false);
           setHasOrganization(true);
           setShowNoOrgMessage(false);
         } else {
-          console.log('❌ No organization found. Showing notification...');
           setIsAdminCreated(false);
           setHasOrganization(false);
           setShowNoOrgMessage(true);
         }
       }
     } catch (error) {
-      console.error('❌ Error checking organization:', error);
+      console.error('Error checking organization:', error);
       setShowNoOrgMessage(true);
     } finally {
       setLoading(false);
@@ -371,10 +351,8 @@ const PaymentRouter = () => {
 
       isAdminCreated = await checkAdminOrg(user);
       setIsAdminCreated(isAdminCreated);
-      
-      console.log(isAdminCreated ? '✅ Admin-created organization found for payment' : 'ℹ️ Self-created organization detected for payment');
     } catch (error) {
-      console.error('❌ Error checking organization type for payment:', error);
+      console.error('Error checking organization type for payment:', error);
       setIsAdminCreated(false);
     } finally {
       setLoading(false);
@@ -602,7 +580,6 @@ const RefereesRouter = () => {
 
       const isAdmin = await checkAdminOrg(user);
       setIsAdminCreated(isAdmin);
-      console.log(isAdmin ? '✅ Admin-created organization for referees' : 'ℹ️ Self-created organization for referees');
     } catch (error) {
       console.error('Error checking organization type for referees:', error);
     } finally {

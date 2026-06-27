@@ -77,10 +77,6 @@ const ActionButton = styled(Button)({
 });
 
 const Payment = () => {
-  console.log('🗄️ Using table: organizations_registry');
-  console.log('📁 Using storage bucket: documents');
-  console.log('📝 Payment processing for organization registration');
-  
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
@@ -149,56 +145,44 @@ const Payment = () => {
   };
 
   const loadOrganizationData = async () => {
-    console.log('📋 Loading organization data from organizations_registry');
-    
     try {
       let orgData;
 
       // First check if we have an organization ID from location state
       if (location.state?.organizationId) {
-        console.log(`🔍 Looking up organization by ID: ${location.state.organizationId}`);
-        
         const { data, error } = await supabase
-          .from('organizations_registry')  // ✅ Using correct table
+          .from('organizations_registry')
           .select('*')
           .eq('id', location.state.organizationId)
-          .maybeSingle();  // ✅ Using maybeSingle() to avoid 406 error
+          .maybeSingle();
 
         if (error) {
-          console.error('❌ Error fetching organization:', error);
+          console.error('Error fetching organization:', error);
           throw error;
         }
         
         if (data) {
           orgData = data;
-          console.log(`✅ Organization found: ${orgData.company_name} (${orgData.registration_number})`);
-        } else {
-          console.warn('⚠️ Organization not found with ID:', location.state.organizationId);
         }
       }
       
       // If not found by ID, try by user_id
       if (!orgData && user) {
-        console.log(`🔍 Looking up organization by user_id: ${user.id}`);
-        
         const { data, error } = await supabase
-          .from('organizations_registry')  // ✅ Using correct table
+          .from('organizations_registry')
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(1)
-          .maybeSingle();  // ✅ Using maybeSingle()
+          .maybeSingle();
 
         if (error) {
-          console.error('❌ Error fetching organization by user:', error);
+          console.error('Error fetching organization by user:', error);
           throw error;
         }
         
         if (data) {
           orgData = data;
-          console.log(`✅ Organization found by user: ${orgData.company_name} (${orgData.registration_number})`);
-        } else {
-          console.warn('⚠️ No organization found for user');
         }
       }
 
@@ -206,7 +190,6 @@ const Payment = () => {
         setOrganization(orgData);
         await checkPaymentHistory(orgData.id);
       } else {
-        // Try to find organization from registration state
         const orgId = location.state?.organizationId;
         if (orgId) {
           showAlert('error', 'Organization not found. Please complete registration first.');
@@ -216,7 +199,7 @@ const Payment = () => {
         setTimeout(() => navigate('/organization-registration'), 3000);
       }
     } catch (error) {
-      console.error('❌ Error loading organization:', error);
+      console.error('Error loading organization:', error);
       showAlert('error', 'Failed to load organization data: ' + error.message);
     } finally {
       setLoading(false);
@@ -224,8 +207,6 @@ const Payment = () => {
   };
 
   const checkPaymentHistory = async (orgId) => {
-    console.log(`💳 Checking payment history for organization: ${orgId}`);
-    
     try {
       const { data, error } = await supabase
         .from('payments')
@@ -236,7 +217,6 @@ const Payment = () => {
       if (error) throw error;
 
       setPreviousPayments(data || []);
-      console.log(`✅ Found ${data?.length || 0} payment records`);
 
       // Check for approved/active payments
       const approvedPayments = data?.filter(p => 
@@ -261,23 +241,20 @@ const Payment = () => {
         if (isDue) {
           setPaymentType(PAYMENT_TYPES.RENEWAL);
           setPaymentAmount(PAYMENT_CONSTANTS.RENEWAL_AMOUNT);
-          console.log('📅 Renewal payment due');
         } else {
           setPaymentType(PAYMENT_TYPES.NOT_DUE);
           setPaymentAmount(0);
-          console.log('✅ Membership active, no payment due');
         }
       } else {
         // No approved payments found - first time registration
         setPaymentType(PAYMENT_TYPES.FIRST);
         setPaymentAmount(PAYMENT_CONSTANTS.FIRST_PAYMENT);
         setIsRenewalDue(false);
-        console.log('🆕 First time registration - payment required');
       }
       
       setActiveStep(0);
     } catch (error) {
-      console.error('❌ Error checking payment history:', error);
+      console.error('Error checking payment history:', error);
     }
   };
 
@@ -368,15 +345,11 @@ const Payment = () => {
     setSubmitting(true);
 
     try {
-      console.log('💳 Submitting payment for organization:', organization.id);
-      
       // Upload receipt to Supabase Storage
       const timestamp = Date.now();
       const cleanFileName = receiptFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
       const fileName = `${timestamp}_${cleanFileName}`;
       const filePath = `${user.id}/receipts/${fileName}`;
-      
-      console.log('📤 Uploading receipt to:', filePath);
       
       const { error: uploadError } = await supabase.storage
         .from('documents')
@@ -385,8 +358,6 @@ const Payment = () => {
       if (uploadError) {
         throw new Error(`Upload failed: ${uploadError.message}`);
       }
-
-      console.log('✅ Receipt uploaded successfully');
 
       const paymentData = {
         organization_id: organization.id,
@@ -400,8 +371,6 @@ const Payment = () => {
         updated_at: new Date().toISOString()
       };
 
-      console.log('💾 Saving payment record:', paymentData);
-
       const { error: paymentError, data: insertedPayment } = await supabase
         .from('payments')
         .insert([paymentData])
@@ -412,14 +381,11 @@ const Payment = () => {
         throw new Error(paymentError.message);
       }
 
-      console.log('✅ Payment record saved successfully');
-
       // Send admin notification email
       try {
         await sendAdminPaymentNotification(insertedPayment, organization);
-        console.log('📧 Admin notification sent');
       } catch (emailError) {
-        console.warn('⚠️ Email notification failed:', emailError);
+        console.warn('Email notification failed:', emailError);
         // Don't block payment submission if email fails
       }
 
@@ -430,7 +396,7 @@ const Payment = () => {
       }, 2000);
 
     } catch (error) {
-      console.error('❌ Payment process error:', error);
+      console.error('Payment process error:', error);
       showAlert('error', error.message || 'Failed to process payment');
     } finally {
       setSubmitting(false);

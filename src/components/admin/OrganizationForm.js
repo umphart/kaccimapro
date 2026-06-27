@@ -71,13 +71,11 @@ const NavigationButtons = styled(Box)(({ theme }) => ({
 
 const checkBucketAccess = async () => {
   try {
-    console.log(`🔍 Checking access to bucket: ${BUCKET_NAME}`);
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
       .list('', { limit: 1, offset: 0 });
     
     if (error) {
-      console.error('❌ Error accessing bucket:', error);
       if (error.message?.includes('bucket not found') || error.message?.includes('not found')) {
         return false;
       }
@@ -85,7 +83,7 @@ const checkBucketAccess = async () => {
     }
     return true;
   } catch (error) {
-    console.error('❌ Error checking bucket access:', error);
+    console.error('Error checking bucket access:', error);
     return false;
   }
 };
@@ -258,7 +256,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
       if (error) throw error;
       setUploadedFiles(data || []);
     } catch (error) {
-      console.error('❌ Error fetching documents:', error);
+      console.error('Error fetching documents:', error);
     }
   };
 
@@ -392,7 +390,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
 
       return docData;
     } catch (error) {
-      console.error('❌ Error in uploadDocument:', error);
+      console.error('Error in uploadDocument:', error);
       throw error;
     }
   };
@@ -549,7 +547,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
       if (orgId) await fetchOrganizationDocuments(orgId);
       onSaveSuccess();
     } catch (error) {
-      console.error('❌ Error saving organization:', error);
+      console.error('Error saving organization:', error);
       showAlert('error', 'Failed to save organization: ' + error.message);
     } finally {
       setUploadLoading(false);
@@ -570,7 +568,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
       setUploadedFiles(prev => prev.filter(d => d.id !== docId));
       showAlert('success', '✅ Document deleted successfully');
     } catch (error) {
-      console.error('❌ Error deleting document:', error);
+      console.error('Error deleting document:', error);
       showAlert('error', 'Failed to delete document');
     }
   };
