@@ -37,7 +37,17 @@ import {
   Stepper,
   Step,
   StepLabel,
-  Divider
+  Divider,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  ListItemSecondaryAction,
+  Checkbox,
+  Tabs,
+  Tab,
+  Badge,
+  LinearProgress
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -50,6 +60,17 @@ import {
   People as PeopleIcon,
   Warning as WarningIcon,
   Approval as ApprovalIcon,
+  Person as PersonIcon,
+  Description as DescriptionIcon,
+  Payment as PaymentIcon,
+  Verified as VerifiedIcon,
+  Download as DownloadIcon,
+  Close as CloseIcon,
+  ThumbUp as ThumbUpIcon,
+  ThumbDown as ThumbDownIcon,
+  Receipt as ReceiptIcon,
+  SelectAll as SelectAllIcon,
+  ClearAll as ClearAllIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminSidebar from './AdminSidebar';
@@ -73,26 +94,6 @@ const StyledCard = styled(Card)(({ theme }) => ({
   }
 }));
 
-const StatusChip = styled(Chip)(({ status }) => ({
-  borderRadius: '20px',
-  height: '24px',
-  fontSize: '0.7rem',
-  fontWeight: 500,
-  backgroundColor: 
-    status === 'approved' || status === 'active' ? '#e8f5e9' :
-    status === 'pending_review' ? '#fff3e0' :
-    status === 'rejected' ? '#ffebee' :
-    '#fff3e0',
-  color: 
-    status === 'approved' || status === 'active' ? '#2e7d32' :
-    status === 'pending_review' ? '#e65100' :
-    status === 'rejected' ? '#c62828' :
-    '#e65100',
-  '& .MuiChip-icon': {
-    fontSize: '14px'
-  }
-}));
-
 const AdminOrganizations = () => {
   const navigate = useNavigate();
   const { filter } = useParams();
@@ -106,16 +107,36 @@ const AdminOrganizations = () => {
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
   const [selectedOrg, setSelectedOrg] = useState(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
-  const [stats, setStats] = useState({ total: 0, pending: 0, pendingReview: 0, approved: 0, rejected: 0 });
+  const [stats, setStats] = useState({ 
+    total: 0, 
+    pending: 0, 
+    pendingReferee: 0, 
+    pendingReview: 0, 
+    approved: 0, 
+    rejected: 0 
+  });
   
   // Approval Dialog
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [approvalLoading, setApprovalLoading] = useState(false);
   const [approvalNote, setApprovalNote] = useState('');
   const [approvalStep, setApprovalStep] = useState(0);
+  const [documentsData, setDocumentsData] = useState([]);
+  const [paymentData, setPaymentData] = useState(null);
+  const [selectedDocs, setSelectedDocs] = useState([]);
+  
+  // Multi Document Verification Dialog
+  const [docVerificationOpen, setDocVerificationOpen] = useState(false);
+  const [docVerificationLoading, setDocVerificationLoading] = useState(false);
+  const [selectAllDocs, setSelectAllDocs] = useState(false);
+
+  // Payment Verification Dialog
+  const [paymentVerificationOpen, setPaymentVerificationOpen] = useState(false);
+  const [paymentVerificationLoading, setPaymentVerificationLoading] = useState(false);
 
   useEffect(() => {
     if (filter === 'pending') setStatusFilter('pending');
+    else if (filter === 'pending_referee') setStatusFilter('pending_referee');
     else if (filter === 'pending_review') setStatusFilter('pending_review');
     else if (filter === 'approved') setStatusFilter('approved');
     else if (filter === 'rejected') setStatusFilter('rejected');
@@ -162,22 +183,54 @@ const AdminOrganizations = () => {
 
       if (error) throw error;
 
-      const orgsWithDocs = await Promise.all(
+      // Fetch documents and payments for each organization
+      const orgsWithData = await Promise.all(
         (data || []).map(async (org) => {
+          // Fetch documents
           const { data: docData, error: docError } = await supabase
             .from('organization_documents')
             .select('*')
             .eq('organization_id', org.id);
 
           if (docError) {
-            return { ...org, documents: [] };
+            return { ...org, documents: [], payments: [] };
           }
 
-          return { ...org, documents: docData || [] };
+          // Fetch payments from BOTH tables
+          let payments = [];
+          
+          // 1. From admin_organization_payments
+          const { data: adminPayments, error: adminPayError } = await supabase
+            .from('admin_organization_payments')
+            .select('*')
+            .eq('organization_id', org.id);
+
+          if (!adminPayError && adminPayments) {
+            payments = [...payments, ...adminPayments.map(p => ({ ...p, source: 'admin' }))];
+          }
+
+          // 2. From payments (self registrations)
+          const { data: selfPayments, error: selfPayError } = await supabase
+            .from('payments')
+            .select('*')
+            .eq('organization_id', org.id);
+
+          if (!selfPayError && selfPayments) {
+            payments = [...payments, ...selfPayments.map(p => ({ ...p, source: 'self' }))];
+          }
+
+          // Sort payments by created_at descending
+          payments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+          return { 
+            ...org, 
+            documents: docData || [], 
+            payments: payments || []
+          };
         })
       );
 
-      setOrganizations(orgsWithDocs);
+      setOrganizations(orgsWithData);
       setTotalCount(count || 0);
     } catch (error) {
       console.error('Error fetching organizations:', error);
@@ -198,6 +251,15 @@ const AdminOrganizations = () => {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending');
 
+      const { data: pendingRefereeData } = await supabase
+        .from('organizations_registry')
+        .select('id', { count: 'exact', head: false })
+        .eq('status', 'pending')
+        .eq('registration_type', 'self')
+        .eq('referee_confirmed', false);
+
+      const pendingRefereeCount = pendingRefereeData?.length || 0;
+
       const { count: pendingReview } = await supabase
         .from('organizations_registry')
         .select('*', { count: 'exact', head: true })
@@ -216,6 +278,7 @@ const AdminOrganizations = () => {
       setStats({
         total: total || 0,
         pending: pending || 0,
+        pendingReferee: pendingRefereeCount || 0,
         pendingReview: pendingReview || 0,
         approved: approved || 0,
         rejected: rejected || 0
@@ -226,12 +289,10 @@ const AdminOrganizations = () => {
   };
 
   const handleChangePage = (event, newPage) => setPage(newPage);
-  
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
-
   const handleSearch = (event) => {
     setSearchTerm(event.target.value);
     setPage(0);
@@ -255,11 +316,240 @@ const AdminOrganizations = () => {
   };
 
   // ============================================================
-  // APPROVAL HANDLERS
+  // MULTI DOCUMENT VERIFICATION
+  // ============================================================
+  
+  const handleOpenDocVerification = (org) => {
+    setSelectedOrg(org);
+    setDocumentsData(org.documents || []);
+    setSelectedDocs(org.documents?.filter(d => d.is_verified).map(d => d.id) || []);
+    setSelectAllDocs(org.documents?.every(d => d.is_verified) || false);
+    setDocVerificationOpen(true);
+  };
+
+  const handleCloseDocVerification = () => {
+    setDocVerificationOpen(false);
+    setSelectedOrg(null);
+    setDocumentsData([]);
+    setSelectedDocs([]);
+    setSelectAllDocs(false);
+  };
+
+  const handleDocToggle = (docId) => {
+    setSelectedDocs(prev => 
+      prev.includes(docId) 
+        ? prev.filter(id => id !== docId)
+        : [...prev, docId]
+    );
+  };
+
+  const handleSelectAllDocs = () => {
+    if (selectAllDocs) {
+      setSelectedDocs([]);
+    } else {
+      setSelectedDocs(documentsData.map(d => d.id));
+    }
+    setSelectAllDocs(!selectAllDocs);
+  };
+
+  const handleVerifySelectedDocs = async () => {
+    if (selectedDocs.length === 0) {
+      showAlert('warning', 'Please select at least one document to verify');
+      return;
+    }
+
+    setDocVerificationLoading(true);
+    try {
+      let verifiedCount = 0;
+      let errorCount = 0;
+
+      for (const docId of selectedDocs) {
+        const { error } = await supabase
+          .from('organization_documents')
+          .update({ 
+            is_verified: true,
+            status: 'verified',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', docId);
+
+        if (error) {
+          errorCount++;
+          console.error(`Error verifying doc ${docId}:`, error);
+        } else {
+          verifiedCount++;
+        }
+      }
+
+      if (errorCount > 0) {
+        showAlert('warning', `${verifiedCount} document(s) verified, ${errorCount} failed`);
+      } else {
+        showAlert('success', `${verifiedCount} document(s) verified successfully`);
+      }
+
+      handleCloseDocVerification();
+      fetchOrganizations();
+    } catch (error) {
+      console.error('Error verifying documents:', error);
+      showAlert('error', 'Failed to verify documents: ' + error.message);
+    } finally {
+      setDocVerificationLoading(false);
+    }
+  };
+
+  const handleRejectSelectedDocs = async () => {
+    if (selectedDocs.length === 0) {
+      showAlert('warning', 'Please select at least one document to reject');
+      return;
+    }
+
+    setDocVerificationLoading(true);
+    try {
+      let rejectedCount = 0;
+      let errorCount = 0;
+
+      for (const docId of selectedDocs) {
+        const { error } = await supabase
+          .from('organization_documents')
+          .update({ 
+            is_verified: false,
+            status: 'rejected',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', docId);
+
+        if (error) {
+          errorCount++;
+          console.error(`Error rejecting doc ${docId}:`, error);
+        } else {
+          rejectedCount++;
+        }
+      }
+
+      if (errorCount > 0) {
+        showAlert('warning', `${rejectedCount} document(s) rejected, ${errorCount} failed`);
+      } else {
+        showAlert('success', `${rejectedCount} document(s) rejected successfully`);
+      }
+
+      handleCloseDocVerification();
+      fetchOrganizations();
+    } catch (error) {
+      console.error('Error rejecting documents:', error);
+      showAlert('error', 'Failed to reject documents: ' + error.message);
+    } finally {
+      setDocVerificationLoading(false);
+    }
+  };
+
+  // ============================================================
+  // PAYMENT VERIFICATION - BOTH TABLES
+  // ============================================================
+  
+  const handleOpenPaymentVerification = (org) => {
+    setSelectedOrg(org);
+    // Find the first pending payment from either table
+    const pendingPayment = org.payments?.find(p => p.status === 'pending');
+    if (pendingPayment) {
+      setPaymentData(pendingPayment);
+      setPaymentVerificationOpen(true);
+    } else {
+      showAlert('info', 'No pending payment found for this organization');
+    }
+  };
+
+  const handleClosePaymentVerification = () => {
+    setPaymentVerificationOpen(false);
+    setSelectedOrg(null);
+    setPaymentData(null);
+  };
+
+  const handleVerifyPayment = async (paymentId, isApproved) => {
+    setPaymentVerificationLoading(true);
+    try {
+      const table = paymentData?.source === 'admin' ? 'admin_organization_payments' : 'payments';
+      // Map status correctly for each table
+      let status;
+      if (table === 'payments') {
+        status = isApproved ? 'completed' : 'failed';
+      } else {
+        status = isApproved ? 'approved' : 'rejected';
+      }
+
+      const { error } = await supabase
+        .from(table)
+        .update({ 
+          status: status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', paymentId);
+
+      if (error) throw error;
+
+      showAlert('success', `Payment ${isApproved ? 'approved' : 'rejected'} successfully`);
+      handleClosePaymentVerification();
+      fetchOrganizations();
+    } catch (error) {
+      console.error('Error verifying payment:', error);
+      showAlert('error', 'Failed to verify payment: ' + error.message);
+    } finally {
+      setPaymentVerificationLoading(false);
+    }
+  };
+
+  const getPaymentSourceLabel = (source) => {
+    return source === 'admin' ? 'Admin Created' : 'Self Registration';
+  };
+
+  const getPaymentStatusColor = (status) => {
+    if (status === 'approved' || status === 'completed') return 'success';
+    if (status === 'pending') return 'warning';
+    if (status === 'rejected' || status === 'failed') return 'error';
+    return 'default';
+  };
+
+  const getPaymentStatusLabel = (status) => {
+    if (status === 'approved') return 'Approved';
+    if (status === 'completed') return 'Completed';
+    if (status === 'pending') return 'Pending';
+    if (status === 'rejected') return 'Rejected';
+    if (status === 'failed') return 'Failed';
+    return status;
+  };
+
+  // ============================================================
+  // ORGANIZATION APPROVAL
   // ============================================================
   
   const handleOpenApproval = (org) => {
+    // Check if organization is ready for approval
+    if (org.registration_type === 'self' && !org.referee_confirmed) {
+      showAlert('error', 'Cannot approve: Referee confirmation is still pending.');
+      return;
+    }
+
+    // Check if all documents are verified
+    const allDocsVerified = org.documents && org.documents.length > 0 && 
+      org.documents.every(d => d.is_verified === true);
+
+    if (!allDocsVerified) {
+      showAlert('error', 'Cannot approve: All documents must be verified first.');
+      return;
+    }
+
+    // Check if payment is verified
+    const paymentVerified = org.payments && org.payments.some(p => 
+      p.status === 'approved' || p.status === 'completed'
+    );
+
+    if (!paymentVerified) {
+      showAlert('error', 'Cannot approve: Payment verification is required.');
+      return;
+    }
+
     setSelectedOrg(org);
+    setDocumentsData(org.documents || []);
+    setPaymentData(org.payments?.find(p => p.status === 'approved' || p.status === 'completed') || null);
     setApprovalStep(0);
     setApprovalNote('');
     setApprovalDialogOpen(true);
@@ -270,13 +560,17 @@ const AdminOrganizations = () => {
     setSelectedOrg(null);
     setApprovalNote('');
     setApprovalStep(0);
+    setDocumentsData([]);
+    setPaymentData(null);
   };
 
   const getApprovalSteps = () => {
     if (!selectedOrg) return [];
     
-    const hasDocuments = selectedOrg.documents && selectedOrg.documents.length > 0;
-    const hasPayment = selectedOrg.payment_status === 'paid' || selectedOrg.payment_status === 'completed';
+    const allDocsVerified = documentsData.length > 0 && 
+      documentsData.every(d => d.is_verified === true);
+    const hasPayment = paymentData !== null;
+    const isRefereeConfirmed = selectedOrg.registration_type === 'admin' || selectedOrg.referee_confirmed;
     
     return [
       {
@@ -285,13 +579,18 @@ const AdminOrganizations = () => {
         completed: true
       },
       {
-        label: 'Check Documents',
-        description: hasDocuments ? `${selectedOrg.documents.length} document(s) uploaded` : 'No documents uploaded yet',
-        completed: hasDocuments
+        label: 'Referee Confirmation',
+        description: isRefereeConfirmed ? 'Referee confirmed ✓' : 'Awaiting referee confirmation',
+        completed: isRefereeConfirmed
       },
       {
-        label: 'Verify Payment',
-        description: hasPayment ? 'Payment verified' : 'Payment pending verification',
+        label: 'Document Verification',
+        description: allDocsVerified ? `${documentsData.length} documents verified` : 'Pending document verification',
+        completed: allDocsVerified
+      },
+      {
+        label: 'Payment Verification',
+        description: hasPayment ? 'Payment verified ✓' : 'Payment pending verification',
         completed: hasPayment
       }
     ];
@@ -302,20 +601,35 @@ const AdminOrganizations = () => {
 
     setApprovalLoading(true);
     try {
-      const hasDocuments = selectedOrg.documents && selectedOrg.documents.length > 0;
-      
-      let newStatus = 'approved';
-      if (!hasDocuments) {
-        newStatus = 'pending_review';
-        showAlert('warning', `Organization approved but no documents uploaded. Status set to "Pending Review".`);
-      } else {
-        showAlert('success', 'Organization approved successfully!');
+      // Verify all conditions
+      const allDocsVerified = documentsData.length > 0 && 
+        documentsData.every(d => d.is_verified === true);
+      const hasPayment = paymentData !== null;
+      const isRefereeConfirmed = selectedOrg.registration_type === 'admin' || selectedOrg.referee_confirmed;
+
+      if (!allDocsVerified) {
+        showAlert('error', 'Cannot approve: All documents must be verified.');
+        setApprovalLoading(false);
+        return;
       }
 
+      if (!hasPayment) {
+        showAlert('error', 'Cannot approve: Payment verification is required.');
+        setApprovalLoading(false);
+        return;
+      }
+
+      if (!isRefereeConfirmed) {
+        showAlert('error', 'Cannot approve: Referee confirmation is pending.');
+        setApprovalLoading(false);
+        return;
+      }
+
+      // ✅ All conditions met - approve
       const { error: updateError } = await supabase
         .from('organizations_registry')
         .update({ 
-          status: newStatus,
+          status: 'approved',
           approved_date: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -323,24 +637,26 @@ const AdminOrganizations = () => {
 
       if (updateError) throw updateError;
 
+      // Log approval
       const { data: { user } } = await supabase.auth.getUser();
-      const { error: logError } = await supabase
+      await supabase
         .from('registration_audit_log')
         .insert([{
           organization_id: selectedOrg.id,
           action: 'organization_approved',
           new_data: { 
-            status: newStatus,
+            status: 'approved',
             approved_by: user?.id,
-            note: approvalNote || 'No additional notes'
+            note: approvalNote || 'No additional notes',
+            documents_verified: documentsData.length,
+            payment_verified: true,
+            referee_confirmed: isRefereeConfirmed,
+            payment_reference: paymentData?.payment_reference
           },
           created_at: new Date().toISOString()
         }]);
 
-      if (logError) {
-        console.warn('Failed to log approval:', logError);
-      }
-
+      showAlert('success', 'Organization approved successfully! All conditions met.');
       handleCloseApproval();
       fetchOrganizations();
       fetchStats();
@@ -378,66 +694,192 @@ const AdminOrganizations = () => {
     }
   };
 
-  const getStatusChip = (status) => {
-    const statusMap = {
-      pending: { label: 'Pending', icon: <PendingIcon /> },
-      pending_review: { label: 'Pending Review', icon: <ApprovalIcon /> },
-      approved: { label: 'Approved', icon: <CheckCircleIcon /> },
-      rejected: { label: 'Rejected', icon: <CancelIcon /> },
-      active: { label: 'Active', icon: <CheckCircleIcon /> }
-    };
-    const config = statusMap[status?.toLowerCase()] || statusMap.pending;
+  // ============================================================
+  // RENDER FUNCTIONS
+  // ============================================================
+  
+  const getStatusChip = (org) => {
+    const status = org.status;
+    let label = '';
+    let icon = null;
+    let color = '';
+
+    if (status === 'approved') {
+      label = 'Approved';
+      icon = <CheckCircleIcon />;
+      color = '#2e7d32';
+    } else if (status === 'pending_review') {
+      label = 'Pending Review';
+      icon = <ApprovalIcon />;
+      color = '#e65100';
+    } else if (status === 'rejected') {
+      label = 'Rejected';
+      icon = <CancelIcon />;
+      color = '#c62828';
+    } else if (status === 'pending') {
+      if (org.registration_type === 'self' && !org.referee_confirmed) {
+        label = 'Awaiting Referee';
+        icon = <PersonIcon />;
+        color = '#0d47a1';
+      } else {
+        label = 'Pending';
+        icon = <PendingIcon />;
+        color = '#e65100';
+      }
+    } else {
+      label = 'Pending';
+      icon = <PendingIcon />;
+      color = '#e65100';
+    }
+
+    return (
+      <Chip 
+        icon={icon} 
+        label={label} 
+        size="small"
+        sx={{ 
+          borderRadius: '20px',
+          height: '24px',
+          fontSize: '0.7rem',
+          fontWeight: 500,
+          backgroundColor: 
+            label === 'Approved' ? '#e8f5e9' :
+            label === 'Pending Review' ? '#fff3e0' :
+            label === 'Awaiting Referee' ? '#e3f2fd' :
+            label === 'Rejected' ? '#ffebee' :
+            '#fff3e0',
+          color: color,
+          '& .MuiChip-icon': {
+            fontSize: '14px'
+          }
+        }}
+      />
+    );
+  };
+
+  const getRefereeStatusChip = (org) => {
+    if (org.registration_type === 'admin') {
+      return <Chip label="N/A" size="small" color="default" sx={{ height: '20px', fontSize: '0.65rem' }} />;
+    }
     
-    return <StatusChip icon={config.icon} label={config.label} status={status?.toLowerCase()} />;
+    if (org.referee_confirmed) {
+      return <Chip 
+        icon={<CheckCircleIcon />} 
+        label="Confirmed" 
+        size="small" 
+        color="success" 
+        sx={{ height: '20px', fontSize: '0.65rem' }} 
+      />;
+    }
+    
+    if (org.status === 'pending' && org.registration_type === 'self') {
+      return <Chip 
+        icon={<PendingIcon />} 
+        label="Awaiting" 
+        size="small" 
+        color="warning" 
+        sx={{ height: '20px', fontSize: '0.65rem' }} 
+      />;
+    }
+    
+    return <Chip 
+      icon={<CancelIcon />} 
+      label="Not Required" 
+      size="small" 
+      color="default" 
+      sx={{ height: '20px', fontSize: '0.65rem' }} 
+    />;
   };
 
   const getDocumentChips = (documents) => {
-    const summary = getDocumentSummary(documents || []);
+    if (!documents || documents.length === 0) {
+      return <Chip size="small" label="No documents" color="default" sx={{ height: '20px', fontSize: '0.65rem' }} />;
+    }
+
+    const verified = documents.filter(d => d.is_verified).length;
+    const pending = documents.filter(d => !d.is_verified && d.status !== 'rejected').length;
+    const rejected = documents.filter(d => d.status === 'rejected').length;
+    
     const chips = [];
     
-    if (summary.approved > 0) {
+    if (verified > 0) {
       chips.push(
-        <Chip key="approved" size="small" label={`${summary.approved} approved`} color="success" sx={{ height: '20px', fontSize: '0.65rem' }} />
+        <Chip key="verified" size="small" label={`${verified} verified`} color="success" sx={{ height: '20px', fontSize: '0.65rem' }} />
       );
     }
     
-    if (summary.pending > 0) {
+    if (pending > 0) {
       chips.push(
-        <Chip key="pending" size="small" label={`${summary.pending} pending`} color="warning" sx={{ height: '20px', fontSize: '0.65rem' }} />
+        <Chip key="pending" size="small" label={`${pending} pending`} color="warning" sx={{ height: '20px', fontSize: '0.65rem' }} />
       );
     }
     
-    if (summary.missing > 0) {
+    if (rejected > 0) {
       chips.push(
-        <Chip key="missing" size="small" label={`${summary.missing} missing`} color="default" sx={{ height: '20px', fontSize: '0.65rem' }} />
+        <Chip key="rejected" size="small" label={`${rejected} rejected`} color="error" sx={{ height: '20px', fontSize: '0.65rem' }} />
       );
     }
     
-    if (summary.approved === requiredDocumentKeys.length && summary.missing === 0 && summary.pending === 0) {
-      return <Chip size="small" label="All documents approved" color="success" sx={{ height: '20px', fontSize: '0.65rem' }} />;
-    }
-    
-    if (summary.missing === 0 && summary.pending > 0 && summary.approved === 0) {
-      return <Chip size="small" label="All documents uploaded" color="info" sx={{ height: '20px', fontSize: '0.65rem' }} />;
-    }
-    
-    if (chips.length === 0) {
-      return <Chip size="small" label="No documents" color="default" sx={{ height: '20px', fontSize: '0.65rem' }} />;
+    if (chips.length === 0 && documents.length > 0) {
+      return <Chip size="small" label={`${documents.length} uploaded`} color="info" sx={{ height: '20px', fontSize: '0.65rem' }} />;
     }
     
     return chips;
   };
 
-  const getRequiredDocsStatus = (documents) => {
-    if (!documents || documents.length === 0) {
-      return { allUploaded: false, missing: requiredDocumentKeys };
+  const getPaymentStatusChip = (payments) => {
+    if (!payments || payments.length === 0) {
+      return <Chip size="small" label="No payment" color="default" sx={{ height: '20px', fontSize: '0.65rem' }} />;
     }
+    
+    const approved = payments.some(p => p.status === 'approved' || p.status === 'completed');
+    const pending = payments.some(p => p.status === 'pending');
+    
+    if (approved) {
+      return <Chip size="small" label="Paid ✓" color="success" sx={{ height: '20px', fontSize: '0.65rem' }} />;
+    }
+    
+    if (pending) {
+      return <Chip size="small" label="Pending" color="warning" sx={{ height: '20px', fontSize: '0.65rem' }} />;
+    }
+    
+    return <Chip size="small" label="Failed" color="error" sx={{ height: '20px', fontSize: '0.65rem' }} />;
+  };
 
-    const uploadedKeys = documents.map(d => d.document_type);
-    const missing = requiredDocumentKeys.filter(key => !uploadedKeys.includes(key));
-    const allUploaded = missing.length === 0;
+  const getPaymentSourceChip = (source) => {
+    const label = source === 'admin' ? 'Admin' : 'Self';
+    const color = source === 'admin' ? '#15e420' : '#1976d2';
+    return (
+      <Chip 
+        size="small" 
+        label={label} 
+        sx={{ 
+          height: '18px', 
+          fontSize: '0.55rem',
+          backgroundColor: color + '20',
+          color: color,
+          fontWeight: 600
+        }} 
+      />
+    );
+  };
 
-    return { allUploaded, missing };
+  const canApprove = (org) => {
+    if (org.registration_type === 'admin') return true;
+    if (org.registration_type === 'self') {
+      return org.referee_confirmed === true;
+    }
+    return false;
+  };
+
+  const isReadyForApproval = (org) => {
+    const allDocsVerified = org.documents && org.documents.length > 0 && 
+      org.documents.every(d => d.is_verified === true);
+    const paymentApproved = org.payments && org.payments.some(p => 
+      p.status === 'approved' || p.status === 'completed'
+    );
+    const refereeOk = org.registration_type === 'admin' || org.referee_confirmed;
+    return allDocsVerified && paymentApproved && refereeOk;
   };
 
   if (loading && organizations.length === 0) {
@@ -493,6 +935,21 @@ const AdminOrganizations = () => {
                       <Box>
                         <Typography variant="body2" sx={{ color: '#666', fontWeight: 500 }}>Pending</Typography>
                         <Typography variant="h6" sx={{ fontWeight: 700 }}>{stats.pending}</Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </StyledCard>
+              </Grid>
+              <Grid item xs={6} sm={2.4}>
+                <StyledCard>
+                  <CardContent sx={{ p: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Avatar sx={{ bgcolor: '#1976d2', width: 40, height: 40 }}>
+                        <PersonIcon />
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" sx={{ color: '#666', fontWeight: 500 }}>Awaiting Referee</Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>{stats.pendingReferee}</Typography>
                       </Box>
                     </Box>
                   </CardContent>
@@ -567,6 +1024,7 @@ const AdminOrganizations = () => {
                   <Select value={statusFilter} onChange={handleStatusFilter} label="Status">
                     <MenuItem value="all">All</MenuItem>
                     <MenuItem value="pending">Pending</MenuItem>
+                    <MenuItem value="pending_referee">Awaiting Referee</MenuItem>
                     <MenuItem value="pending_review">Pending Review</MenuItem>
                     <MenuItem value="approved">Approved</MenuItem>
                     <MenuItem value="rejected">Rejected</MenuItem>
@@ -575,7 +1033,7 @@ const AdminOrganizations = () => {
                 <Button
                   variant="outlined"
                   startIcon={<RefreshIcon />}
-                  onClick={fetchOrganizations}
+                  onClick={() => { fetchOrganizations(); fetchStats(); }}
                   size="small"
                   sx={{ textTransform: 'none' }}
                 >
@@ -594,27 +1052,24 @@ const AdminOrganizations = () => {
                       <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Company</TableCell>
                       <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Reg. Number</TableCell>
                       <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>CAC</TableCell>
-                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Phone</TableCell>
                       <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Status</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Referee</TableCell>
                       <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Documents</TableCell>
+                      <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Payment</TableCell>
                       <TableCell sx={{ fontWeight: 600, fontSize: '0.8rem' }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {organizations.length > 0 ? (
                       organizations.map((org, index) => {
-                        let businessNature = org.business_nature || [];
-                        if (typeof businessNature === 'string') {
-                          try {
-                            businessNature = JSON.parse(businessNature);
-                          } catch (e) {
-                            businessNature = [];
-                          }
-                        }
-                        
-                        const requiredDocsStatus = getRequiredDocsStatus(org.documents);
-                        const isFullyUploaded = requiredDocsStatus.allUploaded;
-                        const isPending = org.status === 'pending' || org.status === 'pending_review';
+                        const isPending = org.status === 'pending' || org.status === 'pending_review' || org.status === 'pending_referee';
+                        const canApproveOrg = canApprove(org);
+                        const readyForApproval = isReadyForApproval(org);
+                        const allDocsVerified = org.documents && org.documents.length > 0 && 
+                          org.documents.every(d => d.is_verified === true);
+                        const paymentApproved = org.payments && org.payments.some(p => 
+                          p.status === 'approved' || p.status === 'completed'
+                        );
                         
                         return (
                           <TableRow key={org.id} hover>
@@ -622,13 +1077,8 @@ const AdminOrganizations = () => {
                               {page * rowsPerPage + index + 1}
                             </TableCell>
                             <TableCell sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                                 {org.company_name}
-                                {!isFullyUploaded && isPending && (
-                                  <Tooltip title="Missing required documents">
-                                    <WarningIcon sx={{ color: '#ff9800', fontSize: '16px' }} />
-                                  </Tooltip>
-                                )}
                                 {org.registration_type === 'self' && (
                                   <Chip 
                                     label="Self" 
@@ -642,30 +1092,28 @@ const AdminOrganizations = () => {
                                     }} 
                                   />
                                 )}
-                                {businessNature.length > 0 && (
+                                {org.registration_type === 'admin' && (
                                   <Chip 
-                                    label={businessNature[0]} 
+                                    label="Admin" 
                                     size="small" 
                                     sx={{ 
                                       ml: 1, 
                                       height: '18px', 
-                                      fontSize: '0.6rem',
-                                      backgroundColor: '#e3f2fd',
-                                      color: '#1565c0'
+                                      fontSize: '0.55rem',
+                                      backgroundColor: '#e8f5e9',
+                                      color: '#2e7d32'
                                     }} 
                                   />
                                 )}
-                                {businessNature.length > 1 && (
-                                  <Chip 
-                                    label={`+${businessNature.length - 1}`} 
-                                    size="small" 
-                                    sx={{ 
-                                      ml: 0.5, 
-                                      height: '18px', 
-                                      fontSize: '0.6rem',
-                                      backgroundColor: '#f5f5f5'
-                                    }} 
-                                  />
+                                {isPending && !allDocsVerified && org.documents.length > 0 && (
+                                  <Tooltip title="Some documents need verification">
+                                    <WarningIcon sx={{ color: '#ff9800', fontSize: '16px' }} />
+                                  </Tooltip>
+                                )}
+                                {isPending && !paymentApproved && org.payments.length > 0 && (
+                                  <Tooltip title="Payment needs verification">
+                                    <PaymentIcon sx={{ color: '#ff9800', fontSize: '16px' }} />
+                                  </Tooltip>
                                 )}
                               </Box>
                             </TableCell>
@@ -683,11 +1131,21 @@ const AdminOrganizations = () => {
                               />
                             </TableCell>
                             <TableCell sx={{ fontSize: '0.8rem' }}>{org.cac_number || 'N/A'}</TableCell>
-                            <TableCell sx={{ fontSize: '0.8rem' }}>{org.phone_number1 || 'N/A'}</TableCell>
-                            <TableCell>{getStatusChip(org.status)}</TableCell>
+                            <TableCell>{getStatusChip(org)}</TableCell>
+                            <TableCell>{getRefereeStatusChip(org)}</TableCell>
                             <TableCell>
                               <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                                 {getDocumentChips(org.documents)}
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                {getPaymentStatusChip(org.payments)}
+                                {org.payments && org.payments.length > 0 && (
+                                  <Tooltip title={`Source: ${getPaymentSourceLabel(org.payments[0]?.source)}`}>
+                                    {getPaymentSourceChip(org.payments[0]?.source)}
+                                  </Tooltip>
+                                )}
                               </Box>
                             </TableCell>
                             <TableCell>
@@ -701,16 +1159,42 @@ const AdminOrganizations = () => {
                                     <VisibilityIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
-                                {(org.status === 'pending' || org.status === 'pending_review') && (
+                                {isPending && (
                                   <>
-                                    <Tooltip title="Approve Organization">
-                                      <IconButton
-                                        size="small"
-                                        onClick={() => handleOpenApproval(org)}
-                                        sx={{ color: '#28a745' }}
-                                      >
-                                        <CheckCircleIcon fontSize="small" />
-                                      </IconButton>
+                                    {org.documents && org.documents.length > 0 && (
+                                      <Tooltip title="Verify Documents (Multi-select)">
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => handleOpenDocVerification(org)}
+                                          sx={{ color: '#2196f3' }}
+                                        >
+                                          <DescriptionIcon fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+                                    )}
+                                    {org.payments && org.payments.length > 0 && (
+                                      <Tooltip title="Verify Payment">
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => handleOpenPaymentVerification(org)}
+                                          sx={{ color: '#ff9800' }}
+                                        >
+                                          <PaymentIcon fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+                                    )}
+                                    <Tooltip title={canApproveOrg && readyForApproval ? "Approve Organization" : 
+                                      !canApproveOrg ? "Awaiting Referee Confirmation" : "Missing requirements"}>
+                                      <span>
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => handleOpenApproval(org)}
+                                          disabled={!canApproveOrg || !readyForApproval}
+                                          sx={{ color: (canApproveOrg && readyForApproval) ? '#28a745' : '#999' }}
+                                        >
+                                          <CheckCircleIcon fontSize="small" />
+                                        </IconButton>
+                                      </span>
                                     </Tooltip>
                                     <Tooltip title="Reject Organization">
                                       <IconButton
@@ -730,7 +1214,7 @@ const AdminOrganizations = () => {
                       })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                        <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                           <Typography sx={{ color: '#666' }}>No organizations found</Typography>
                         </TableCell>
                       </TableRow>
@@ -765,6 +1249,319 @@ const AdminOrganizations = () => {
         navigate={navigate}
       />
 
+      {/* Multi Document Verification Dialog */}
+      <Dialog
+        open={docVerificationOpen}
+        onClose={handleCloseDocVerification}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '16px' } }}
+      >
+        <DialogTitle sx={{ bgcolor: '#f8f9fa', borderBottom: '1px solid #e0e0e0' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Document Verification
+            </Typography>
+            <IconButton onClick={handleCloseDocVerification} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          {selectedOrg && (
+            <>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                {selectedOrg.company_name}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#666', display: 'block', mb: 2 }}>
+                Select documents to verify or reject. {selectedDocs.length} selected
+              </Typography>
+              
+              <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                <Button
+                  size="small"
+                  startIcon={<SelectAllIcon />}
+                  onClick={handleSelectAllDocs}
+                  variant="outlined"
+                  sx={{ textTransform: 'none' }}
+                >
+                  {selectAllDocs ? 'Deselect All' : 'Select All'}
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={<ThumbUpIcon />}
+                  onClick={handleVerifySelectedDocs}
+                  disabled={selectedDocs.length === 0 || docVerificationLoading}
+                  variant="contained"
+                  sx={{ 
+                    backgroundColor: '#28a745',
+                    textTransform: 'none',
+                    '&:hover': { backgroundColor: '#218838' }
+                  }}
+                >
+                  Verify Selected
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={<ThumbDownIcon />}
+                  onClick={handleRejectSelectedDocs}
+                  disabled={selectedDocs.length === 0 || docVerificationLoading}
+                  variant="contained"
+                  sx={{ 
+                    backgroundColor: '#dc3545',
+                    textTransform: 'none',
+                    '&:hover': { backgroundColor: '#c82333' }
+                  }}
+                >
+                  Reject Selected
+                </Button>
+              </Box>
+
+              {docVerificationLoading && (
+                <LinearProgress sx={{ mb: 2, height: 6, borderRadius: 3 }} />
+              )}
+
+              <List>
+                {documentsData.map((doc) => (
+                  <ListItem 
+                    key={doc.id}
+                    sx={{ 
+                      border: '1px solid #f0f0f0', 
+                      borderRadius: '8px', 
+                      mb: 1,
+                      backgroundColor: doc.is_verified ? '#e8f5e9' : 
+                                      doc.status === 'rejected' ? '#ffebee' : '#fff',
+                      opacity: doc.status === 'rejected' ? 0.7 : 1
+                    }}
+                  >
+                    <ListItemIcon>
+                      <Checkbox
+                        checked={selectedDocs.includes(doc.id)}
+                        onChange={() => handleDocToggle(doc.id)}
+                        disabled={doc.is_verified || doc.status === 'rejected'}
+                      />
+                      <DescriptionIcon />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {doc.document_type?.replace(/_/g, ' ').toUpperCase()}
+                          </Typography>
+                          <Chip 
+                            size="small"
+                            label={doc.is_verified ? 'Verified' : doc.status === 'rejected' ? 'Rejected' : 'Pending'}
+                            color={doc.is_verified ? 'success' : doc.status === 'rejected' ? 'error' : 'warning'}
+                            sx={{ height: '20px', fontSize: '0.6rem' }}
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        <Box>
+                          <Typography variant="caption" sx={{ display: 'block', color: '#666' }}>
+                            {doc.file_name}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: '#999' }}>
+                            Uploaded: {new Date(doc.uploaded_at).toLocaleDateString()}
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                    <ListItemSecondaryAction>
+                      {doc.file_url && (
+                        <Tooltip title="View Document">
+                          <IconButton
+                            size="small"
+                            onClick={() => window.open(doc.file_url, '_blank')}
+                            sx={{ color: '#15e420' }}
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+              </List>
+              
+              {documentsData.length === 0 && (
+                <Alert severity="info">
+                  <Typography variant="body2">No documents uploaded for this organization.</Typography>
+                </Alert>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 3, borderTop: '1px solid #e0e0e0' }}>
+          <Button onClick={handleCloseDocVerification} variant="outlined" sx={{ textTransform: 'none' }}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Payment Verification Dialog */}
+      <Dialog
+        open={paymentVerificationOpen}
+        onClose={handleClosePaymentVerification}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: '16px' } }}
+      >
+        <DialogTitle sx={{ bgcolor: '#f8f9fa', borderBottom: '1px solid #e0e0e0' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Payment Verification
+            </Typography>
+            <IconButton onClick={handleClosePaymentVerification} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          {selectedOrg && paymentData && (
+            <>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                {selectedOrg.company_name}
+              </Typography>
+              
+              <Box sx={{ mb: 2 }}>
+                <Chip 
+                  label={`Source: ${getPaymentSourceLabel(paymentData.source)}`}
+                  size="small"
+                  sx={{ 
+                    backgroundColor: paymentData.source === 'admin' ? '#e8f5e9' : '#e3f2fd',
+                    color: paymentData.source === 'admin' ? '#2e7d32' : '#0d47a1'
+                  }}
+                />
+              </Box>
+
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" sx={{ color: '#666', fontWeight: 600 }}>
+                    Payment Reference
+                  </Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    <Chip
+                      label={paymentData.payment_reference || 'N/A'}
+                      size="small"
+                      sx={{ backgroundColor: '#f0f0f0' }}
+                    />
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" sx={{ color: '#666', fontWeight: 600 }}>
+                    Amount
+                  </Typography>
+                  <Typography variant="h6" sx={{ mb: 2, color: '#15e420' }}>
+                    ₦{Number(paymentData.amount)?.toLocaleString()}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" sx={{ color: '#666', fontWeight: 600 }}>
+                    Payment Method
+                  </Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    {paymentData.payment_method || 'N/A'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" sx={{ color: '#666', fontWeight: 600 }}>
+                    Payment Type
+                  </Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    {paymentData.payment_type || 'N/A'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" sx={{ color: '#666', fontWeight: 600 }}>
+                    Payment Date
+                  </Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    {paymentData.payment_date ? new Date(paymentData.payment_date).toLocaleDateString() : 'N/A'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" sx={{ color: '#666', fontWeight: 600 }}>
+                    Status
+                  </Typography>
+                  <Box sx={{ mt: 0.5 }}>
+                    <Chip
+                      label={getPaymentStatusLabel(paymentData.status)}
+                      color={getPaymentStatusColor(paymentData.status)}
+                      size="small"
+                    />
+                  </Box>
+                </Grid>
+                {paymentData.receipt_path && (
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" sx={{ color: '#666', fontWeight: 600 }}>
+                      Receipt
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      startIcon={<DownloadIcon />}
+                      onClick={() => {
+                        const { data: { publicUrl } } = supabase.storage
+                          .from('organization-docs')
+                          .getPublicUrl(paymentData.receipt_path);
+                        window.open(publicUrl, '_blank');
+                      }}
+                      sx={{ mt: 1, borderColor: '#15e420', color: '#15e420' }}
+                    >
+                      View Receipt
+                    </Button>
+                  </Grid>
+                )}
+              </Grid>
+              
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  Payment must be verified before the organization can be approved.
+                </Typography>
+              </Alert>
+            </>
+          )}
+          {selectedOrg && !paymentData && (
+            <Alert severity="warning">
+              <Typography variant="body2">No pending payment found for this organization.</Typography>
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 3, borderTop: '1px solid #e0e0e0' }}>
+          <Button onClick={handleClosePaymentVerification} variant="outlined" sx={{ textTransform: 'none' }}>
+            Close
+          </Button>
+          {paymentData && paymentData.status === 'pending' && (
+            <>
+              <Button
+                variant="contained"
+                onClick={() => handleVerifyPayment(paymentData.id, true)}
+                disabled={paymentVerificationLoading}
+                sx={{
+                  backgroundColor: '#28a745',
+                  textTransform: 'none',
+                  '&:hover': { backgroundColor: '#218838' }
+                }}
+              >
+                {paymentVerificationLoading ? 'Processing...' : 'Approve Payment'}
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => handleVerifyPayment(paymentData.id, false)}
+                disabled={paymentVerificationLoading}
+                sx={{
+                  backgroundColor: '#dc3545',
+                  textTransform: 'none',
+                  '&:hover': { backgroundColor: '#c82333' }
+                }}
+              >
+                Reject Payment
+              </Button>
+            </>
+          )}
+        </DialogActions>
+      </Dialog>
+
       {/* Approval Dialog */}
       <Dialog
         open={approvalDialogOpen}
@@ -779,7 +1576,7 @@ const AdminOrganizations = () => {
               <ApprovalIcon sx={{ color: '#28a745' }} /> Approve Organization
             </Typography>
             <IconButton onClick={handleCloseApproval} size="small">
-              <CancelIcon />
+              <CloseIcon />
             </IconButton>
           </Box>
         </DialogTitle>
@@ -821,11 +1618,42 @@ const AdminOrganizations = () => {
 
               <Divider sx={{ my: 2 }} />
 
-              <Typography variant="body2" sx={{ color: '#666', mb: 2 }}>
-                {selectedOrg.documents && selectedOrg.documents.length > 0 
-                  ? `Documents uploaded: ${selectedOrg.documents.length} file(s)` 
-                  : '⚠️ No documents uploaded yet'}
-              </Typography>
+              {/* Summary of requirements */}
+              <Alert 
+                severity={documentsData.every(d => d.is_verified) && paymentData !== null ? 'success' : 'warning'} 
+                sx={{ mb: 2 }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                  Approval Requirements Status:
+                </Typography>
+                <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
+                  <li>
+                    {selectedOrg.registration_type === 'admin' ? '✅ Admin created' : 
+                     selectedOrg.referee_confirmed ? '✅ Referee confirmed' : '❌ Referee pending'}
+                  </li>
+                  <li>
+                    {documentsData.length > 0 && documentsData.every(d => d.is_verified) 
+                      ? `✅ ${documentsData.length} documents verified` 
+                      : `❌ ${documentsData.filter(d => d.is_verified).length}/${documentsData.length} documents verified`}
+                  </li>
+                  <li>
+                    {paymentData !== null 
+                      ? `✅ Payment verified (${paymentData.payment_reference})` 
+                      : '❌ Payment not verified'}
+                  </li>
+                </ul>
+              </Alert>
+
+              {paymentData && (
+                <Box sx={{ mb: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+                  <Typography variant="caption" sx={{ color: '#666' }}>
+                    Payment Source: {getPaymentSourceLabel(paymentData.source)}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                    Reference: {paymentData.payment_reference} | Amount: ₦{Number(paymentData.amount)?.toLocaleString()}
+                  </Typography>
+                </Box>
+              )}
 
               <TextField
                 fullWidth
@@ -844,10 +1672,12 @@ const AdminOrganizations = () => {
                 </Typography>
                 <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
                   <li>All provided information is verified and accurate</li>
+                  <li>All required documents have been verified ✓</li>
+                  <li>Payment has been verified ✓</li>
+                  {selectedOrg.registration_type === 'self' && (
+                    <li>{selectedOrg.referee_confirmed ? '✅ Referee has confirmed' : '⚠️ Referee confirmation pending'}</li>
+                  )}
                   <li>The organization meets all membership requirements</li>
-                  <li>{selectedOrg.documents && selectedOrg.documents.length > 0 
-                    ? 'All required documents are submitted' 
-                    : '⚠️ No documents are uploaded - status will be set to "Pending Review"'}</li>
                 </ul>
               </Alert>
             </>

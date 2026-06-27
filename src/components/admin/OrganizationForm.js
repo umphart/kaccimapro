@@ -20,7 +20,6 @@ import DocumentsTab from './DocumentsTab';
 import { getLgasByState } from './nigerianStates';
 import { sendOrganizationCredentials, generateRandomPassword } from '../../utils/emailService';
 
-// The bucket name that exists in your Supabase Storage
 const BUCKET_NAME = 'organization-docs';
 
 const DialogHeader = styled(Box)(({ theme }) => ({
@@ -70,35 +69,20 @@ const NavigationButtons = styled(Box)(({ theme }) => ({
   borderRadius: '0 0 16px 16px'
 }));
 
-// Function to check if bucket exists
 const checkBucketAccess = async () => {
   try {
     console.log(`🔍 Checking access to bucket: ${BUCKET_NAME}`);
-    
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
-      .list('', {
-        limit: 1,
-        offset: 0,
-      });
+      .list('', { limit: 1, offset: 0 });
     
     if (error) {
       console.error('❌ Error accessing bucket:', error);
-      
       if (error.message?.includes('bucket not found') || error.message?.includes('not found')) {
-        console.log(`❌ Bucket ${BUCKET_NAME} does not exist`);
         return false;
       }
-      
-      if (error.message?.includes('permission')) {
-        console.log(`⚠️ Bucket ${BUCKET_NAME} exists but no list permission`);
-        return true;
-      }
-      
       return false;
     }
-    
-    console.log(`✅ Bucket ${BUCKET_NAME} is accessible`);
     return true;
   } catch (error) {
     console.error('❌ Error checking bucket access:', error);
@@ -115,57 +99,52 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
   const [availableLgas, setAvailableLgas] = useState([]);
   const [skipDocuments, setSkipDocuments] = useState(false);
   const [bucketReady, setBucketReady] = useState(false);
-  const [bucketChecked, setBucketChecked] = useState(false);
 
-  // Check bucket on mount
   useEffect(() => {
     const init = async () => {
       const accessible = await checkBucketAccess();
       setBucketReady(accessible);
-      setBucketChecked(true);
-      if (accessible) {
-        console.log(`✅ Bucket ${BUCKET_NAME} is ready for use`);
-      } else {
-        console.warn(`❌ Bucket ${BUCKET_NAME} is not accessible`);
-        showAlert('warning', 'Storage bucket not available. Documents cannot be uploaded. Please ensure the organization-docs bucket exists and is public.');
+      if (!accessible) {
+        showAlert('warning', 'Storage bucket not available. Documents cannot be uploaded.');
       }
     };
     init();
   }, []);
 
-const [formData, setFormData] = useState({
-  company_name: '',
-  cac_number: '',
-  house_number: '',
-  street: '',
-  lga: '',
-  state: '',
-  landmark: '',
-  business_nature: [],
-  phone_number1: '',
-  phone_number2: '',
-  email: '',
-  registration_date: new Date().toISOString().split('T')[0],
-  contact_person: '',
-  representative: '',
-  nigerian_directors: 0,
-  non_nigerian_directors: 0,
-  nigerian_employees: 0,
-  non_nigerian_employees: 0,
-  id_type: '',
-  referee_name: '',
-  referee_business: '',
-  referee_phone: '',
-  referee_reg_number: '',
-  cover_letter: null,
-  memorandum: null,
-  registration_cert: null,
-  incorporation_cert: null,
-  premises_cert: null,
-  company_logo: null,
-  form_c07: null,
-  id_document: null
-});
+  const [formData, setFormData] = useState({
+    company_name: '',
+    cac_number: '',
+    house_number: '',
+    street: '',
+    lga: '',
+    state: '',
+    landmark: '',
+    business_nature: [],
+    phone_number1: '',
+    phone_number2: '',
+    email: '',
+    registration_date: new Date().toISOString().split('T')[0],
+    contact_person: '',
+    representative: '',
+    nigerian_directors: 0,
+    non_nigerian_directors: 0,
+    nigerian_employees: 0,
+    non_nigerian_employees: 0,
+    id_type: '',
+    referee_name: '',
+    referee_business: '',
+    referee_phone: '',
+    referee_reg_number: '',
+    nin: '',
+    cover_letter: null,
+    memorandum: null,
+    registration_cert: null,
+    incorporation_cert: null,
+    premises_cert: null,
+    company_logo: null,
+    form_c07: null,
+    id_document: null
+  });
 
   useEffect(() => {
     if (formData.state) {
@@ -189,7 +168,6 @@ const [formData, setFormData] = useState({
       
       setFormData({
         company_name: editingOrg.company_name || '',
-        // registration_number: editingOrg.registration_number || '', // REMOVED
         cac_number: editingOrg.cac_number || '',
         house_number: editingOrg.house_number || '',
         street: editingOrg.street || '',
@@ -204,7 +182,7 @@ const [formData, setFormData] = useState({
         contact_person: editingOrg.contact_person || '',
         representative: editingOrg.representative || '',
         nigerian_directors: editingOrg.nigerian_directors || 0,
-        non_nigerian_directors: editingOrg.nigerian_directors || 0,
+        non_nigerian_directors: editingOrg.non_nigerian_directors || 0,
         nigerian_employees: editingOrg.nigerian_employees || 0,
         non_nigerian_employees: editingOrg.non_nigerian_employees || 0,
         id_type: editingOrg.id_type || '',
@@ -212,6 +190,7 @@ const [formData, setFormData] = useState({
         referee_business: editingOrg.referee_business || '',
         referee_phone: editingOrg.referee_phone || '',
         referee_reg_number: editingOrg.referee_reg_number || '',
+        nin: editingOrg.nin || '',
         cover_letter: null,
         memorandum: null,
         registration_cert: null,
@@ -226,10 +205,8 @@ const [formData, setFormData] = useState({
         fetchOrganizationDocuments(editingOrg.id);
       }
     } else {
-      // ❌ REMOVED: generateRegistrationNumber() - database will handle it
       setFormData({
         company_name: '',
-        // registration_number: '', // REMOVED
         cac_number: '',
         house_number: '',
         street: '',
@@ -252,6 +229,7 @@ const [formData, setFormData] = useState({
         referee_business: '',
         referee_phone: '',
         referee_reg_number: '',
+        nin: '',
         cover_letter: null,
         memorandum: null,
         registration_cert: null,
@@ -270,22 +248,14 @@ const [formData, setFormData] = useState({
     setActiveStep(0);
   }, [editingOrg, open]);
 
-  // ❌ REMOVED: generateRegistrationNumber function entirely
-
   const fetchOrganizationDocuments = async (orgId) => {
     try {
-      console.log(`📄 Fetching documents for org: ${orgId}`);
       const { data, error } = await supabase
         .from('organization_documents')
         .select('*')
         .eq('organization_id', orgId);
 
-      if (error) {
-        console.error('❌ Error fetching documents:', error);
-        throw error;
-      }
-      
-      console.log(`✅ Documents found: ${data?.length || 0}`);
+      if (error) throw error;
       setUploadedFiles(data || []);
     } catch (error) {
       console.error('❌ Error fetching documents:', error);
@@ -320,7 +290,6 @@ const [formData, setFormData] = useState({
     const { name, files } = e.target;
     if (files && files[0]) {
       const file = files[0];
-      console.log(`📎 File selected: ${name} - ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
       setFormData(prev => ({ ...prev, [name]: file }));
       setFileNames(prev => ({ ...prev, [name]: file.name }));
     }
@@ -331,75 +300,53 @@ const [formData, setFormData] = useState({
     handleSaveOrganization(true);
   };
 
-  // Check if any documents are uploaded
   const hasDocumentsUploaded = () => {
     const documentFields = [
-      'cover_letter',
-      'memorandum', 
-      'registration_cert',
-      'incorporation_cert',
-      'premises_cert',
-      'company_logo',
-      'form_c07',
-      'id_document'
+      'cover_letter', 'memorandum', 'registration_cert',
+      'incorporation_cert', 'premises_cert', 'company_logo',
+      'form_c07', 'id_document'
     ];
-    
     return documentFields.some(field => formData[field] instanceof File);
   };
 
-const validateStep1 = () => {
-  const errors = {};
-  if (!formData.company_name?.trim()) errors.company_name = 'Company name is required';
-  // REMOVED: registration_number validation
-  // if (!formData.registration_number?.trim()) errors.registration_number = 'Registration number is required';
-  if (!formData.business_nature || formData.business_nature.length === 0) {
-    errors.business_nature = 'At least one business nature is required';
-  }
-  if (!formData.house_number?.trim()) errors.house_number = 'House number is required';
-  if (!formData.street?.trim()) errors.street = 'Street is required';
-  if (!formData.lga) errors.lga = 'Local Government Area is required';
-  if (!formData.state) errors.state = 'State is required';
-  if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-    errors.email = 'Invalid email format';
-  }
-  setFormErrors(errors);
-  return Object.keys(errors).length === 0;
-};
-
-  const validateStep2 = () => {
-    return true;
+  const validateStep1 = () => {
+    const errors = {};
+    if (!formData.company_name?.trim()) errors.company_name = 'Company name is required';
+    if (!formData.business_nature || formData.business_nature.length === 0) {
+      errors.business_nature = 'At least one business nature is required';
+    }
+    if (!formData.house_number?.trim()) errors.house_number = 'House number is required';
+    if (!formData.street?.trim()) errors.street = 'Street is required';
+    if (!formData.lga) errors.lga = 'Local Government Area is required';
+    if (!formData.state) errors.state = 'State is required';
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = 'Invalid email format';
+    }
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
   };
+
+  const validateStep2 = () => true;
 
   const handleNext = () => {
     if (activeStep === 0) {
-      if (validateStep1()) {
-        setActiveStep((prev) => prev + 1);
-      }
+      if (validateStep1()) setActiveStep((prev) => prev + 1);
     } else if (activeStep === 1) {
-      if (validateStep2()) {
-        setActiveStep((prev) => prev + 1);
-      }
+      if (validateStep2()) setActiveStep((prev) => prev + 1);
     }
   };
 
-  const handleBack = () => {
-    setActiveStep((prev) => prev - 1);
-  };
+  const handleBack = () => setActiveStep((prev) => prev - 1);
 
   const uploadDocument = async (file, orgId, docType) => {
-    if (!file) {
-      console.log(`⚠️ No file to upload for: ${docType}`);
-      return null;
-    }
+    if (!file) return null;
 
     try {
-      console.log(`📤 Uploading document: ${docType} - ${file.name}`);
-      
-      if (!bucketReady) { 
+      if (!bucketReady) {
         const accessible = await checkBucketAccess();
         setBucketReady(accessible);
         if (!accessible) {
-          throw new Error('Storage bucket is not available. Please contact administrator.');
+          throw new Error('Storage bucket is not available.');
         }
       }
 
@@ -408,9 +355,6 @@ const validateStep1 = () => {
       const fileName = `${orgId}/${docType}_${timestamp}.${fileExt}`;
       const filePath = `organization_documents/${fileName}`;
 
-      console.log(`📁 Uploading to path: ${filePath}`);
-      console.log(`📦 Using bucket: ${BUCKET_NAME}`);
-
       const { error: uploadError, data: uploadData } = await supabase.storage
         .from(BUCKET_NAME)
         .upload(filePath, file, {
@@ -418,18 +362,11 @@ const validateStep1 = () => {
           upsert: false
         });
 
-      if (uploadError) {
-        console.error('❌ Upload error:', uploadError);
-        throw uploadError;
-      }
-
-      console.log(`✅ Upload successful: ${file.name}`);
+      if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage
         .from(BUCKET_NAME)
         .getPublicUrl(filePath);
-
-      console.log(`🔗 Public URL: ${publicUrl}`);
 
       const docRecord = {
         organization_id: orgId,
@@ -449,18 +386,10 @@ const validateStep1 = () => {
         .single();
 
       if (docError) {
-        console.error('❌ Document record error:', docError);
-        
-        if (uploadData) {
-          await supabase.storage
-            .from(BUCKET_NAME)
-            .remove([filePath]);
-        }
-        
+        await supabase.storage.from(BUCKET_NAME).remove([filePath]);
         throw new Error(`Failed to save document record: ${docError.message}`);
       }
 
-      console.log(`✅ Document record saved: ${docType}`);
       return docData;
     } catch (error) {
       console.error('❌ Error in uploadDocument:', error);
@@ -468,87 +397,62 @@ const validateStep1 = () => {
     }
   };
 
+  // ============================================================
+  // ADMIN CREATION - ALWAYS APPROVED
+  // ============================================================
   const handleSaveOrganization = async (skipDocs = false) => {
-    console.log('🗄️ Inserting into table: organizations_registry');
-    console.log('📁 Using storage bucket:', BUCKET_NAME);
-    console.log('📝 Registration number will be auto-generated by database (shared sequence with self-registrations)');
-    
     setUploadLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const now = new Date().toISOString();
 
-      // Generate a random password for the organization
       const generatedPassword = generateRandomPassword();
-      console.log('🔑 Generated password for organization:', generatedPassword);
 
-      // Determine organization status based on documents
-      let orgStatus;
-      let statusChanged = false;
+      // ✅ ADMIN CREATION: Always approved
+      // Only time it's not approved is if it's an edit and status was pending_review
+      let orgStatus = 'approved';
       
       if (editingOrg) {
-        const hasNewDocuments = hasDocumentsUploaded();
-        const currentStatus = editingOrg.status || 'pending';
-        
-        if (hasNewDocuments) {
-          const { data: existingDocs, error: docsError } = await supabase
-            .from('organization_documents')
-            .select('*')
-            .eq('organization_id', editingOrg.id);
-
-          if (docsError) {
-            console.error('❌ Error checking existing documents:', docsError);
-          }
-
-          const hasExistingDocs = existingDocs && existingDocs.length > 0;
-          
-          if (hasExistingDocs || hasNewDocuments) {
-            orgStatus = 'approved';
-            statusChanged = true;
-          } else {
-            orgStatus = currentStatus;
-          }
+        const currentStatus = editingOrg.status || 'approved';
+        if (currentStatus === 'pending_review') {
+          orgStatus = 'pending_review';
         } else {
-          orgStatus = currentStatus;
-        }
-      } else {
-        if (!skipDocs && !skipDocuments && hasDocumentsUploaded()) {
           orgStatus = 'approved';
-        } else {
-          orgStatus = 'pending';
         }
       }
 
-
-const orgData = {
-  company_name: formData.company_name?.trim() || '',
-  cac_number: formData.cac_number?.trim() || '',
-  house_number: formData.house_number?.trim() || '',
-  street: formData.street?.trim() || '',
-  lga: formData.lga || '',
-  state: formData.state || '',
-  landmark: formData.landmark?.trim() || '',
-  business_nature: JSON.stringify(formData.business_nature || []),
-  phone_number1: formData.phone_number1?.trim() || '',
-  phone_number2: formData.phone_number2?.trim() || '',
-  email: formData.email?.trim() || '',
-  registration_date: formData.registration_date || new Date().toISOString().split('T')[0],
-  contact_person: formData.contact_person?.trim() || '',
-  representative: formData.representative?.trim() || '',
-  nigerian_directors: parseInt(formData.nigerian_directors) || 0,
-  non_nigerian_directors: parseInt(formData.non_nigerian_directors) || 0,
-  nigerian_employees: parseInt(formData.nigerian_employees) || 0,
-  non_nigerian_employees: parseInt(formData.non_nigerian_employees) || 0,
-  id_type: formData.id_type || '',
-  referee_name: formData.referee_name?.trim() || '',
-  referee_business: formData.referee_business?.trim() || '',
-  referee_phone: formData.referee_phone?.trim() || '',
-  referee_reg_number: formData.referee_reg_number?.trim() || '',
-  // ADD NIN FIELD
-  nin: formData.nin?.trim() || null,
-  status: orgStatus,
-  updated_at: now
-};
+      const orgData = {
+        company_name: formData.company_name?.trim() || '',
+        cac_number: formData.cac_number?.trim() || '',
+        house_number: formData.house_number?.trim() || '',
+        street: formData.street?.trim() || '',
+        lga: formData.lga || '',
+        state: formData.state || '',
+        landmark: formData.landmark?.trim() || '',
+        business_nature: JSON.stringify(formData.business_nature || []),
+        phone_number1: formData.phone_number1?.trim() || '',
+        phone_number2: formData.phone_number2?.trim() || '',
+        email: formData.email?.trim() || '',
+        registration_date: formData.registration_date || new Date().toISOString().split('T')[0],
+        contact_person: formData.contact_person?.trim() || '',
+        representative: formData.representative?.trim() || '',
+        nigerian_directors: parseInt(formData.nigerian_directors) || 0,
+        non_nigerian_directors: parseInt(formData.non_nigerian_directors) || 0,
+        nigerian_employees: parseInt(formData.nigerian_employees) || 0,
+        non_nigerian_employees: parseInt(formData.non_nigerian_employees) || 0,
+        id_type: formData.id_type || '',
+        referee_name: formData.referee_name?.trim() || '',
+        referee_business: formData.referee_business?.trim() || '',
+        referee_phone: formData.referee_phone?.trim() || '',
+        referee_reg_number: formData.referee_reg_number?.trim() || '',
+        nin: formData.nin?.trim() || null,
+        // ✅ ADMIN: Always approved, no referee needed
+        status: orgStatus,
+        registration_type: 'admin',
+        referee_confirmed: true,
+        referee_confirmation_date: new Date().toISOString(),
+        updated_at: now
+      };
 
       let orgId;
 
@@ -560,17 +464,11 @@ const orgData = {
 
         if (error) throw error;
         orgId = editingOrg.id;
-        
-        if (statusChanged) {
-          showAlert('success', `✅ Organization updated successfully! Status changed to: ${orgStatus.toUpperCase()}`);
-        } else {
-          showAlert('success', `✅ Organization updated successfully. Current status: ${orgStatus}`);
-        }
+        showAlert('success', `✅ Organization updated successfully! Status: ${orgStatus.toUpperCase()}`);
       } else {
-        orgData.created_by = user?.id || null;
+        orgData.created_by_admin = user?.id || null;
         orgData.created_at = now;
 
-        // Create the organization record - database will generate registration_number
         const { data, error } = await supabase
           .from('organizations_registry')
           .insert([orgData])
@@ -581,9 +479,7 @@ const orgData = {
         orgId = data.id;
         const generatedRegNumber = data.registration_number;
 
-        console.log(`✅ Organization created with registration number: ${generatedRegNumber}`);
-        
-        // Create user using signUp
+        // Create user account
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: formData.email?.trim(),
           password: generatedPassword,
@@ -597,36 +493,27 @@ const orgData = {
         });
 
         if (authError) {
-          console.error('❌ Error creating auth user:', authError);
-          await supabase
-            .from('organizations_registry')
-            .delete()
-            .eq('id', orgId);
+          await supabase.from('organizations_registry').delete().eq('id', orgId);
           throw new Error(`Failed to create user account: ${authError.message}`);
         }
 
-        console.log(`✅ Auth user created successfully: ${authData.user?.email}`);
-
-        // Send credentials email with the generated registration number
+        // Send credentials
         const emailSent = await sendOrganizationCredentials(
           formData.email?.trim(),
           formData.company_name?.trim(),
           generatedPassword,
-          generatedRegNumber  // Use the database-generated number
+          generatedRegNumber
         );
 
         if (emailSent.success) {
-          showAlert('success', `✅ Organization created! Registration Number: ${generatedRegNumber}. Status: ${orgStatus.toUpperCase()}. Login credentials sent.`);
+          showAlert('success', `✅ Organization created! Registration: ${generatedRegNumber}. Status: APPROVED. Credentials sent.`);
         } else {
-          console.warn('⚠️ Failed to send credentials email:', emailSent.error);
-          showAlert('warning', `⚠️ Organization created (Reg: ${generatedRegNumber}, Status: ${orgStatus}) but credential email could not be sent.`);
+          showAlert('warning', `⚠️ Organization created (Reg: ${generatedRegNumber}, Status: APPROVED) but email failed.`);
         }
       }
 
       // Upload documents if not skipped
       if (!skipDocs && !skipDocuments && orgId) {
-        console.log(`📄 Uploading documents for org: ${orgId}`);
-        
         const documentTypes = {
           cover_letter: 'cover_letter',
           memorandum: 'memorandum',
@@ -644,58 +531,26 @@ const orgData = {
         for (const [key, docType] of Object.entries(documentTypes)) {
           if (formData[key] instanceof File) {
             try {
-              console.log(`📤 Uploading ${docType}...`);
               await uploadDocument(formData[key], orgId, docType);
               uploadedCount++;
             } catch (error) {
-              console.error(`❌ Failed to upload ${docType}:`, error);
               errors.push(`${docType}: ${error.message}`);
             }
           }
         }
         
         if (uploadedCount > 0 && errors.length === 0) {
-          if (orgStatus === 'pending') {
-            const { error: statusUpdateError } = await supabase
-              .from('organizations_registry')
-              .update({ status: 'approved' })
-              .eq('id', orgId);
-            
-            if (!statusUpdateError) {
-              orgStatus = 'approved';
-              showAlert('success', `✅ ${uploadedCount} document(s) uploaded successfully. Organization status updated to APPROVED!`);
-            } else {
-              showAlert('success', `✅ ${uploadedCount} document(s) uploaded successfully.`);
-            }
-          } else {
-            showAlert('success', `✅ ${uploadedCount} document(s) uploaded successfully.`);
-          }
+          showAlert('success', `✅ ${uploadedCount} document(s) uploaded successfully.`);
         } else if (uploadedCount > 0 && errors.length > 0) {
-          showAlert('warning', `⚠️ ${uploadedCount} document(s) uploaded. ${errors.length} failed: ${errors.join(', ')}`);
-        } else if (errors.length > 0) {
-          showAlert('error', `❌ Failed to upload documents: ${errors.join(', ')}`);
+          showAlert('warning', `⚠️ ${uploadedCount} uploaded, ${errors.length} failed: ${errors.join(', ')}`);
         }
       }
 
-      // Refresh documents list
-      if (orgId) {
-        await fetchOrganizationDocuments(orgId);
-      }
-
+      if (orgId) await fetchOrganizationDocuments(orgId);
       onSaveSuccess();
     } catch (error) {
       console.error('❌ Error saving organization:', error);
-      if (error.code === '23505') {
-        showAlert('error', 'Registration number or CAC number already exists');
-      } else if (error.message?.includes('Could not find')) {
-        showAlert('error', 'Database column missing. Please run database migrations.');
-      } else if (error.message?.includes('bucket') || error.message?.includes('storage')) {
-        showAlert('error', 'Storage issue. Please ensure the organization-docs bucket exists.');
-      } else if (error.message?.includes('rate limit')) {
-        showAlert('error', 'Rate limit hit. Please wait a moment and try again.');
-      } else {
-        showAlert('error', 'Failed to save organization: ' + error.message);
-      }
+      showAlert('error', 'Failed to save organization: ' + error.message);
     } finally {
       setUploadLoading(false);
     }
@@ -705,21 +560,13 @@ const orgData = {
     if (!window.confirm('Are you sure you want to delete this document?')) return;
 
     try {
-      const { error: storageError } = await supabase.storage
-        .from(BUCKET_NAME)
-        .remove([filePath]);
-
-      if (storageError) {
-        console.error('❌ Storage delete error:', storageError);
-      }
-
+      await supabase.storage.from(BUCKET_NAME).remove([filePath]);
       const { error } = await supabase
         .from('organization_documents')
         .delete()
         .eq('id', docId);
 
       if (error) throw error;
-
       setUploadedFiles(prev => prev.filter(d => d.id !== docId));
       showAlert('success', '✅ Document deleted successfully');
     } catch (error) {
@@ -840,7 +687,7 @@ const orgData = {
                   }
                 }}
               >
-                Skip Documents (Set to Pending)
+                Skip Documents
               </Button>
               <Button
                 onClick={() => handleSaveOrganization(false)}

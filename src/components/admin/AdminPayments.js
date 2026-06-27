@@ -37,7 +37,12 @@ import {
   Tooltip,
   LinearProgress,
   Tabs,
-  Tab
+  Tab,
+  Badge,
+  Divider,
+  Stepper,
+  Step,
+  StepLabel
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -54,7 +59,11 @@ import {
   Close as CloseIcon,
   Business as BusinessIcon,
   AdminPanelSettings as AdminIcon,
-  Person as PersonIcon
+  Person as PersonIcon,
+  AttachFile as AttachFileIcon,
+  Check as CheckIcon,
+  Clear as ClearIcon,
+  FilePresent as FilePresentIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminSidebar from './AdminSidebar';
@@ -82,6 +91,23 @@ const StyledCard = styled(Card)(({ theme }) => ({
   }
 }));
 
+const DropZone = styled(Box)(({ theme }) => ({
+  border: '2px dashed #e0e0e0',
+  borderRadius: '12px',
+  padding: theme.spacing(4),
+  textAlign: 'center',
+  cursor: 'pointer',
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    borderColor: '#15e420',
+    backgroundColor: 'rgba(21, 228, 32, 0.04)'
+  },
+  '&.dragging': {
+    borderColor: '#15e420',
+    backgroundColor: 'rgba(21, 228, 32, 0.08)'
+  }
+}));
+
 const AdminPayments = () => {
   console.log('🗄️ Fetching payments from: admin_organization_payments and payments tables');
   console.log('📁 Using storage bucket: organization-docs');
@@ -101,8 +127,9 @@ const AdminPayments = () => {
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
-    completed: 0,
-    failed: 0,
+    approved: 0,
+    rejected: 0,
+    refunded: 0,
     totalAmount: 0,
     adminPayments: 0,
     selfPayments: 0
@@ -114,6 +141,7 @@ const AdminPayments = () => {
   const [orgSearchLoading, setOrgSearchLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     organization_id: '',
     amount: '',
@@ -133,6 +161,7 @@ const AdminPayments = () => {
   // Status Update Dialog
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [newStatus, setNewStatus] = useState('');
+  const [statusUpdateLoading, setStatusUpdateLoading] = useState(false);
 
   useEffect(() => {
     fetchAllPayments();
@@ -185,11 +214,17 @@ const AdminPayments = () => {
 
       // Apply filters for admin payments
       if (statusFilter !== 'all') {
-        adminQuery = adminQuery.eq('status', statusFilter);
+        if (statusFilter === 'approved' || statusFilter === 'rejected' || statusFilter === 'refunded') {
+          adminQuery = adminQuery.eq('status', statusFilter);
+        } else if (statusFilter === 'pending') {
+          adminQuery = adminQuery.eq('status', 'pending');
+        }
         // Map status filter for self payments
         let selfStatusFilter = statusFilter;
         if (statusFilter === 'approved') selfStatusFilter = 'completed';
-        if (statusFilter === 'rejected') selfStatusFilter = 'failed';
+        else if (statusFilter === 'rejected') selfStatusFilter = 'failed';
+        else if (statusFilter === 'refunded') selfStatusFilter = 'refunded';
+        else if (statusFilter === 'pending') selfStatusFilter = 'pending';
         selfQuery = selfQuery.eq('status', selfStatusFilter);
       }
 
@@ -219,7 +254,8 @@ const AdminPayments = () => {
         adminPayments = adminResult.data.map(p => ({
           ...p,
           source: 'admin',
-          source_label: 'Admin Created'
+          source_label: 'Admin Created',
+          display_status: p.status // admin status: pending, approved, rejected, refunded
         }));
       }
 
@@ -238,7 +274,8 @@ const AdminPayments = () => {
             ...payment,
             source: 'self',
             source_label: 'Self Registration',
-            organizations: orgData // Add organization data
+            organizations: orgData,
+            display_status: payment.status // self status: pending, completed, failed, refunded
           });
         }
       }
@@ -313,6 +350,11 @@ const AdminPayments = () => {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'rejected');
 
+      const { count: adminRefunded } = await supabase
+        .from('admin_organization_payments')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'refunded');
+
       // Get self payments stats
       const { count: selfTotal } = await supabase
         .from('payments')
@@ -333,6 +375,11 @@ const AdminPayments = () => {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'failed');
 
+      const { count: selfRefunded } = await supabase
+        .from('payments')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'refunded');
+
       // Get total amount from approved/completed payments
       const { data: adminApprovedData } = await supabase
         .from('admin_organization_payments')
@@ -344,19 +391,21 @@ const AdminPayments = () => {
         .select('amount')
         .eq('status', 'completed');
 
-      const adminTotalAmount = adminApprovedData?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-      const selfTotalAmount = selfCompletedData?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+      const adminTotalAmount = adminApprovedData?.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) || 0;
+      const selfTotalAmount = selfCompletedData?.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0) || 0;
 
       const totalPending = (adminPending || 0) + (selfPending || 0);
-      const totalCompleted = (adminApproved || 0) + (selfCompleted || 0);
-      const totalFailed = (adminRejected || 0) + (selfFailed || 0);
+      const totalApproved = (adminApproved || 0) + (selfCompleted || 0);
+      const totalRejected = (adminRejected || 0) + (selfFailed || 0);
+      const totalRefunded = (adminRefunded || 0) + (selfRefunded || 0);
       const totalPayments = (adminTotal || 0) + (selfTotal || 0);
 
       setStats({
         total: totalPayments,
         pending: totalPending,
-        completed: totalCompleted,
-        failed: totalFailed,
+        approved: totalApproved,
+        rejected: totalRejected,
+        refunded: totalRefunded,
         totalAmount: adminTotalAmount + selfTotalAmount,
         adminPayments: adminTotal || 0,
         selfPayments: selfTotal || 0
@@ -466,18 +515,41 @@ const AdminPayments = () => {
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
     if (file) {
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'];
-      if (!allowedTypes.includes(file.type)) {
-        showAlert('error', 'Please upload a valid image (JPEG, PNG, GIF) or PDF file');
-        return;
-      }
-      
-      if (file.size > 5 * 1024 * 1024) {
-        showAlert('error', 'File size must be less than 5MB');
-        return;
-      }
+      processFile(file);
+    }
+  };
 
-      setPaymentForm(prev => ({ ...prev, receipt_file: file }));
+  const processFile = (file) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      showAlert('error', 'Please upload a valid image (JPEG, PNG, GIF) or PDF file');
+      return;
+    }
+    
+    if (file.size > 5 * 1024 * 1024) {
+      showAlert('error', 'File size must be less than 5MB');
+      return;
+    }
+
+    setPaymentForm(prev => ({ ...prev, receipt_file: file }));
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      processFile(file);
     }
   };
 
@@ -551,7 +623,7 @@ const AdminPayments = () => {
       const paymentReference = paymentForm.payment_reference || 
         `PAY-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
-      // Insert into admin_organization_payments
+      // Insert into admin_organization_payments with status 'approved'
       const { error: insertError } = await supabase
         .from('admin_organization_payments')
         .insert({
@@ -562,7 +634,7 @@ const AdminPayments = () => {
           payment_reference: paymentReference,
           receipt_path: receiptPath,
           receipt_filename: receiptFilename,
-          status: 'pending',
+          status: 'approved', // Auto-approved for admin created
           payment_type: paymentForm.payment_type,
           payment_year: paymentForm.payment_type === 'registration' ? null : paymentForm.payment_year,
           payment_date: paymentForm.payment_date ? new Date(paymentForm.payment_date).toISOString() : new Date().toISOString()
@@ -570,7 +642,7 @@ const AdminPayments = () => {
 
       if (insertError) throw insertError;
 
-      showAlert('success', 'Payment recorded successfully');
+      showAlert('success', 'Payment recorded and approved successfully');
       handleClosePaymentDialog();
       fetchAllPayments();
       fetchStats();
@@ -604,25 +676,12 @@ const AdminPayments = () => {
   };
 
   // ============================================================
-  // FIXED: Status Update Handlers - Correct mapping for payments table
-  // payments table uses: pending, completed, failed, refunded
-  // admin_organization_payments uses: pending, approved, rejected, refunded
+  // STATUS UPDATE HANDLERS
   // ============================================================
   
   const handleOpenStatusDialog = (payment, status) => {
     setSelectedPayment(payment);
-    
-    // Map status for self payments (payments table)
-    let dbStatus = status;
-    if (payment.source === 'self') {
-      // Map UI status to database status for payments table
-      if (status === 'approved') dbStatus = 'completed';
-      else if (status === 'rejected') dbStatus = 'failed';
-      // pending and refunded stay the same
-    }
-    
-    console.log(`📝 Setting status for ${payment.source} payment to: ${dbStatus} (original: ${status})`);
-    setNewStatus(dbStatus);
+    setNewStatus(status);
     setStatusDialogOpen(true);
   };
 
@@ -635,46 +694,41 @@ const AdminPayments = () => {
   const handleUpdateStatus = async () => {
     if (!selectedPayment || !newStatus) return;
 
+    setStatusUpdateLoading(true);
     try {
-      const table = selectedPayment.source === 'admin' ? 'admin_organization_payments' : 'payments';
-      let statusToUpdate = newStatus;
+      let table, statusToUpdate;
       
-      if (table === 'payments') {
-        // payments table only accepts: pending, completed, failed, refunded
-        // Map if needed
-        if (statusToUpdate === 'approved') statusToUpdate = 'completed';
-        else if (statusToUpdate === 'rejected') statusToUpdate = 'failed';
-        
-        // Validate status is allowed
-        if (!['pending', 'completed', 'failed', 'refunded'].includes(statusToUpdate)) {
-          console.warn(`⚠️ Invalid status "${statusToUpdate}" for payments table, defaulting to "pending"`);
-          statusToUpdate = 'pending';
-        }
+      if (selectedPayment.source === 'admin') {
+        // Admin table: pending, approved, rejected, refunded
+        table = 'admin_organization_payments';
+        if (newStatus === 'approved') statusToUpdate = 'approved';
+        else if (newStatus === 'rejected') statusToUpdate = 'rejected';
+        else if (newStatus === 'refunded') statusToUpdate = 'refunded';
+        else statusToUpdate = 'pending';
+      } else {
+        // Self table: pending, completed, failed, refunded
+        table = 'payments';
+        if (newStatus === 'approved') statusToUpdate = 'completed';
+        else if (newStatus === 'rejected') statusToUpdate = 'failed';
+        else if (newStatus === 'refunded') statusToUpdate = 'refunded';
+        else statusToUpdate = 'pending';
       }
       
       console.log(`🔄 Updating payment in ${table} (ID: ${selectedPayment.id}) from "${selectedPayment.status}" to "${statusToUpdate}"`);
       
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from(table)
         .update({ 
           status: statusToUpdate,
           updated_at: new Date().toISOString()
         })
-        .eq('id', selectedPayment.id)
-        .select();
+        .eq('id', selectedPayment.id);
 
-      if (error) {
-        console.error('❌ Database error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('✅ Update successful:', data);
-
-      // Display appropriate status name
-      const displayStatus = statusToUpdate === 'completed' ? 'Approved' : 
-                           statusToUpdate === 'failed' ? 'Rejected' : 
-                           statusToUpdate === 'pending' ? 'Pending' :
-                           statusToUpdate === 'refunded' ? 'Refunded' : statusToUpdate;
+      const displayStatus = statusToUpdate === 'approved' || statusToUpdate === 'completed' ? 'Approved' : 
+                           statusToUpdate === 'rejected' || statusToUpdate === 'failed' ? 'Rejected' : 
+                           statusToUpdate === 'refunded' ? 'Refunded' : 'Pending';
       
       showAlert('success', `Payment ${displayStatus} successfully`);
       handleCloseStatusDialog();
@@ -683,6 +737,8 @@ const AdminPayments = () => {
     } catch (error) {
       console.error('❌ Error updating payment status:', error);
       showAlert('error', 'Failed to update payment status: ' + (error.message || 'Unknown error'));
+    } finally {
+      setStatusUpdateLoading(false);
     }
   };
 
@@ -714,19 +770,20 @@ const AdminPayments = () => {
     }
   };
 
-  // Display status chip - maps database status to display status
-  const getStatusChip = (status, source) => {
+  // Display status chip
+  const getStatusChip = (payment) => {
+    const status = payment.display_status || payment.status;
+    const source = payment.source;
     let displayLabel = status;
     let color = 'default';
     let icon = <PendingIcon />;
     
-    // For self payments, map database status to display status
-    if (source === 'self') {
-      if (status === 'completed') {
+    if (source === 'admin') {
+      if (status === 'approved') {
         displayLabel = 'Approved';
         color = 'success';
         icon = <CheckCircleIcon />;
-      } else if (status === 'failed') {
+      } else if (status === 'rejected') {
         displayLabel = 'Rejected';
         color = 'error';
         icon = <CancelIcon />;
@@ -740,12 +797,12 @@ const AdminPayments = () => {
         icon = <CancelIcon />;
       }
     } else {
-      // Admin payments use: pending, approved, rejected, refunded
-      if (status === 'approved') {
+      // Self payments
+      if (status === 'completed') {
         displayLabel = 'Approved';
         color = 'success';
         icon = <CheckCircleIcon />;
-      } else if (status === 'rejected') {
+      } else if (status === 'failed') {
         displayLabel = 'Rejected';
         color = 'error';
         icon = <CancelIcon />;
@@ -803,6 +860,10 @@ const AdminPayments = () => {
     );
   };
 
+  const isPaymentPending = (payment) => {
+    return payment.display_status === 'pending' || payment.status === 'pending';
+  };
+
   if (loading && payments.length === 0) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -824,11 +885,11 @@ const AdminPayments = () => {
         </Alert>
       </Snackbar>
 
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Box sx={{ display: 'flex', gap: 3 }}>
-          <AdminSidebar />
-          
-          <Box sx={{ flex: 1, bgcolor: '#f8f9fa', p: 3, borderRadius: '16px' }}>
+      <Box sx={{ display: 'flex', bgcolor: '#f8f9fa', minHeight: '100vh' }}>
+        <AdminSidebar />
+        
+        <Box sx={{ flex: 1, p: { xs: 2, md: 3 } }}>
+          <Container maxWidth="xl" sx={{ py: { xs: 1, md: 2 } }}>
             {/* Header */}
             <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
               <Box>
@@ -922,10 +983,10 @@ const AdminPayments = () => {
                       </Avatar>
                       <Box>
                         <Typography variant="body2" sx={{ color: '#666' }}>
-                          Completed/Approved
+                          Approved
                         </Typography>
                         <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                          {stats.completed}
+                          {stats.approved}
                         </Typography>
                       </Box>
                     </Box>
@@ -941,10 +1002,10 @@ const AdminPayments = () => {
                       </Avatar>
                       <Box>
                         <Typography variant="body2" sx={{ color: '#666' }}>
-                          Failed/Rejected
+                          Rejected
                         </Typography>
                         <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                          {stats.failed}
+                          {stats.rejected}
                         </Typography>
                       </Box>
                     </Box>
@@ -980,8 +1041,30 @@ const AdminPayments = () => {
                 sx={{ mb: 2 }}
               >
                 <Tab label="All Payments" value="all" />
-                <Tab label="Admin Created" value="admin" />
-                <Tab label="Self Registered" value="self" />
+                <Tab 
+                  label={
+                    <Badge 
+                      badgeContent={stats.adminPayments} 
+                      color="primary"
+                      invisible={stats.adminPayments === 0}
+                    >
+                      Admin Created
+                    </Badge>
+                  } 
+                  value="admin" 
+                />
+                <Tab 
+                  label={
+                    <Badge 
+                      badgeContent={stats.selfPayments} 
+                      color="secondary"
+                      invisible={stats.selfPayments === 0}
+                    >
+                      Self Registered
+                    </Badge>
+                  } 
+                  value="self" 
+                />
               </Tabs>
               <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                 <TextField
@@ -1055,103 +1138,123 @@ const AdminPayments = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {payments.map((payment) => (
-                      <TableRow key={`${payment.source}-${payment.id}`} hover>
-                        <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
-                          <Chip
-                            label={payment.payment_reference}
-                            size="small"
-                            sx={{ 
-                              fontFamily: '"Inter", sans-serif',
-                              fontSize: '0.75rem',
-                              backgroundColor: '#f0f0f0'
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Avatar sx={{ width: 32, height: 32, bgcolor: '#15e420', fontSize: '0.8rem' }}>
-                              <BusinessIcon sx={{ fontSize: 18 }} />
-                            </Avatar>
-                            <Box>
-                              <Typography sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.85rem' }}>
-                                {payment.organizations?.company_name || 'N/A'}
-                              </Typography>
-                              {payment.organizations?.registration_number && (
-                                <Typography variant="caption" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
-                                  {payment.organizations.registration_number}
+                    {payments.map((payment) => {
+                      const isPending = isPaymentPending(payment);
+                      const isAdmin = payment.source === 'admin';
+                      
+                      return (
+                        <TableRow key={`${payment.source}-${payment.id}`} hover>
+                          <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
+                            <Chip
+                              label={payment.payment_reference}
+                              size="small"
+                              sx={{ 
+                                fontFamily: '"Inter", sans-serif',
+                                fontSize: '0.75rem',
+                                backgroundColor: '#f0f0f0'
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Avatar sx={{ width: 32, height: 32, bgcolor: '#15e420', fontSize: '0.8rem' }}>
+                                <BusinessIcon sx={{ fontSize: 18 }} />
+                              </Avatar>
+                              <Box>
+                                <Typography sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600, fontSize: '0.85rem' }}>
+                                  {payment.organizations?.company_name || 'N/A'}
                                 </Typography>
-                              )}
+                                {payment.organizations?.registration_number && (
+                                  <Typography variant="caption" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
+                                    {payment.organizations.registration_number}
+                                  </Typography>
+                                )}
+                              </Box>
                             </Box>
-                          </Box>
-                        </TableCell>
-                        <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>
-                          ₦{payment.amount?.toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={getPaymentTypeLabel(payment.payment_type)}
-                            size="small"
-                            sx={{ backgroundColor: '#e8f5e9', color: '#15e420', fontFamily: '"Inter", sans-serif' }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          {getSourceChip(payment.source)}
-                        </TableCell>
-                        <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
-                          {new Date(payment.payment_date || payment.created_at).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          {getStatusChip(payment.status, payment.source)}
-                        </TableCell>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', gap: 0.5 }}>
-                            <Tooltip title="View Details">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleViewPayment(payment)}
-                                sx={{ color: '#15e420' }}
-                              >
-                                <VisibilityIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            {payment.receipt_path && (
-                              <Tooltip title="Download Receipt">
+                          </TableCell>
+                          <TableCell sx={{ fontFamily: '"Inter", sans-serif', fontWeight: 600 }}>
+                            ₦{parseFloat(payment.amount)?.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={getPaymentTypeLabel(payment.payment_type)}
+                              size="small"
+                              sx={{ backgroundColor: '#e8f5e9', color: '#15e420', fontFamily: '"Inter", sans-serif' }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {getSourceChip(payment.source)}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily: '"Inter", sans-serif' }}>
+                            {new Date(payment.payment_date || payment.created_at).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            {getStatusChip(payment)}
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              <Tooltip title="View Details">
                                 <IconButton
                                   size="small"
-                                  onClick={() => handleDownloadReceipt(payment)}
-                                  sx={{ color: '#2196f3' }}
+                                  onClick={() => handleViewPayment(payment)}
+                                  sx={{ color: '#15e420' }}
                                 >
-                                  <DownloadIcon fontSize="small" />
+                                  <VisibilityIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
-                            )}
-                            {payment.status === 'pending' && (
-                              <>
-                                <Tooltip title="Approve/Complete">
+                              {payment.receipt_path && (
+                                <Tooltip title="Download Receipt">
                                   <IconButton
                                     size="small"
-                                    onClick={() => handleOpenStatusDialog(payment, 'approved')}
-                                    sx={{ color: '#28a745' }}
+                                    onClick={() => handleDownloadReceipt(payment)}
+                                    sx={{ color: '#2196f3' }}
                                   >
-                                    <CheckCircleIcon fontSize="small" />
+                                    <DownloadIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title="Reject/Fail">
-                                  <IconButton
+                              )}
+                              {/* Only show approve/reject for self payments that are pending */}
+                              {!isAdmin && isPending && (
+                                <>
+                                  <Tooltip title="Approve Payment">
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => handleOpenStatusDialog(payment, 'approved')}
+                                      sx={{ color: '#28a745' }}
+                                    >
+                                      <CheckCircleIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                  <Tooltip title="Reject Payment">
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => handleOpenStatusDialog(payment, 'rejected')}
+                                      sx={{ color: '#dc3545' }}
+                                    >
+                                      <CancelIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </>
+                              )}
+                              {isAdmin && (
+                                <Tooltip title="Admin Payment - Auto Approved">
+                                  <Chip
                                     size="small"
-                                    onClick={() => handleOpenStatusDialog(payment, 'rejected')}
-                                    sx={{ color: '#dc3545' }}
-                                  >
-                                    <CancelIcon fontSize="small" />
-                                  </IconButton>
+                                    label="Auto"
+                                    sx={{ 
+                                      height: '20px', 
+                                      fontSize: '0.6rem',
+                                      backgroundColor: '#e8f5e9',
+                                      color: '#2e7d32'
+                                    }}
+                                  />
                                 </Tooltip>
-                              </>
-                            )}
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                              )}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     {payments.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
@@ -1183,11 +1286,11 @@ const AdminPayments = () => {
                 }}
               />
             </Paper>
-          </Box>
+          </Container>
         </Box>
-      </Container>
+      </Box>
 
-      {/* Record Payment Dialog */}
+      {/* Record Payment Dialog - Professional Design */}
       <Dialog 
         open={paymentDialogOpen} 
         onClose={handleClosePaymentDialog}
@@ -1196,7 +1299,7 @@ const AdminPayments = () => {
         PaperProps={{
           sx: {
             borderRadius: '16px',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.2)'
+            boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
           }
         }}
       >
@@ -1205,14 +1308,30 @@ const AdminPayments = () => {
           fontWeight: 600,
           fontSize: '1.5rem',
           borderBottom: '1px solid #f0f0f0',
-          pb: 2
+          pb: 2,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2
         }}>
-          Record Organization Payment
+          <Avatar sx={{ bgcolor: '#15e420', width: 40, height: 40 }}>
+            <PaymentIcon />
+          </Avatar>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Record Payment
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#666' }}>
+              Record a payment for an organization (Auto-approved)
+            </Typography>
+          </Box>
+          <IconButton onClick={handleClosePaymentDialog} sx={{ ml: 'auto' }}>
+            <CloseIcon />
+          </IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
           {uploading && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ mb: 1, fontFamily: '"Inter", sans-serif' }}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="body2" sx={{ mb: 1, fontFamily: '"Inter", sans-serif', color: '#666' }}>
                 Uploading receipt... {uploadProgress}%
               </Typography>
               <LinearProgress 
@@ -1229,7 +1348,14 @@ const AdminPayments = () => {
               />
             </Box>
           )}
-          <Grid container spacing={2}>
+          
+          <Alert severity="info" sx={{ mb: 3, borderRadius: '8px' }}>
+            <Typography variant="body2">
+              <strong>Note:</strong> Admin payments are automatically approved. No further verification is needed.
+            </Typography>
+          </Alert>
+
+          <Grid container spacing={3}>
             <Grid item xs={12}>
               <Autocomplete
                 options={organizations}
@@ -1247,6 +1373,14 @@ const AdminPayments = () => {
                     sx={{ fontFamily: '"Inter", sans-serif' }}
                     InputProps={{
                       ...params.InputProps,
+                      startAdornment: (
+                        <>
+                          <InputAdornment position="start">
+                            <BusinessIcon sx={{ color: '#15e420' }} />
+                          </InputAdornment>
+                          {params.InputProps.startAdornment}
+                        </>
+                      ),
                       endAdornment: (
                         <>
                           {orgSearchLoading ? <CircularProgress color="inherit" size={20} /> : null}
@@ -1270,20 +1404,25 @@ const AdminPayments = () => {
                 )}
               />
             </Grid>
+
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label="Amount (₦)"
+                label="Amount"
                 type="number"
                 required
                 value={paymentForm.amount}
                 onChange={(e) => handlePaymentFormChange('amount', e.target.value)}
                 error={!!formErrors.amount}
                 helperText={formErrors.amount}
-                InputProps={{ startAdornment: <InputAdornment position="start">₦</InputAdornment> }}
+                InputProps={{ 
+                  startAdornment: <InputAdornment position="start">₦</InputAdornment>,
+                  inputProps: { min: 0, step: 0.01 }
+                }}
                 sx={{ fontFamily: '"Inter", sans-serif' }}
               />
             </Grid>
+
             <Grid item xs={12} md={6}>
               <FormControl fullWidth required error={!!formErrors.payment_type}>
                 <InputLabel>Payment Type</InputLabel>
@@ -1301,6 +1440,7 @@ const AdminPayments = () => {
                 </Select>
               </FormControl>
             </Grid>
+
             {(paymentForm.payment_type === 'renewal' || paymentForm.payment_type === 'annual_subscription') && (
               <Grid item xs={12} md={6}>
                 <TextField
@@ -1314,6 +1454,7 @@ const AdminPayments = () => {
                 />
               </Grid>
             )}
+
             <Grid item xs={12} md={6}>
               <FormControl fullWidth required error={!!formErrors.payment_method}>
                 <InputLabel>Payment Method</InputLabel>
@@ -1332,16 +1473,25 @@ const AdminPayments = () => {
                 </Select>
               </FormControl>
             </Grid>
+
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label="Payment Reference (Optional)"
+                label="Payment Reference"
                 value={paymentForm.payment_reference}
                 onChange={(e) => handlePaymentFormChange('payment_reference', e.target.value)}
                 placeholder="Leave empty for auto-generation"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <ReceiptIcon sx={{ color: '#666' }} />
+                    </InputAdornment>
+                  ),
+                }}
                 sx={{ fontFamily: '"Inter", sans-serif' }}
               />
             </Grid>
+
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
@@ -1353,8 +1503,18 @@ const AdminPayments = () => {
                 sx={{ fontFamily: '"Inter", sans-serif' }}
               />
             </Grid>
+
             <Grid item xs={12}>
-              <Box sx={{ border: '2px dashed #e0e0e0', borderRadius: '12px', p: 3, textAlign: 'center' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, fontFamily: '"Inter", sans-serif' }}>
+                Payment Receipt (Optional)
+              </Typography>
+              <DropZone
+                className={isDragging ? 'dragging' : ''}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -1362,35 +1522,40 @@ const AdminPayments = () => {
                   accept="image/*,.pdf"
                   style={{ display: 'none' }}
                 />
-                <UploadIcon sx={{ fontSize: 48, color: '#15e420', mb: 1 }} />
-                <Typography variant="body1" sx={{ mb: 1, fontFamily: '"Inter", sans-serif', fontWeight: 500 }}>
-                  Upload Payment Receipt (Optional)
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 2, color: '#666', fontFamily: '"Inter", sans-serif' }}>
-                  {paymentForm.receipt_file 
-                    ? `Selected: ${paymentForm.receipt_file.name}`
-                    : 'Supported formats: JPEG, PNG, GIF, PDF (Max 5MB)'
-                  }
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-                  <Button
-                    variant="outlined"
-                    onClick={() => fileInputRef.current?.click()}
-                    sx={{ borderColor: '#15e420', color: '#15e420', fontFamily: '"Inter", sans-serif' }}
-                  >
-                    Choose File
-                  </Button>
-                  {paymentForm.receipt_file && (
-                    <Button
-                      variant="outlined"
-                      onClick={() => handlePaymentFormChange('receipt_file', null)}
-                      sx={{ borderColor: '#dc3545', color: '#dc3545', fontFamily: '"Inter", sans-serif' }}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </Box>
-              </Box>
+                {paymentForm.receipt_file ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                    <FilePresentIcon sx={{ fontSize: 40, color: '#15e420' }} />
+                    <Box sx={{ textAlign: 'left' }}>
+                      <Typography variant="body1" sx={{ fontWeight: 500, fontFamily: '"Inter", sans-serif' }}>
+                        {paymentForm.receipt_file.name}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
+                        {(paymentForm.receipt_file.size / 1024).toFixed(1)} KB
+                      </Typography>
+                      <Button
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePaymentFormChange('receipt_file', null);
+                        }}
+                        sx={{ ml: 2, color: '#dc3545' }}
+                      >
+                        Remove
+                      </Button>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Box>
+                    <UploadIcon sx={{ fontSize: 48, color: '#15e420', mb: 1 }} />
+                    <Typography variant="body1" sx={{ fontWeight: 500, fontFamily: '"Inter", sans-serif' }}>
+                      Drop file here or click to browse
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
+                      Supported formats: JPEG, PNG, GIF, PDF (Max 5MB)
+                    </Typography>
+                  </Box>
+                )}
+              </DropZone>
             </Grid>
           </Grid>
         </DialogContent>
@@ -1409,6 +1574,7 @@ const AdminPayments = () => {
             variant="contained"
             onClick={handleSubmitPayment}
             disabled={uploading}
+            startIcon={uploading ? <CircularProgress size={20} color="inherit" /> : <CheckIcon />}
             sx={{
               backgroundColor: '#15e420',
               color: '#fff',
@@ -1452,171 +1618,223 @@ const AdminPayments = () => {
               borderBottom: '1px solid #f0f0f0',
               pb: 2
             }}>
-              Payment Details
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Avatar sx={{ bgcolor: '#15e420', width: 40, height: 40 }}>
+                  <ReceiptIcon />
+                </Avatar>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Payment Details
+                </Typography>
+              </Box>
               <IconButton onClick={handleCloseViewDialog} size="small">
                 <CloseIcon />
               </IconButton>
             </DialogTitle>
             <DialogContent sx={{ pt: 3 }}>
               <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                    {getSourceChip(selectedPayment.source)}
+                    {getStatusChip(selectedPayment)}
+                    {selectedPayment.source === 'admin' && (
+                      <Chip
+                        size="small"
+                        label="Auto-Approved"
+                        icon={<CheckIcon />}
+                        sx={{ backgroundColor: '#e8f5e9', color: '#2e7d32' }}
+                      />
+                    )}
+                  </Box>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <Divider />
+                </Grid>
+
                 <Grid item xs={12} md={6}>
                   <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
                     Payment Reference
                   </Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 600, fontFamily: '"Inter", sans-serif', mb: 2 }}>
+                  <Typography variant="body1" sx={{ fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>
                     {selectedPayment.payment_reference}
                   </Typography>
                 </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
-                    Status
-                  </Typography>
-                  <Box sx={{ mt: 0.5, mb: 2 }}>
-                    {getStatusChip(selectedPayment.status, selectedPayment.source)}
-                  </Box>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
-                    Organization
-                  </Typography>
-                  <Typography variant="body1" sx={{ fontFamily: '"Inter", sans-serif', mb: 2 }}>
-                    {selectedPayment.organizations?.company_name || 'N/A'}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
-                    Registration Number
-                  </Typography>
-                  <Typography variant="body1" sx={{ fontFamily: '"Inter", sans-serif', mb: 2 }}>
-                    {selectedPayment.organizations?.registration_number || 'N/A'}
-                  </Typography>
-                </Grid>
+
                 <Grid item xs={12} md={6}>
                   <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
                     Amount
                   </Typography>
-                  <Typography variant="h6" sx={{ fontFamily: '"Inter", sans-serif', color: '#15e420', mb: 2 }}>
-                    ₦{selectedPayment.amount?.toLocaleString()}
+                  <Typography variant="h5" sx={{ fontFamily: '"Inter", sans-serif', color: '#15e420', fontWeight: 700 }}>
+                    ₦{parseFloat(selectedPayment.amount)?.toLocaleString()}
                   </Typography>
                 </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
+                    Organization
+                  </Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 500, fontFamily: '"Inter", sans-serif' }}>
+                    {selectedPayment.organizations?.company_name || 'N/A'}
+                  </Typography>
+                  {selectedPayment.organizations?.registration_number && (
+                    <Typography variant="caption" sx={{ color: '#666' }}>
+                      Reg: {selectedPayment.organizations.registration_number}
+                    </Typography>
+                  )}
+                </Grid>
+
                 <Grid item xs={12} md={6}>
                   <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
                     Payment Type
                   </Typography>
-                  <Box sx={{ mt: 0.5, mb: 2 }}>
-                    <Chip
-                      label={getPaymentTypeLabel(selectedPayment.payment_type)}
-                      size="small"
-                      sx={{ backgroundColor: '#e8f5e9', color: '#15e420', fontFamily: '"Inter", sans-serif' }}
-                    />
-                  </Box>
+                  <Chip
+                    label={getPaymentTypeLabel(selectedPayment.payment_type)}
+                    size="small"
+                    sx={{ backgroundColor: '#e8f5e9', color: '#15e420', fontFamily: '"Inter", sans-serif' }}
+                  />
                 </Grid>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
-                    Source
-                  </Typography>
-                  <Box sx={{ mt: 0.5, mb: 2 }}>
-                    {getSourceChip(selectedPayment.source)}
-                  </Box>
-                </Grid>
+
                 <Grid item xs={12} md={6}>
                   <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
                     Payment Method
                   </Typography>
-                  <Typography variant="body1" sx={{ fontFamily: '"Inter", sans-serif', mb: 2 }}>
-                    {selectedPayment.payment_method}
+                  <Typography variant="body1" sx={{ fontFamily: '"Inter", sans-serif' }}>
+                    {selectedPayment.payment_method || 'N/A'}
                   </Typography>
                 </Grid>
+
                 <Grid item xs={12} md={6}>
                   <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
                     Payment Date
                   </Typography>
-                  <Typography variant="body1" sx={{ fontFamily: '"Inter", sans-serif', mb: 2 }}>
+                  <Typography variant="body1" sx={{ fontFamily: '"Inter", sans-serif' }}>
                     {new Date(selectedPayment.payment_date || selectedPayment.created_at).toLocaleDateString()}
                   </Typography>
                 </Grid>
+
                 {selectedPayment.payment_year && (
                   <Grid item xs={12} md={6}>
                     <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
                       Payment Year
                     </Typography>
-                    <Typography variant="body1" sx={{ fontFamily: '"Inter", sans-serif', mb: 2 }}>
+                    <Typography variant="body1" sx={{ fontFamily: '"Inter", sans-serif' }}>
                       {selectedPayment.payment_year}
                     </Typography>
                   </Grid>
                 )}
+
                 <Grid item xs={12} md={6}>
                   <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
                     Created At
                   </Typography>
-                  <Typography variant="body1" sx={{ fontFamily: '"Inter", sans-serif', mb: 2 }}>
+                  <Typography variant="body1" sx={{ fontFamily: '"Inter", sans-serif' }}>
                     {new Date(selectedPayment.created_at).toLocaleString()}
                   </Typography>
                 </Grid>
+
                 {selectedPayment.receipt_path && (
                   <Grid item xs={12}>
+                    <Divider sx={{ mb: 2 }} />
                     <Typography variant="overline" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
                       Receipt
                     </Typography>
-                    <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                    <Box sx={{ mt: 1, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                       <Button
-                        variant="outlined"
+                        variant="contained"
                         startIcon={<DownloadIcon />}
                         onClick={() => handleDownloadReceipt(selectedPayment)}
-                        sx={{ borderColor: '#15e420', color: '#15e420', fontFamily: '"Inter", sans-serif' }}
+                        sx={{
+                          backgroundColor: '#15e420',
+                          textTransform: 'none',
+                          '&:hover': { backgroundColor: '#12c21e' }
+                        }}
                       >
                         Download Receipt
                       </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<VisibilityIcon />}
+                        onClick={() => {
+                          const { data: { publicUrl } } = supabase.storage
+                            .from('organization-docs')
+                            .getPublicUrl(selectedPayment.receipt_path);
+                          window.open(publicUrl, '_blank');
+                        }}
+                        sx={{ borderColor: '#15e420', color: '#15e420', textTransform: 'none' }}
+                      >
+                        View Receipt
+                      </Button>
                     </Box>
+                  </Grid>
+                )}
+
+                {/* Show approve/reject actions for pending self payments */}
+                {selectedPayment.source === 'self' && isPaymentPending(selectedPayment) && (
+                  <Grid item xs={12}>
+                    <Divider sx={{ mb: 2 }} />
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      <Typography variant="body2">
+                        This payment needs your approval before it can be finalized.
+                      </Typography>
+                    </Alert>
+                    <Box sx={{ display: 'flex', gap: 2 }}>
+                      <Button
+                        variant="contained"
+                        startIcon={<CheckCircleIcon />}
+                        onClick={() => {
+                          handleCloseViewDialog();
+                          handleOpenStatusDialog(selectedPayment, 'approved');
+                        }}
+                        sx={{
+                          backgroundColor: '#28a745',
+                          textTransform: 'none',
+                          '&:hover': { backgroundColor: '#218838' }
+                        }}
+                      >
+                        Approve Payment
+                      </Button>
+                      <Button
+                        variant="contained"
+                        startIcon={<CancelIcon />}
+                        onClick={() => {
+                          handleCloseViewDialog();
+                          handleOpenStatusDialog(selectedPayment, 'rejected');
+                        }}
+                        sx={{
+                          backgroundColor: '#dc3545',
+                          textTransform: 'none',
+                          '&:hover': { backgroundColor: '#c82333' }
+                        }}
+                      >
+                        Reject Payment
+                      </Button>
+                    </Box>
+                  </Grid>
+                )}
+
+                {selectedPayment.source === 'admin' && (
+                  <Grid item xs={12}>
+                    <Divider sx={{ mb: 2 }} />
+                    <Alert severity="success">
+                      <Typography variant="body2">
+                        <strong>Admin Payment:</strong> This payment was created by an admin and is automatically approved.
+                      </Typography>
+                    </Alert>
                   </Grid>
                 )}
               </Grid>
             </DialogContent>
             <DialogActions sx={{ p: 3, borderTop: '1px solid #f0f0f0' }}>
-              {selectedPayment.status === 'pending' && (
-                <>
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      handleCloseViewDialog();
-                      handleOpenStatusDialog(selectedPayment, 'approved');
-                    }}
-                    sx={{
-                      backgroundColor: '#28a745',
-                      color: '#fff',
-                      fontFamily: '"Inter", sans-serif',
-                      textTransform: 'none',
-                      fontWeight: 600,
-                      borderRadius: '8px',
-                      '&:hover': {
-                        backgroundColor: '#218838'
-                      }
-                    }}
-                  >
-                    Approve Payment
-                  </Button>
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      handleCloseViewDialog();
-                      handleOpenStatusDialog(selectedPayment, 'rejected');
-                    }}
-                    sx={{
-                      backgroundColor: '#dc3545',
-                      color: '#fff',
-                      fontFamily: '"Inter", sans-serif',
-                      textTransform: 'none',
-                      fontWeight: 600,
-                      borderRadius: '8px',
-                      '&:hover': {
-                        backgroundColor: '#c82333'
-                      }
-                    }}
-                  >
-                    Reject Payment
-                  </Button>
-                </>
-              )}
+              <Button 
+                onClick={handleCloseViewDialog}
+                sx={{ 
+                  color: '#666',
+                  fontFamily: '"Inter", sans-serif',
+                  textTransform: 'none'
+                }}
+              >
+                Close
+              </Button>
             </DialogActions>
           </>
         )}
@@ -1638,37 +1856,61 @@ const AdminPayments = () => {
         <DialogTitle sx={{ 
           fontFamily: '"Poppins", sans-serif',
           fontWeight: 600,
-          fontSize: '1.25rem'
+          fontSize: '1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2
         }}>
+          <Avatar sx={{ 
+            bgcolor: newStatus === 'approved' ? '#28a745' : 
+                     newStatus === 'rejected' ? '#dc3545' : 
+                     '#ffc107',
+            width: 40,
+            height: 40
+          }}>
+            {newStatus === 'approved' ? <CheckIcon /> : 
+             newStatus === 'rejected' ? <ClearIcon /> : 
+             <PendingIcon />}
+          </Avatar>
           Confirm Status Update
         </DialogTitle>
         <DialogContent>
-          <Typography sx={{ fontFamily: '"Inter", sans-serif', color: '#666' }}>
+          <Typography sx={{ fontFamily: '"Inter", sans-serif', color: '#666', mb: 2 }}>
             Are you sure you want to mark this payment as{' '}
             <strong style={{ 
-              color: newStatus === 'completed' || newStatus === 'approved' ? '#28a745' : 
-                     newStatus === 'failed' || newStatus === 'rejected' ? '#dc3545' : 
+              color: newStatus === 'approved' ? '#28a745' : 
+                     newStatus === 'rejected' ? '#dc3545' : 
                      '#ffc107' 
             }}>
-              {newStatus === 'completed' || newStatus === 'approved' ? 'Completed/Approved' : 
-               newStatus === 'failed' || newStatus === 'rejected' ? 'Failed/Rejected' : 
-               newStatus === 'pending' ? 'Pending' : newStatus}
+              {newStatus === 'approved' ? 'Approved' : 
+               newStatus === 'rejected' ? 'Rejected' : 
+               newStatus === 'refunded' ? 'Refunded' : 'Pending'}
             </strong>?
           </Typography>
           {selectedPayment && (
-            <Box sx={{ mt: 2, p: 2, backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-              <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif' }}>
-                Reference: {selectedPayment.payment_reference}
-              </Typography>
-              <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif' }}>
-                Amount: ₦{selectedPayment.amount?.toLocaleString()}
-              </Typography>
-              <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif' }}>
-                Organization: {selectedPayment.organizations?.company_name || 'N/A'}
-              </Typography>
-              <Typography variant="body2" sx={{ fontFamily: '"Inter", sans-serif' }}>
-                Source: {selectedPayment.source_label || selectedPayment.source}
-              </Typography>
+            <Box sx={{ p: 2, backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" sx={{ color: '#666' }}>Reference</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>{selectedPayment.payment_reference}</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" sx={{ color: '#666' }}>Amount</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: '#15e420' }}>
+                  ₦{parseFloat(selectedPayment.amount)?.toLocaleString()}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" sx={{ color: '#666' }}>Organization</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {selectedPayment.organizations?.company_name || 'N/A'}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="body2" sx={{ color: '#666' }}>Source</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {selectedPayment.source_label || selectedPayment.source}
+                </Typography>
+              </Box>
             </Box>
           )}
         </DialogContent>
@@ -1686,9 +1928,14 @@ const AdminPayments = () => {
           <Button
             variant="contained"
             onClick={handleUpdateStatus}
+            disabled={statusUpdateLoading}
+            startIcon={statusUpdateLoading ? <CircularProgress size={20} color="inherit" /> : 
+              newStatus === 'approved' ? <CheckIcon /> : 
+              newStatus === 'rejected' ? <ClearIcon /> : 
+              <PendingIcon />}
             sx={{
-              backgroundColor: newStatus === 'completed' || newStatus === 'approved' ? '#28a745' : 
-                             newStatus === 'failed' || newStatus === 'rejected' ? '#dc3545' : 
+              backgroundColor: newStatus === 'approved' ? '#28a745' : 
+                             newStatus === 'rejected' ? '#dc3545' : 
                              '#ffc107',
               color: newStatus === 'pending' ? '#333' : '#fff',
               fontFamily: '"Inter", sans-serif',
@@ -1697,15 +1944,15 @@ const AdminPayments = () => {
               borderRadius: '8px',
               px: 4,
               '&:hover': {
-                backgroundColor: newStatus === 'completed' || newStatus === 'approved' ? '#218838' : 
-                               newStatus === 'failed' || newStatus === 'rejected' ? '#c82333' : 
+                backgroundColor: newStatus === 'approved' ? '#218838' : 
+                               newStatus === 'rejected' ? '#c82333' : 
                                '#e0a800'
               }
             }}
           >
-            Confirm {newStatus === 'completed' || newStatus === 'approved' ? 'Completion' : 
-                     newStatus === 'failed' || newStatus === 'rejected' ? 'Rejection' : 
-                     'Pending'}
+            {statusUpdateLoading ? 'Processing...' : `Confirm ${newStatus === 'approved' ? 'Approval' : 
+                     newStatus === 'rejected' ? 'Rejection' : 
+                     newStatus === 'refunded' ? 'Refund' : 'Pending'}`}
           </Button>
         </DialogActions>
       </Dialog>

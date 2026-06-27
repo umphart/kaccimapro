@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useRegistration } from '../hooks/useRegistration';
 import CompanyInfoStep from './CompanyInfoStep';
 import CompanyDetailsStep from './CompanyDetailsStep';
@@ -7,6 +7,15 @@ import DocumentsStep from './DocumentsStep';
 import PaymentStep from './PaymentStep';
 import './RegistrationForm.css';
 import { useNavigate } from 'react-router-dom';
+import { 
+  ArrowBack as ArrowBackIcon, 
+  Close as CloseIcon,
+  Business as BusinessIcon,
+  CheckCircle as CheckCircleIcon,
+  Info as InfoIcon,
+  Error as ErrorIcon,
+  Warning as WarningIcon
+} from '@mui/icons-material';
 
 const RegistrationForm = () => {
   const {
@@ -28,6 +37,17 @@ const RegistrationForm = () => {
     setAlert
   } = useRegistration();
   const navigate = useNavigate();
+
+  // State for custom confirmation modal
+  const [confirmModal, setConfirmModal] = useState({
+    open: false,
+    title: '',
+    message: '',
+    type: 'warning',
+    confirmText: 'Yes, Cancel',
+    cancelText: 'Go Back',
+    onConfirm: null
+  });
 
   const handleSubmitRegistration = async () => {
     console.log('🗄️ Submitting to table: organizations_registry');
@@ -51,35 +71,63 @@ const RegistrationForm = () => {
     }
   };
 
-  // In RegistrationForm.js
   const handleGoBack = () => {
     if (currentStep > 1) {
       prevStep();
     } else {
-      // Navigate to dashboard (which will show the notification)
       navigate('/dashboard');
     }
   };
 
+  // Show custom confirmation modal instead of window.confirm
   const handleCancelRegistration = () => {
-    if (window.confirm('Are you sure you want to cancel the registration? All entered data will be lost.')) {
-      navigate('/dashboard');
+    setConfirmModal({
+      open: true,
+      title: 'Cancel Registration',
+      message: 'Are you sure you want to cancel the registration? All entered data will be lost.',
+      type: 'warning',
+      confirmText: 'Yes, Cancel',
+      cancelText: 'Go Back',
+      onConfirm: () => {
+        navigate('/dashboard');
+        setConfirmModal({ ...confirmModal, open: false });
+      }
+    });
+  };
+
+  const closeConfirmModal = () => {
+    setConfirmModal({ ...confirmModal, open: false });
+  };
+
+  // Get alert icon
+  const getAlertIcon = (type) => {
+    switch(type) {
+      case 'success': return <CheckCircleIcon />;
+      case 'info': return <InfoIcon />;
+      case 'error': return <ErrorIcon />;
+      default: return <InfoIcon />;
     }
   };
 
   return (
     <div className="registration-container">
-      {/* Header with Back and Cancel buttons */}
+      {/* Header with Back and Cancel buttons - Professional Design */}
       <div className="registration-header">
         <div className="header-left">
           <button 
             className="btn-back" 
             onClick={handleGoBack}
-            title={currentStep > 1 ? "Go to previous step" : "Go back to login"}
+            title={currentStep > 1 ? "Go to previous step" : "Go back to dashboard"}
           >
-            <span className="material-icons">arrow_back</span>
-            {currentStep > 1 ? 'Back' : 'Login'}
+            <ArrowBackIcon className="btn-icon" />
+            <span className="btn-text">{currentStep > 1 ? 'Back' : 'Dashboard'}</span>
           </button>
+        </div>
+        <div className="header-center">
+          <div className="header-brand">
+            <BusinessIcon className="brand-icon" />
+            <span className="brand-text">KACCIMA</span>
+          </div>
         </div>
         <div className="header-right">
           <button 
@@ -87,42 +135,51 @@ const RegistrationForm = () => {
             onClick={handleCancelRegistration}
             title="Cancel registration"
           >
-            <span className="material-icons">close</span>
-            Cancel Registration
+            <CloseIcon className="btn-icon" />
+            <span className="btn-text">Cancel</span>
           </button>
         </div>
       </div>
 
       {alert && (
         <div className={`mui-alert mui-alert-${alert.type}`}>
-          <span className="material-icons mui-alert-icon">
-            {alert.type === 'success' ? 'check_circle' : alert.type === 'info' ? 'info' : 'error'}
+          <span className="mui-alert-icon">
+            {getAlertIcon(alert.type)}
           </span>
-          <span>{alert.message}</span>
+          <span className="mui-alert-message">{alert.message}</span>
+          <button className="mui-alert-close" onClick={() => setAlert(null)}>
+            <CloseIcon fontSize="small" />
+          </button>
         </div>
       )}
 
-      <center>
-        <h1 style={{ color: '#15e420' }}>KACCIMA Member Registration</h1>
-        <p className="registration-progress">
-          Step {currentStep} of {paymentStep ? '5' : '4'}
-          {paymentStep && ' - Payment'}
-        </p>
-        {/* Progress bar */}
-        <div className="progress-bar-container">
-          <div 
-            className="progress-bar" 
-            style={{ 
-              width: `${(currentStep / (paymentStep ? 5 : 4)) * 100}%` 
-            }}
-          />
+      <div className="registration-header-content">
+        <div className="registration-title-section">
+          <h1 className="registration-title">Member Registration</h1>
+          <p className="registration-subtitle">Join the Kano Chamber of Commerce, Industry, Mines and Agriculture</p>
         </div>
-        <p style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
-          Registration number will be auto-generated (shared sequence with admin-created organizations)
-        </p>
-      </center>
+        
+        <div className="registration-progress-section">
+          <p className="registration-progress">
+            Step {currentStep} of {paymentStep ? '5' : '4'}
+            {paymentStep && <span className="payment-badge"> - Payment</span>}
+          </p>
+          <div className="progress-bar-container">
+            <div 
+              className="progress-bar" 
+              style={{ 
+                width: `${(currentStep / (paymentStep ? 5 : 4)) * 100}%` 
+              }}
+            />
+          </div>
+          <p className="registration-hint">
+            <InfoIcon className="hint-icon" fontSize="small" />
+            Registration number will be auto-generated (shared sequence with admin-created organizations)
+          </p>
+        </div>
+      </div>
       
-      <form>
+      <form className="registration-form">
         {currentStep === 1 && (
           <CompanyInfoStep
             formData={formData}
@@ -170,6 +227,47 @@ const RegistrationForm = () => {
           />
         )}
       </form>
+
+      {/* Custom Confirmation Modal */}
+      {confirmModal.open && (
+        <div className="confirmation-overlay" onClick={closeConfirmModal}>
+          <div className="confirmation-modal" onClick={(e) => e.stopPropagation()}>
+            <div className={`confirmation-header confirmation-${confirmModal.type}`}>
+              <span className="confirmation-icon">
+                {confirmModal.type === 'success' && '✅'}
+                {confirmModal.type === 'error' && '❌'}
+                {confirmModal.type === 'warning' && <WarningIcon />}
+                {confirmModal.type === 'info' && 'ℹ️'}
+              </span>
+              <h3>{confirmModal.title}</h3>
+              <button className="confirmation-close" onClick={closeConfirmModal}>
+                ×
+              </button>
+            </div>
+            <div className="confirmation-body">
+              <p>{confirmModal.message}</p>
+            </div>
+            <div className="confirmation-footer">
+              <button 
+                className="confirmation-btn confirmation-btn-secondary"
+                onClick={closeConfirmModal}
+              >
+                {confirmModal.cancelText}
+              </button>
+              <button 
+                className="confirmation-btn confirmation-btn-danger"
+                onClick={() => {
+                  if (confirmModal.onConfirm) {
+                    confirmModal.onConfirm();
+                  }
+                }}
+              >
+                {confirmModal.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

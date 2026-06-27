@@ -28,7 +28,8 @@ import {
   Logout as LogoutIcon,
   Menu as MenuIcon,
   Close as CloseIcon,
-  AdminPanelSettings as AdminIcon
+  AdminPanelSettings as AdminIcon,
+  People as PeopleIcon,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { supabase } from '../supabaseClient';
@@ -301,28 +302,31 @@ const Sidebar = ({ onLogout, initialUnreadCount = 0 }) => {
   };
 
   // Menu items for organization users (both self and admin created)
-  const menuItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
-    { path: '/profile', label: 'Profile', icon: <PersonIcon /> },
-    { path: '/organization', label: 'Organization Profile', icon: <BusinessIcon /> },
-    { 
-      path: '/notifications', 
-      label: 'Notifications', 
-      icon: (
-        <StyledBadge badgeContent={unreadCount} color="error" invisible={unreadCount === 0}>
-          <NotificationsIcon />
-        </StyledBadge>
-      ) 
-    },
-    // Payment route differs based on organization type
-    { 
-      path: orgType === 'admin' ? '/admin-org-payment' : '/payment', 
-      label: 'Payment', 
-      icon: <PaymentIcon /> 
-    },
-    { path: '/documents', label: 'Documents', icon: <DescriptionIcon /> },
-    { path: '/settings', label: 'Settings', icon: <SettingsIcon /> }
-  ];
+
+const menuItems = [
+  { path: '/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
+  { path: '/profile', label: 'Profile', icon: <PersonIcon /> },
+  { path: '/organization', label: 'Organization Profile', icon: <BusinessIcon /> },
+  // Add referees link
+  { path: '/referees', label: 'Referees', icon: <PeopleIcon /> },
+  { 
+    path: '/notifications', 
+    label: 'Notifications', 
+    icon: (
+      <StyledBadge badgeContent={unreadCount} color="error" invisible={unreadCount === 0}>
+        <NotificationsIcon />
+      </StyledBadge>
+    ) 
+  },
+  // Payment route differs based on organization type
+  { 
+    path: orgType === 'admin' ? '/admin-org-payment' : '/payment', 
+    label: 'Payment', 
+    icon: <PaymentIcon /> 
+  },
+  { path: '/documents', label: 'Documents', icon: <DescriptionIcon /> },
+  { path: '/settings', label: 'Settings', icon: <SettingsIcon /> }
+];
 
   const handleLogout = async () => {
     try {

@@ -36,7 +36,8 @@ import {
   Assignment as AssignmentIcon,
   Receipt as ReceiptIcon,
   AccountBalance as AccountBalanceIcon,
-  Help as HelpIcon
+  Help as HelpIcon,
+  People as PeopleIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { supabase } from '../../supabaseClient';
@@ -275,6 +276,12 @@ const AdminOrgSidebar = ({ onLogout, organization, membershipStatus }) => {
       label: 'Organization Profile',
       icon: <BusinessIcon />,
       active: location.pathname === '/organization'
+    },
+    {
+      path: '/referees',
+      label: 'Referees',
+      icon: <PeopleIcon />,
+      active: location.pathname === '/referees'
     },
     {
       path: '/admin-org-payment',

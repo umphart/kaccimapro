@@ -33,6 +33,8 @@ import AdminSettings from './components/admin/AdminSettings';
 import EmailConfirmed from './components/EmailConfirmed';
 import AdminDocumentReview from './components/admin/AdminDocumentReview';
 import AdminManageOrganizations from './components/admin/AdminManageOrganizations';
+import RefereesManagement from './components/referees/RefereesManagement';
+
 import Layout from './components/Layout';
 
 // Admin Org Dashboard Components
@@ -211,7 +213,7 @@ const DashboardRouter = () => {
           console.log('❌ No organization found. Showing notification...');
           setIsAdminCreated(false);
           setHasOrganization(false);
-          setShowNoOrgMessage(true); // Show notification instead of redirecting
+          setShowNoOrgMessage(true);
         }
       }
     } catch (error) {
@@ -580,6 +582,45 @@ const SettingsRouter = () => {
   return isAdminCreated ? <AdminOrgSettings /> : <Settings />;
 };
 
+// Smart Referees Router Component
+const RefereesRouter = () => {
+  const [loading, setLoading] = useState(true);
+  const [isAdminCreated, setIsAdminCreated] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    checkOrgType();
+  }, []);
+
+  const checkOrgType = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        navigate('/login');
+        return;
+      }
+
+      const isAdmin = await checkAdminOrg(user);
+      setIsAdminCreated(isAdmin);
+      console.log(isAdmin ? '✅ Admin-created organization for referees' : 'ℹ️ Self-created organization for referees');
+    } catch (error) {
+      console.error('Error checking organization type for referees:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress style={{ color: '#15e420' }} />
+      </Box>
+    );
+  }
+
+  return <RefereesManagement />;
+};
+
 function App() {
   return (
     <Router>
@@ -720,6 +761,13 @@ function App() {
           <Route path="/payment" element={
             <ProtectedRoute>
               <PaymentRouter />
+            </ProtectedRoute>
+          } />
+          
+          {/* Referees - Smart routing based on organization type */}
+          <Route path="/referees" element={
+            <ProtectedRoute>
+              <RefereesRouter />
             </ProtectedRoute>
           } />
           

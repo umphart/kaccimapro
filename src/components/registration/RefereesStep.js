@@ -10,6 +10,36 @@ const RefereesStep = ({ formData, handleInputChange, onPrev, onNext }) => {
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [refereeStatus, setRefereeStatus] = useState(null);
   const [emailError, setEmailError] = useState(null);
+  
+  // Custom confirmation modal state
+  const [confirmationModal, setConfirmationModal] = useState({
+    open: false,
+    title: '',
+    message: '',
+    type: 'success', // 'success', 'error', 'warning'
+    onConfirm: null
+  });
+
+  // Show confirmation modal
+  const showConfirmation = (title, message, type = 'info', onConfirm = null) => {
+    setConfirmationModal({
+      open: true,
+      title,
+      message,
+      type,
+      onConfirm
+    });
+  };
+
+  const closeConfirmation = () => {
+    setConfirmationModal({
+      open: false,
+      title: '',
+      message: '',
+      type: 'info',
+      onConfirm: null
+    });
+  };
 
   // Handle referee registration number input with auto-fill
   const handleRefereeRegChange = async (e) => {
@@ -137,13 +167,28 @@ const RefereesStep = ({ formData, handleInputChange, onPrev, onNext }) => {
           }
         });
         
-        alert(`✅ Confirmation email sent to ${refereeName} (${refereeEmail})`);
+        // Show custom success modal instead of alert
+        showConfirmation(
+          'Email Sent!',
+          `Confirmation email has been sent to ${refereeName} (${refereeEmail})`,
+          'success'
+        );
       } else {
         setEmailError('Failed to send confirmation email. Please try again.');
+        showConfirmation(
+          '❌ Failed to Send',
+          'There was an error sending the confirmation email. Please try again.',
+          'error'
+        );
       }
     } catch (error) {
       console.error('Error sending referee confirmation:', error);
       setEmailError('Error sending email. Please try again.');
+      showConfirmation(
+        '❌ Error',
+        'An unexpected error occurred while sending the email. Please try again.',
+        'error'
+      );
     } finally {
       setIsSendingEmail(false);
     }
@@ -343,6 +388,42 @@ const RefereesStep = ({ formData, handleInputChange, onPrev, onNext }) => {
           )}
         </button>
       </div>
+
+      {/* Custom Confirmation Modal */}
+      {confirmationModal.open && (
+        <div className="confirmation-overlay" onClick={closeConfirmation}>
+          <div className="confirmation-modal" onClick={(e) => e.stopPropagation()}>
+            <div className={`confirmation-header confirmation-${confirmationModal.type}`}>
+              <span className="confirmation-icon">
+                {confirmationModal.type === 'success' && '✅'}
+                {confirmationModal.type === 'error' && '❌'}
+                {confirmationModal.type === 'warning' && '⚠️'}
+                {confirmationModal.type === 'info' && 'ℹ️'}
+              </span>
+              <h3>{confirmationModal.title}</h3>
+              <button className="confirmation-close" onClick={closeConfirmation}>
+                ×
+              </button>
+            </div>
+            <div className="confirmation-body">
+              <p>{confirmationModal.message}</p>
+            </div>
+            <div className="confirmation-footer">
+              <button 
+                className="confirmation-btn confirmation-btn-primary"
+                onClick={() => {
+                  if (confirmationModal.onConfirm) {
+                    confirmationModal.onConfirm();
+                  }
+                  closeConfirmation();
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         .field-hint {
@@ -577,6 +658,192 @@ const RefereesStep = ({ formData, handleInputChange, onPrev, onNext }) => {
 
         .email-error .material-icons {
           font-size: 20px;
+        }
+
+        /* ========================================
+           CONFIRMATION MODAL
+           ======================================== */
+        .confirmation-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          backdrop-filter: blur(4px);
+          -webkit-backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+
+        .confirmation-modal {
+          background: white;
+          border-radius: 12px;
+          max-width: 420px;
+          width: 90%;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+          animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .confirmation-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 16px 20px;
+          border-bottom: 1px solid #f0f0f0;
+          border-radius: 12px 12px 0 0;
+        }
+
+        .confirmation-header.confirmation-success {
+          background: #e8f5e9;
+          border-color: #c8e6c9;
+        }
+
+        .confirmation-header.confirmation-error {
+          background: #ffebee;
+          border-color: #ffcdd2;
+        }
+
+        .confirmation-header.confirmation-warning {
+          background: #fff3e0;
+          border-color: #ffe0b2;
+        }
+
+        .confirmation-header.confirmation-info {
+          background: #e3f2fd;
+          border-color: #bbdefb;
+        }
+
+        .confirmation-icon {
+          font-size: 24px;
+        }
+
+        .confirmation-header h3 {
+          flex: 1;
+          margin: 0;
+          font-size: 16px;
+          font-weight: 600;
+          color: #333;
+          font-family: 'Inter', sans-serif;
+        }
+
+        .confirmation-close {
+          background: none;
+          border: none;
+          font-size: 24px;
+          color: #999;
+          cursor: pointer;
+          padding: 0 4px;
+          line-height: 1;
+          transition: color 0.2s ease;
+        }
+
+        .confirmation-close:hover {
+          color: #333;
+        }
+
+        .confirmation-body {
+          padding: 20px;
+        }
+
+        .confirmation-body p {
+          margin: 0;
+          font-size: 15px;
+          line-height: 1.6;
+          color: #444;
+          font-family: 'Inter', sans-serif;
+        }
+
+        .confirmation-footer {
+          display: flex;
+          justify-content: flex-end;
+          padding: 12px 20px 20px;
+          gap: 8px;
+        }
+
+        .confirmation-btn {
+          padding: 8px 24px;
+          border: none;
+          border-radius: 6px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          font-family: 'Inter', sans-serif;
+        }
+
+        .confirmation-btn-primary {
+          background: linear-gradient(135deg, #15e420, #0fa819);
+          color: white;
+        }
+
+        .confirmation-btn-primary:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 16px rgba(21, 228, 32, 0.3);
+        }
+
+        .confirmation-btn-secondary {
+          background: #f0f0f0;
+          color: #666;
+        }
+
+        .confirmation-btn-secondary:hover {
+          background: #e0e0e0;
+        }
+
+        @media (max-width: 480px) {
+          .confirmation-modal {
+            width: 95%;
+            margin: 10px;
+          }
+
+          .confirmation-header {
+            padding: 14px 16px;
+          }
+
+          .confirmation-header h3 {
+            font-size: 15px;
+          }
+
+          .confirmation-body {
+            padding: 16px;
+          }
+
+          .confirmation-body p {
+            font-size: 14px;
+          }
+
+          .confirmation-footer {
+            padding: 10px 16px 16px;
+          }
+
+          .confirmation-btn {
+            padding: 10px 20px;
+            width: 100%;
+          }
         }
       `}</style>
     </div>
