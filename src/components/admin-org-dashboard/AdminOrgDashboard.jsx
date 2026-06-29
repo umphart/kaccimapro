@@ -1,5 +1,5 @@
 // components/admin-org-dashboard/AdminOrgDashboard.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '../../supabaseClient';
@@ -20,7 +20,11 @@ import {
   Snackbar,
   useMediaQuery,
   useTheme,
-  Badge
+  Badge,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Business as BusinessIcon,
@@ -34,10 +38,15 @@ import {
   Warning as WarningIcon,
   CalendarToday as CalendarIcon,
   Refresh as RefreshIcon,
-  ArrowForward as ArrowForwardIcon
+  ArrowForward as ArrowForwardIcon,
+  Download as DownloadIcon,
+  Receipt as ReceiptIcon,
+  CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminOrgSidebar from './AdminOrgSidebar';
+import CertificateGenerator from '../dashboard/CertificateGenerator';
 import './AdminOrgDashboard.css';
 
 // Styled Components
@@ -171,6 +180,10 @@ const AdminOrgDashboard = () => {
   const [organization, setOrganization] = useState(null);
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState({ open: false, type: 'success', message: '' });
+  const [certificateDialogOpen, setCertificateDialogOpen] = useState(false);
+  const [generatingCertificate, setGeneratingCertificate] = useState(false);
+  const [certificateSuccess, setCertificateSuccess] = useState(false);
+  const [certGeneratorKey, setCertGeneratorKey] = useState(0);
   
   // Dashboard data
   const [stats, setStats] = useState({
@@ -188,6 +201,7 @@ const AdminOrgDashboard = () => {
   const [recentActivities, setRecentActivities] = useState([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [membershipStatus, setMembershipStatus] = useState('pending');
+  const [latestPayment, setLatestPayment] = useState(null);
 
   useEffect(() => {
     checkUser();
@@ -277,7 +291,6 @@ const AdminOrgDashboard = () => {
     try {
       if (!user) return;
 
-      // METHOD 1: Get organization from user metadata
       let orgData = null;
 
       if (user.user_metadata?.organization_id) {
@@ -292,7 +305,6 @@ const AdminOrgDashboard = () => {
         }
       }
 
-      // METHOD 2: If not found, try by email
       if (!orgData && user.email) {
         const { data } = await supabase
           .from('organizations_registry')
@@ -302,8 +314,6 @@ const AdminOrgDashboard = () => {
 
         if (data) {
           orgData = data;
-          
-          // Update created_by if not set
           if (!data.created_by) {
             await supabase
               .from('organizations_registry')
@@ -313,7 +323,6 @@ const AdminOrgDashboard = () => {
         }
       }
 
-      // METHOD 3: Finally try by created_by
       if (!orgData) {
         const { data } = await supabase
           .from('organizations_registry')
@@ -345,8 +354,12 @@ const AdminOrgDashboard = () => {
         const approved = payments.filter(p => p.status === 'approved').length;
         const pending = payments.filter(p => p.status === 'pending').length;
         
-        // Calculate membership days
+        // Get latest approved payment
         const approvedPayments = payments.filter(p => p.status === 'approved');
+        if (approvedPayments.length > 0) {
+          setLatestPayment(approvedPayments[0]);
+        }
+        
         let membershipDays = 0;
         let memberSince = null;
         let nextRenewal = null;
@@ -355,8 +368,6 @@ const AdminOrgDashboard = () => {
           const firstPayment = approvedPayments[approvedPayments.length - 1];
           memberSince = new Date(firstPayment.created_at);
           membershipDays = Math.floor((Date.now() - memberSince.getTime()) / (1000 * 60 * 60 * 24));
-          
-          // Calculate next renewal (1 year from first payment)
           nextRenewal = new Date(memberSince);
           nextRenewal.setFullYear(nextRenewal.getFullYear() + 1);
         }
@@ -379,8 +390,8 @@ const AdminOrgDashboard = () => {
         .eq('organization_id', orgData.id);
 
       if (documents) {
-        const pending = documents.filter(d => d.status === 'pending').length;
-        const approved = documents.filter(d => d.status === 'approved').length;
+        const pending = documents.filter(d => d.status === 'pending' && !d.is_verified).length;
+        const approved = documents.filter(d => d.status === 'verified' || d.is_verified === true).length;
         
         setStats(prev => ({
           ...prev,
@@ -401,7 +412,6 @@ const AdminOrgDashboard = () => {
       if (notifications) {
         setUnreadNotifications(notifications.length);
         
-        // Get recent activities
         const activities = notifications.slice(0, 5).map(n => ({
           id: n.id,
           type: n.type?.includes('payment') ? 'payment' : 
@@ -421,6 +431,74 @@ const AdminOrgDashboard = () => {
       setLoading(false);
     }
   };
+
+ // Update the certificate generation functions in AdminOrgDashboard.jsx
+
+// ============================================================
+// CERTIFICATE GENERATION WITH LOGGING - FIXED
+// ============================================================
+
+const handleDownloadCertificate = () => {
+  console.log('📄 [Certificate] Download initiated');
+  
+  if (!organization) {
+    console.warn('⚠️ [Certificate] No organization data available');
+    showAlert('error', 'Organization data not available');
+    return;
+  }
+  
+  if (membershipStatus !== 'approved') {
+    console.warn(`⚠️ [Certificate] Membership not approved (status: ${membershipStatus})`);
+    showAlert('warning', 'Certificate is only available for active members');
+    return;
+  }
+  
+  console.log(`✅ [Certificate] Organization: ${organization.company_name}`);
+  console.log(`✅ [Certificate] Registration Number: ${organization.registration_number}`);
+  console.log(`✅ [Certificate] Membership Status: ${membershipStatus}`);
+  
+  // Only open dialog if not already generating
+  if (!generatingCertificate) {
+    setCertificateDialogOpen(true);
+  }
+};
+
+const handleGenerateCertificate = () => {
+  console.log('📄 [Certificate] Generate certificate button clicked');
+  
+  // Close dialog and start generating
+  setCertificateDialogOpen(false);
+  setGeneratingCertificate(true);
+  
+  // Increment key to force re-render - FIXED: use proper function
+  setCertGeneratorKey(prevKey => prevKey + 1);
+  
+  console.log(`🔄 [Certificate] Generator key updated to: ${certGeneratorKey + 1}`);
+  console.log(`⏳ [Certificate] Waiting 600ms before dispatching event...`);
+  
+  // Use a longer delay to ensure everything is ready
+  setTimeout(() => {
+    console.log('📤 [Certificate] Dispatching downloadCertificate event');
+    const event = new CustomEvent('downloadCertificate');
+    document.dispatchEvent(event);
+  }, 600);
+};
+
+const handleCertificateSuccess = () => {
+  console.log('✅ [Certificate] Download completed successfully');
+  setGeneratingCertificate(false);
+  setCertificateSuccess(true);
+  showAlert('success', 'Certificate downloaded successfully!');
+  setTimeout(() => {
+    setCertificateSuccess(false);
+  }, 3000);
+};
+
+const handleCertificateError = (error) => {
+  console.error('❌ [Certificate] Download failed:', error);
+  setGeneratingCertificate(false);
+  showAlert('error', error || 'Failed to generate certificate');
+};
 
   const getStatusIcon = (status) => {
     switch(status) {
@@ -482,6 +560,25 @@ const AdminOrgDashboard = () => {
     return formatDate(date);
   };
 
+  // Format payment for certificate
+  const getPaymentForCertificate = () => {
+    if (!latestPayment) {
+      const now = new Date();
+      return {
+        day: now.getDate().toString().padStart(2, '0'),
+        month: (now.getMonth() + 1).toString().padStart(2, '0'),
+        year: now.getFullYear().toString()
+      };
+    }
+    
+    const date = new Date(latestPayment.created_at);
+    return {
+      day: date.getDate().toString().padStart(2, '0'),
+      month: (date.getMonth() + 1).toString().padStart(2, '0'),
+      year: date.getFullYear().toString()
+    };
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
@@ -502,6 +599,24 @@ const AdminOrgDashboard = () => {
           {alert.message}
         </Alert>
       </Snackbar>
+
+      {/* Certificate Generator Component */}
+      {organization && latestPayment && (
+        <CertificateGenerator
+          key={certGeneratorKey}
+          organization={{
+            company_name: organization.company_name,
+            office_address: `${organization.house_number || ''} ${organization.street || ''} ${organization.lga || ''} ${organization.state || ''}`.trim() || 'N/A',
+            business_nature: organization.business_nature || 'N/A',
+            cac_number: organization.cac_number || 'N/A',
+            registration_number: organization.registration_number || 'N/A'
+          }}
+          payment={getPaymentForCertificate()}
+          onSuccess={handleCertificateSuccess}
+          onError={handleCertificateError}
+          trigger={false}
+        />
+      )}
 
       <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f5f7fa' }}>
         <AdminOrgSidebar 
@@ -619,7 +734,7 @@ const AdminOrgDashboard = () => {
                     <Box sx={{ mt: 1 }}>
                       <Chip
                         size="small"
-                        label={`${stats.approvedDocuments} approved`}
+                        label={`${stats.approvedDocuments} verified`}
                         sx={{ bgcolor: '#d4edda', color: '#28a745', mr: 0.5 }}
                       />
                       {stats.pendingDocuments > 0 && (
@@ -714,14 +829,25 @@ const AdminOrgDashboard = () => {
                     </QuickActionButton>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
-                    <QuickActionButton
-                      className="secondary"
-                      fullWidth
-                      startIcon={<SettingsIcon />}
-                      onClick={() => navigate('/settings')}
-                    >
-                      Settings
-                    </QuickActionButton>
+                    {membershipStatus === 'approved' ? (
+                      <QuickActionButton
+                        className="primary"
+                        fullWidth
+                        startIcon={<DownloadIcon />}
+                        onClick={handleDownloadCertificate}
+                      >
+                        Download Certificate
+                      </QuickActionButton>
+                    ) : (
+                      <QuickActionButton
+                        className="secondary"
+                        fullWidth
+                        startIcon={<VerifiedIcon />}
+                        disabled
+                      >
+                        {membershipStatus === 'pending' ? 'Pending Approval' : 'Certificate Unavailable'}
+                      </QuickActionButton>
+                    )}
                   </Grid>
                 </Grid>
               </Paper>
@@ -814,9 +940,10 @@ const AdminOrgDashboard = () => {
                             variant="contained"
                             fullWidth
                             sx={{ mt: 2, bgcolor: '#15e420', '&:hover': { bgcolor: '#12c21e' } }}
-                            startIcon={<VerifiedIcon />}
+                            startIcon={<DownloadIcon />}
+                            onClick={handleDownloadCertificate}
                           >
-                            Download Membership Card
+                            Download Certificate
                           </Button>
                         </>
                       )}
@@ -916,6 +1043,97 @@ const AdminOrgDashboard = () => {
           </Container>
         </Box>
       </Box>
+
+      {/* Certificate Generation Dialog - FIXED */}
+      <Dialog
+        open={certificateDialogOpen}
+        onClose={() => setCertificateDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: '16px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          fontFamily: '"Poppins", sans-serif',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2
+        }}>
+          <Avatar sx={{ bgcolor: '#15e420', width: 40, height: 40 }}>
+            <VerifiedIcon />
+          </Avatar>
+          Download Membership Certificate
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontFamily: '"Inter", sans-serif', color: '#666', mb: 2 }}>
+            You are about to download your official KACCIMA Membership Certificate for:
+          </Typography>
+          
+          <Box sx={{ mt: 2, p: 2, bgcolor: '#f8f9fa', borderRadius: '8px' }}>
+            <Typography variant="body1" sx={{ fontWeight: 600, fontFamily: '"Inter", sans-serif' }}>
+              {organization?.company_name}
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
+              Registration Number: {organization?.registration_number}
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
+              CAC Number: {organization?.cac_number || 'N/A'}
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+              <Typography variant="body2" sx={{ color: '#666', fontFamily: '"Inter", sans-serif' }}>
+                Status:
+              </Typography>
+              <Chip 
+                size="small" 
+                label="Active Member" 
+                sx={{ bgcolor: '#d4edda', color: '#28a745', height: 20, fontSize: '0.7rem' }} 
+              />
+            </Box>
+          </Box>
+
+          <Alert severity="info" sx={{ mt: 2, borderRadius: '8px' }}>
+            <Typography variant="body2">
+              Your certificate will be generated as a PDF document. Please ensure you have a PDF viewer installed.
+            </Typography>
+          </Alert>
+        </DialogContent>
+        <DialogActions sx={{ p: 3, borderTop: '1px solid #f0f0f0' }}>
+          <Button 
+            onClick={() => setCertificateDialogOpen(false)}
+            sx={{ 
+              color: '#666',
+              fontFamily: '"Inter", sans-serif',
+              textTransform: 'none'
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleGenerateCertificate}
+            disabled={generatingCertificate}
+            startIcon={generatingCertificate ? <CircularProgress size={20} color="inherit" /> : <DownloadIcon />}
+            sx={{
+              backgroundColor: '#15e420',
+              color: '#fff',
+              fontFamily: '"Inter", sans-serif',
+              textTransform: 'none',
+              fontWeight: 600,
+              borderRadius: '8px',
+              '&:hover': {
+                backgroundColor: '#12c21e'
+              }
+            }}
+          >
+            {generatingCertificate ? 'Generating...' : 'Download Certificate'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

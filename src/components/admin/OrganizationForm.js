@@ -97,6 +97,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
   const [availableLgas, setAvailableLgas] = useState([]);
   const [skipDocuments, setSkipDocuments] = useState(false);
   const [bucketReady, setBucketReady] = useState(false);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
     const init = async () => {
@@ -107,6 +108,15 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
       }
     };
     init();
+  }, []);
+
+  // Get current user
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    getUser();
   }, []);
 
   const [formData, setFormData] = useState({
@@ -336,6 +346,9 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
 
   const handleBack = () => setActiveStep((prev) => prev - 1);
 
+  // ============================================================
+  // UPLOAD DOCUMENT - AUTO VERIFY FOR ADMIN
+  // ============================================================
   const uploadDocument = async (file, orgId, docType) => {
     if (!file) return null;
 
@@ -366,15 +379,25 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
         .from(BUCKET_NAME)
         .getPublicUrl(filePath);
 
+      // ✅ For admin-created organizations, documents are automatically verified
+      // Check if this is an admin creation (editingOrg is null means new creation)
+      const isAdminCreation = !editingOrg || editingOrg?.registration_type === 'admin';
+      
       const docRecord = {
         organization_id: orgId,
         document_type: docType,
         file_name: file.name,
         file_path: filePath,
         file_url: publicUrl,
-        status: 'pending',
+        status: isAdminCreation ? 'verified' : 'pending',
+        is_verified: isAdminCreation ? true : false,
         uploaded_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        uploaded_by: user?.id || null,
+        file_size: file.size || null,
+        mime_type: file.type || null,
+        is_required: true,
+        is_latest: true
       };
 
       const { data: docData, error: docError } = await supabase
@@ -396,7 +419,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
   };
 
   // ============================================================
-  // ADMIN CREATION - ALWAYS APPROVED
+  // ADMIN CREATION - ALWAYS APPROVED, REFEREE OPTIONAL
   // ============================================================
   const handleSaveOrganization = async (skipDocs = false) => {
     setUploadLoading(true);
@@ -407,7 +430,6 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
       const generatedPassword = generateRandomPassword();
 
       // ✅ ADMIN CREATION: Always approved
-      // Only time it's not approved is if it's an edit and status was pending_review
       let orgStatus = 'approved';
       
       if (editingOrg) {
@@ -419,6 +441,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
         }
       }
 
+      // ✅ For admin creation, referee is optional - only set if provided
       const orgData = {
         company_name: formData.company_name?.trim() || '',
         cac_number: formData.cac_number?.trim() || '',
@@ -439,10 +462,11 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
         nigerian_employees: parseInt(formData.nigerian_employees) || 0,
         non_nigerian_employees: parseInt(formData.non_nigerian_employees) || 0,
         id_type: formData.id_type || '',
-        referee_name: formData.referee_name?.trim() || '',
-        referee_business: formData.referee_business?.trim() || '',
-        referee_phone: formData.referee_phone?.trim() || '',
-        referee_reg_number: formData.referee_reg_number?.trim() || '',
+        // ✅ Referee fields - only set if provided (optional for admin)
+        referee_name: formData.referee_name?.trim() || null,
+        referee_business: formData.referee_business?.trim() || null,
+        referee_phone: formData.referee_phone?.trim() || null,
+        referee_reg_number: formData.referee_reg_number?.trim() || null,
         nin: formData.nin?.trim() || null,
         // ✅ ADMIN: Always approved, no referee needed
         status: orgStatus,
@@ -538,7 +562,13 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
         }
         
         if (uploadedCount > 0 && errors.length === 0) {
-          showAlert('success', `✅ ${uploadedCount} document(s) uploaded successfully.`);
+          // ✅ For admin creation, documents are automatically verified
+          const isAdminCreation = !editingOrg || editingOrg?.registration_type === 'admin';
+          if (isAdminCreation) {
+            showAlert('success', `✅ ${uploadedCount} document(s) uploaded and verified successfully.`);
+          } else {
+            showAlert('success', `✅ ${uploadedCount} document(s) uploaded successfully.`);
+          }
         } else if (uploadedCount > 0 && errors.length > 0) {
           showAlert('warning', `⚠️ ${uploadedCount} uploaded, ${errors.length} failed: ${errors.join(', ')}`);
         }
@@ -594,6 +624,7 @@ const OrganizationForm = ({ open, onClose, editingOrg, onSaveSuccess, showAlert 
             formData={formData}
             formErrors={formErrors}
             onFormChange={handleFormChange}
+            isAdminCreation={true}
           />
         );
       case 2:

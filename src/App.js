@@ -16,6 +16,7 @@ import Profile from './components/Profile';
 import OrganizationProfile from './components/OrganizationProfile';
 import Notifications from './components/Notifications';
 import Documents from './components/Documents';
+import VerifyCertificate from './components/VerifyCertificate';
 import Settings from './components/Settings';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminAuth from './components/admin/AdminAuth';
@@ -602,14 +603,17 @@ function App() {
   return (
     <Router>
       <AppLayout>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/" element={<Login />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/email-confirmed" element={<EmailConfirmed />} />
+       <Routes>
+  {/* Public Routes */}
+  <Route path="/" element={<Login />} />
+  <Route path="/login" element={<Login />} />
+  <Route path="/register" element={<Register />} />
+  <Route path="/forgot-password" element={<ForgotPassword />} />
+  <Route path="/reset-password" element={<ResetPassword />} />
+  <Route path="/email-confirmed" element={<EmailConfirmed />} />
+  
+  {/* Certificate Verification Route - Public */}
+  <Route path="/verify-certificate" element={<VerifyCertificate />} />
           
           {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminAuth />} />

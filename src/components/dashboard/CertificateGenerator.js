@@ -1,14 +1,21 @@
+// src/components/dashboard/CertificateGenerator.js
 import React, { useEffect, useRef } from 'react';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import QRCode from 'qrcode';
 
 const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigger, id }) => {
-  const hasGenerated = useRef(false);
+  const isGenerating = useRef(false);
 
   useEffect(() => {
     const handleDownloadEvent = () => {
-      if (!hasGenerated.current) {
-        generateCertificate();
+      // Prevent multiple simultaneous generations
+      if (isGenerating.current) {
+        console.log('⏳ [Certificate] Already generating, skipping...');
+        return;
       }
+      
+      isGenerating.current = true;
+      generateCertificate();
     };
 
     // Listen for the custom event
@@ -17,16 +24,48 @@ const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigg
     return () => {
       document.removeEventListener('downloadCertificate', handleDownloadEvent);
     };
-  }, []);
+  }, [organization, payment]);
+
+  // Also trigger on prop change if needed
+  useEffect(() => {
+    if (trigger) {
+      console.log('🔄 [Certificate] Trigger prop received, generating...');
+      const handleDownloadEvent = () => {
+        if (isGenerating.current) {
+          console.log('⏳ [Certificate] Already generating, skipping...');
+          return;
+        }
+        isGenerating.current = true;
+        generateCertificate();
+      };
+      handleDownloadEvent();
+    }
+  }, [trigger]);
+
+  const generateQRCode = async (text) => {
+    try {
+      return await QRCode.toDataURL(text, {
+        errorCorrectionLevel: 'H',
+        margin: 1,
+        width: 100,
+        color: {
+          dark: '#000000',
+          light: '#ffffff'
+        }
+      });
+    } catch (error) {
+      console.error('QR Code generation error:', error);
+      return null;
+    }
+  };
 
   const generateCertificate = async () => {
-    if (hasGenerated.current) return;
-    
-    hasGenerated.current = true;
+    console.log('🔄 [Certificate] Starting certificate generation...');
     
     try {
+      console.log('📄 [Certificate] Creating PDF document...');
       const pdfDoc = await PDFDocument.create();
-      const page = pdfDoc.addPage([595, 842]);
+      const page = pdfDoc.addPage([595, 842]); // A4 portrait
       const PW = page.getWidth(), PH = page.getHeight();
 
       const tryEmbed = async (url) => {
@@ -48,10 +87,12 @@ const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigg
         }
       };
 
+      console.log('🖼️ [Certificate] Loading images...');
       const logoImg = await tryEmbed('/static/logo.png');
       const presSigImg = await tryEmbed('/static/pressign.png');
       const dirSigImg = await tryEmbed('/static/dgsign.png');
 
+      console.log('📝 [Certificate] Embedding fonts...');
       const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const helvB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
       const helvI = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
@@ -137,6 +178,11 @@ const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigg
       drawCenter(organization?.company_name || 'Company Name', y, 20, helvB, rgb(0, 0.6, 0));
       y -= 60;
 
+      // Add Registration Number
+      const registrationNumber = organization?.registration_number || 'N/A';
+      drawCenter(`Registration Number: ${registrationNumber}`, y, 10, helv, rgb(0, 0, 0));
+      y -= 35;
+
       [
         `Business Address: ${organization?.office_address || ''}`,
         `Nature of Business: ${organization?.business_nature || ''}`,
@@ -149,9 +195,56 @@ const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigg
       y -= 20;
       drawCenter('is a duly registered member of KACCIMA in good standing.', y, 12);
       y -= 60;
-      drawCenter(`Registration Date: ${payment?.day}-${payment?.month}-${payment?.year}`, y, 10);
+      
+      const regDate = payment ? `${payment.day}-${payment.month}-${payment.year}` : new Date().toLocaleDateString();
+      drawCenter(`Registration Date: ${regDate}`, y, 10);
       y -= 35;
       drawCenter(`Membership Status: Active`, y, 10);
+
+      // QR CODE SECTION - Verification
+      const verificationUrl = `${window.location.origin}/verify-certificate?reg=${encodeURIComponent(registrationNumber)}`;
+      
+      console.log('📱 [Certificate] Generating QR code...');
+      const qrDataUrl = await generateQRCode(verificationUrl);
+      
+      if (qrDataUrl) {
+        try {
+          const qrImage = await pdfDoc.embedPng(qrDataUrl);
+          const qrSize = 60;
+          const qrX = PW - 90;
+          const qrY = 90;
+          
+          page.drawImage(qrImage, {
+            x: qrX,
+            y: qrY,
+            width: qrSize,
+            height: qrSize,
+          });
+          
+          const qrLabel = 'Verify Certificate';
+          const qrLabelWidth = helv.widthOfTextAtSize(qrLabel, 7);
+          page.drawText(qrLabel, {
+            x: qrX + (qrSize - qrLabelWidth) / 2,
+            y: qrY - 12,
+            size: 7,
+            font: helv,
+            color: rgb(0.3, 0.3, 0.3),
+          });
+        } catch (qrError) {
+          console.error('QR Code embedding error:', qrError);
+        }
+      }
+
+      const verifyText = 'Scan QR code to verify this certificate';
+      const verifyTextWidth = helvI.widthOfTextAtSize(verifyText, 7);
+      const verifyX = PW - 90 + (60 - verifyTextWidth) / 2;
+      page.drawText(verifyText, {
+        x: verifyX,
+        y: 70,
+        size: 7,
+        font: helvI,
+        color: rgb(0.4, 0.4, 0.4),
+      });
 
       // Signatures
       const sigLineY = 100;
@@ -178,6 +271,7 @@ const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigg
       const dateWidth = helvI.widthOfTextAtSize(dateText, 9);
       page.drawText(dateText, { x: (PW - dateWidth) / 2, y: 40, size: 9, font: helvI, color: rgb(0.2, 0.2, 0.2) });
 
+      console.log('💾 [Certificate] Saving PDF...');
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
@@ -185,15 +279,19 @@ const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigg
       a.href = url;
       a.download = `KACCIMA_Certificate_${organization?.company_name?.replace(/ /g,'_') || 'Certificate'}.pdf`;
       document.body.appendChild(a);
+      console.log('📥 [Certificate] Triggering download...');
       a.click();
       document.body.removeChild(a);
+      console.log('🗑️ [Certificate] Cleaning up...');
       URL.revokeObjectURL(url);
 
-      // Call success callback
+      isGenerating.current = false;
+      console.log('✅ [Certificate] Generation complete, calling onSuccess');
       if (onSuccess) onSuccess();
 
     } catch (err) {
-      console.error('Certificate generation error:', err);
+      console.error('❌ [Certificate] Generation error:', err);
+      isGenerating.current = false;
       if (onError) onError('Failed to generate certificate');
     }
   };

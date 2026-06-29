@@ -6,6 +6,7 @@ import Layout from './Layout';
 import DashboardAlerts from './dashboard/DashboardAlerts';
 import DashboardContent from './dashboard/DashboardContent';
 import DownloadDialog from './dashboard/DownloadDialog';
+import CertificateGenerator from './dashboard/CertificateGenerator';
 import { useUserData } from './hooks/useUserData';
 import './Dashboard.css';
 
@@ -17,8 +18,11 @@ const Dashboard = () => {
   const [certificateDownloaded, setCertificateDownloaded] = useState(false);
   const [receiptDownloaded, setReceiptDownloaded] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [dialogType, setDialogType] = useState(''); // 'certificate' or 'receipt'
+  const [dialogType, setDialogType] = useState('');
   const [noOrganization, setNoOrganization] = useState(false);
+  const [generatingCertificate, setGeneratingCertificate] = useState(false);
+  const [generatingReceipt, setGeneratingReceipt] = useState(false);
+  const [certGeneratorKey, setCertGeneratorKey] = useState(0);
 
   useEffect(() => {
     checkUser();
@@ -26,7 +30,6 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (user) {
-      // Check download status for this specific user
       const certStatus = localStorage.getItem(`certificateDownloaded_${user.id}`);
       const receiptStatus = localStorage.getItem(`receiptDownloaded_${user.id}`);
       if (certStatus === 'true') {
@@ -45,7 +48,6 @@ const Dashboard = () => {
         navigate('/login');
       } else {
         setUser(user);
-        // Check if user has an organization
         await checkOrganization(user);
       }
     } catch (error) {
@@ -56,10 +58,8 @@ const Dashboard = () => {
 
   const checkOrganization = async (user) => {
     try {
-      // Check for admin-created organization
       let hasOrg = false;
 
-      // Check by created_by
       const { data: adminOrg } = await supabase
         .from('organizations_registry')
         .select('id')
@@ -70,7 +70,6 @@ const Dashboard = () => {
         hasOrg = true;
       }
 
-      // Check by email if not found
       if (!hasOrg && user.email) {
         const { data: emailOrg } = await supabase
           .from('organizations_registry')
@@ -82,7 +81,6 @@ const Dashboard = () => {
         }
       }
 
-      // Check by organization_id in metadata
       if (!hasOrg && user.user_metadata?.organization_id) {
         const { data: metaOrg } = await supabase
           .from('organizations_registry')
@@ -94,7 +92,6 @@ const Dashboard = () => {
         }
       }
 
-      // Check for self-created organization
       if (!hasOrg) {
         const { data: selfOrg } = await supabase
           .from('organizations')
@@ -106,7 +103,6 @@ const Dashboard = () => {
         }
       }
 
-      // If no organization found, show notification instead of redirecting
       if (!hasOrg) {
         setNoOrganization(true);
       }
@@ -144,13 +140,20 @@ const Dashboard = () => {
       return;
     }
     
-    // Dispatch custom event to trigger download
     if (type === 'certificate') {
-      const event = new CustomEvent('downloadCertificate');
-      document.dispatchEvent(event);
+      setGeneratingCertificate(true);
+      setCertGeneratorKey(prev => prev + 1);
+      // Increased delay to ensure component re-renders
+      setTimeout(() => {
+        const event = new CustomEvent('downloadCertificate');
+        document.dispatchEvent(event);
+      }, 500);
     } else if (type === 'receipt') {
-      const event = new CustomEvent('downloadReceipt');
-      document.dispatchEvent(event);
+      setGeneratingReceipt(true);
+      setTimeout(() => {
+        const event = new CustomEvent('downloadReceipt');
+        document.dispatchEvent(event);
+      }, 300);
     }
   };
 
@@ -161,10 +164,39 @@ const Dashboard = () => {
 
   const handleSuccessfulDownload = (type) => {
     markAsDownloaded(type);
-    showAlert('success', `${type === 'certificate' ? 'Certificate' : 'Receipt'} downloaded successfully`);
+    if (type === 'certificate') {
+      setGeneratingCertificate(false);
+      showAlert('success', 'Certificate downloaded successfully');
+    } else if (type === 'receipt') {
+      setGeneratingReceipt(false);
+      showAlert('success', 'Receipt downloaded successfully');
+    }
   };
 
-  // Show loading state
+  const handleDownloadError = (error) => {
+    setGeneratingCertificate(false);
+    setGeneratingReceipt(false);
+    showAlert('error', error || 'Failed to download document');
+  };
+
+  const getPaymentForCertificate = () => {
+    if (!payment) {
+      const now = new Date();
+      return {
+        day: now.getDate().toString().padStart(2, '0'),
+        month: (now.getMonth() + 1).toString().padStart(2, '0'),
+        year: now.getFullYear().toString()
+      };
+    }
+    
+    const date = new Date(payment.created_at || payment.payment_date || Date.now());
+    return {
+      day: date.getDate().toString().padStart(2, '0'),
+      month: (date.getMonth() + 1).toString().padStart(2, '0'),
+      year: date.getFullYear().toString()
+    };
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -173,7 +205,6 @@ const Dashboard = () => {
     );
   }
 
-  // Show "No Organization" notification
   if (noOrganization) {
     return (
       <Layout>
@@ -274,6 +305,24 @@ const Dashboard = () => {
     <>
       <DashboardAlerts alert={alert} />
       
+      {/* Certificate Generator Component */}
+      {organization && (
+        <CertificateGenerator
+          key={certGeneratorKey}
+          organization={{
+            company_name: organization.company_name || 'N/A',
+            office_address: `${organization.house_number || ''} ${organization.street || ''} ${organization.lga || ''} ${organization.state || ''}`.trim() || 'N/A',
+            business_nature: organization.business_nature || 'N/A',
+            cac_number: organization.cac_number || 'N/A',
+            registration_number: organization.registration_number || 'N/A'
+          }}
+          payment={getPaymentForCertificate()}
+          onSuccess={() => handleSuccessfulDownload('certificate')}
+          onError={handleDownloadError}
+          trigger={false}
+        />
+      )}
+      
       <Layout>
         <DashboardContent 
           registrationStatus={registrationStatus}
@@ -287,6 +336,8 @@ const Dashboard = () => {
           onNavigate={navigate}
           onShowAlert={showAlert}
           onSuccessfulDownload={handleSuccessfulDownload}
+          generatingCertificate={generatingCertificate}
+          generatingReceipt={generatingReceipt}
         />
       </Layout>
 
