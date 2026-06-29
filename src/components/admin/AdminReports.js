@@ -1,3 +1,4 @@
+// src/components/admin/AdminReports.jsx
 import React, { useState, useEffect } from 'react';
 import {
   Box,
@@ -17,13 +18,13 @@ import {
   Refresh as RefreshIcon,
   PictureAsPdf as PdfIcon,
   TableChart as ExcelIcon
-} from '@mui/icons-material'; // Add these imports
+} from '@mui/icons-material';
 import AdminSidebar from './AdminSidebar';
 import ReportFilters from './reports/ReportFilters';
 import PaymentsTable from './reports/PaymentsTable';
 import OrganizationsTable from './reports/OrganizationsTable';
 import { fetchPayments, fetchOrganizations, fetchStats } from './reports/reportService';
-import { exportToPDF, exportToExcel } from './reports/exportUtils';
+import { exportToPDF, exportToPDFA2, exportToExcel } from './reports/exportUtils';
 
 const TabPanel = ({ children, value, index, ...other }) => (
   <div
@@ -64,7 +65,6 @@ const AdminReports = () => {
   }, [dateRange, tabValue]);
 
   useEffect(() => {
-    // Apply filters whenever organizations or filters change
     if (organizations.length > 0) {
       applyFilters();
     } else {
@@ -149,14 +149,27 @@ const AdminReports = () => {
   };
 
   const handlePDFExport = async () => {
-    await exportToPDF(
-      reportType, 
-      reportType === 'payments' ? payments : filteredOrganizations, 
-      dateRange, 
-      filters, 
-      setExporting, 
-      showAlert
-    );
+    // Use A2 for organizations, A4 for payments
+    const useA2 = reportType === 'organizations';
+    if (useA2) {
+      await exportToPDFA2(
+        reportType, 
+        filteredOrganizations, 
+        dateRange, 
+        filters, 
+        setExporting, 
+        showAlert
+      );
+    } else {
+      await exportToPDF(
+        reportType, 
+        payments, 
+        dateRange, 
+        filters, 
+        setExporting, 
+        showAlert
+      );
+    }
   };
 
   const handleExcelExport = async () => {
@@ -285,10 +298,10 @@ const AdminReports = () => {
                     />
                   )}
                   
-                  {/* For Payments tab, still show export buttons */}
+                  {/* Export buttons for Payments tab */}
                   {tabValue === 0 && (
                     <Grid item xs={12} md={6}>
-                      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <Button
                           variant="outlined"
                           startIcon={<RefreshIcon />}
@@ -308,7 +321,7 @@ const AdminReports = () => {
                             '&:hover': { transform: 'translateY(-2px)' }
                           }}
                         >
-                          PDF
+                          PDF (A4)
                         </Button>
                         <Button
                           variant="contained"
@@ -350,6 +363,59 @@ const AdminReports = () => {
                   </>
                 )}
               </Box>
+
+              {/* Export buttons for Organizations tab (below table) */}
+              {tabValue === 1 && (
+                <Box sx={{ p: 3, borderTop: '1px solid #f0f0f0', bgcolor: '#f8f9fa' }}>
+                  <Grid container spacing={2} alignItems="center" justifyContent="flex-end">
+                    <Grid item>
+                      <Typography variant="body2" sx={{ color: '#666' }}>
+                        {filteredOrganizations.length} records
+                      </Typography>
+                    </Grid>
+                    <Grid item>
+                      <Button
+                        variant="outlined"
+                        startIcon={<RefreshIcon />}
+                        onClick={handleRefresh}
+                        sx={{ borderColor: '#15e420', color: '#15e420' }}
+                      >
+                        Refresh
+                      </Button>
+                    </Grid>
+                    <Grid item>
+                      <Button
+                        variant="contained"
+                        startIcon={exporting ? <CircularProgress size={20} color="inherit" /> : <PdfIcon />}
+                        onClick={handlePDFExport}
+                        disabled={exporting || filteredOrganizations.length === 0}
+                        sx={{
+                          background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)',
+                          color: 'white',
+                          '&:hover': { transform: 'translateY(-2px)' }
+                        }}
+                      >
+                        PDF (A2)
+                      </Button>
+                    </Grid>
+                    <Grid item>
+                      <Button
+                        variant="contained"
+                        startIcon={exporting ? <CircularProgress size={20} color="inherit" /> : <ExcelIcon />}
+                        onClick={handleExcelExport}
+                        disabled={exporting || filteredOrganizations.length === 0}
+                        sx={{
+                          background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                          color: 'white',
+                          '&:hover': { transform: 'translateY(-2px)' }
+                        }}
+                      >
+                        Excel
+                      </Button>
+                    </Grid>
+                  </Grid>
+                </Box>
+              )}
             </Paper>
           </Box>
         </Box>
