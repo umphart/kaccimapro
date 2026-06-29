@@ -22,7 +22,7 @@ const Dashboard = () => {
   const [noOrganization, setNoOrganization] = useState(false);
   const [generatingCertificate, setGeneratingCertificate] = useState(false);
   const [generatingReceipt, setGeneratingReceipt] = useState(false);
-  const [certGeneratorKey, setCertGeneratorKey] = useState(0);
+  const [certTrigger, setCertTrigger] = useState(false);
 
   useEffect(() => {
     checkUser();
@@ -127,35 +127,32 @@ const Dashboard = () => {
     }
   };
 
-  const handleDownloadClick = (type) => {
-    setDialogType(type);
-    
-    if (type === 'certificate' && certificateDownloaded) {
-      setConfirmDialogOpen(true);
-      return;
-    }
-    
-    if (type === 'receipt' && receiptDownloaded) {
-      setConfirmDialogOpen(true);
-      return;
-    }
-    
-    if (type === 'certificate') {
-      setGeneratingCertificate(true);
-      setCertGeneratorKey(prev => prev + 1);
-      // Increased delay to ensure component re-renders
-      setTimeout(() => {
-        const event = new CustomEvent('downloadCertificate');
-        document.dispatchEvent(event);
-      }, 500);
-    } else if (type === 'receipt') {
-      setGeneratingReceipt(true);
-      setTimeout(() => {
-        const event = new CustomEvent('downloadReceipt');
-        document.dispatchEvent(event);
-      }, 300);
-    }
-  };
+const handleDownloadClick = (type) => {
+  setDialogType(type);
+  
+  if (type === 'certificate' && certificateDownloaded) {
+    setConfirmDialogOpen(true);
+    return;
+  }
+  
+  if (type === 'receipt' && receiptDownloaded) {
+    setConfirmDialogOpen(true);
+    return;
+  }
+  
+  if (type === 'certificate') {
+    setGeneratingCertificate(true);
+    // Dispatch print certificate event
+    const event = new CustomEvent('printCertificate');
+    document.dispatchEvent(event);
+  } else if (type === 'receipt') {
+    setGeneratingReceipt(true);
+    setTimeout(() => {
+      const event = new CustomEvent('downloadReceipt');
+      document.dispatchEvent(event);
+    }, 300);
+  }
+};
 
   const handleConfirmDownload = () => {
     setConfirmDialogOpen(false);
@@ -308,7 +305,6 @@ const Dashboard = () => {
       {/* Certificate Generator Component */}
       {organization && (
         <CertificateGenerator
-          key={certGeneratorKey}
           organization={{
             company_name: organization.company_name || 'N/A',
             office_address: `${organization.house_number || ''} ${organization.street || ''} ${organization.lga || ''} ${organization.state || ''}`.trim() || 'N/A',
@@ -319,7 +315,7 @@ const Dashboard = () => {
           payment={getPaymentForCertificate()}
           onSuccess={() => handleSuccessfulDownload('certificate')}
           onError={handleDownloadError}
-          trigger={false}
+          trigger={certTrigger}
         />
       )}
       

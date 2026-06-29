@@ -7,38 +7,35 @@ const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigg
   const isGenerating = useRef(false);
 
   useEffect(() => {
-    const handleDownloadEvent = () => {
-      // Prevent multiple simultaneous generations
+    const handlePrintEvent = () => {
       if (isGenerating.current) {
         console.log('⏳ [Certificate] Already generating, skipping...');
         return;
       }
       
       isGenerating.current = true;
-      generateCertificate();
+      generateAndPrintCertificate();
     };
 
-    // Listen for the custom event
-    document.addEventListener('downloadCertificate', handleDownloadEvent);
+    document.addEventListener('printCertificate', handlePrintEvent);
 
     return () => {
-      document.removeEventListener('downloadCertificate', handleDownloadEvent);
+      document.removeEventListener('printCertificate', handlePrintEvent);
     };
   }, [organization, payment]);
 
-  // Also trigger on prop change if needed
   useEffect(() => {
     if (trigger) {
       console.log('🔄 [Certificate] Trigger prop received, generating...');
-      const handleDownloadEvent = () => {
+      const handlePrintEvent = () => {
         if (isGenerating.current) {
           console.log('⏳ [Certificate] Already generating, skipping...');
           return;
         }
         isGenerating.current = true;
-        generateCertificate();
+        generateAndPrintCertificate();
       };
-      handleDownloadEvent();
+      handlePrintEvent();
     }
   }, [trigger]);
 
@@ -59,8 +56,8 @@ const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigg
     }
   };
 
-  const generateCertificate = async () => {
-    console.log('🔄 [Certificate] Starting certificate generation...');
+  const generateAndPrintCertificate = async () => {
+    console.log('🔄 [Certificate] Starting certificate generation for printing...');
     
     try {
       console.log('📄 [Certificate] Creating PDF document...');
@@ -204,16 +201,27 @@ const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigg
       // QR CODE SECTION - Verification
       const verificationUrl = `${window.location.origin}/verify-certificate?reg=${encodeURIComponent(registrationNumber)}`;
       
-      console.log('📱 [Certificate] Generating QR code...');
+      console.log('📱 [Certificate] Generating QR code for verification...');
       const qrDataUrl = await generateQRCode(verificationUrl);
       
       if (qrDataUrl) {
         try {
           const qrImage = await pdfDoc.embedPng(qrDataUrl);
-          const qrSize = 60;
-          const qrX = PW - 90;
-          const qrY = 90;
+          const qrSize = 70;
+          const qrX = PW - 100;
+          const qrY = 100;
           
+          // QR Code background
+          page.drawRectangle({
+            x: qrX - 5,
+            y: qrY - 5,
+            width: qrSize + 10,
+            height: qrSize + 10,
+            color: rgb(1, 1, 1),
+            borderWidth: 0
+          });
+          
+          // QR Code image
           page.drawImage(qrImage, {
             x: qrX,
             y: qrY,
@@ -221,26 +229,50 @@ const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigg
             height: qrSize,
           });
           
-          const qrLabel = 'Verify Certificate';
-          const qrLabelWidth = helv.widthOfTextAtSize(qrLabel, 7);
+          // QR Label
+          const qrLabel = 'Scan to Verify';
+          const qrLabelWidth = helvB.widthOfTextAtSize(qrLabel, 8);
           page.drawText(qrLabel, {
             x: qrX + (qrSize - qrLabelWidth) / 2,
-            y: qrY - 12,
-            size: 7,
-            font: helv,
+            y: qrY - 15,
+            size: 8,
+            font: helvB,
             color: rgb(0.3, 0.3, 0.3),
+          });
+          
+          // Verification instructions
+          const verifyInstruction1 = 'Scan QR code or visit:';
+          const verifyInstruction2 = verificationUrl;
+          
+          const instructionY = qrY - 40;
+          page.drawText(verifyInstruction1, {
+            x: qrX - 20,
+            y: instructionY,
+            size: 6,
+            font: helv,
+            color: rgb(0.4, 0.4, 0.4),
+          });
+          
+          page.drawText(verifyInstruction2, {
+            x: qrX - 20,
+            y: instructionY - 12,
+            size: 5,
+            font: helvI,
+            color: rgb(0.2, 0.4, 0.6),
           });
         } catch (qrError) {
           console.error('QR Code embedding error:', qrError);
         }
       }
 
-      const verifyText = 'Scan QR code to verify this certificate';
+      // Verification text at bottom
+      const verifyText = 'This certificate can be verified online at ' + 
+        `${window.location.origin}/verify-certificate`;
       const verifyTextWidth = helvI.widthOfTextAtSize(verifyText, 7);
-      const verifyX = PW - 90 + (60 - verifyTextWidth) / 2;
+      const verifyX = (PW - verifyTextWidth) / 2;
       page.drawText(verifyText, {
         x: verifyX,
-        y: 70,
+        y: 45,
         size: 7,
         font: helvI,
         color: rgb(0.4, 0.4, 0.4),
@@ -275,28 +307,245 @@ const CertificateGenerator = ({ organization, payment, onSuccess, onError, trigg
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `KACCIMA_Certificate_${organization?.company_name?.replace(/ /g,'_') || 'Certificate'}.pdf`;
-      document.body.appendChild(a);
-      console.log('📥 [Certificate] Triggering download...');
-      a.click();
-      document.body.removeChild(a);
-      console.log('🗑️ [Certificate] Cleaning up...');
-      URL.revokeObjectURL(url);
 
-      isGenerating.current = false;
-      console.log('✅ [Certificate] Generation complete, calling onSuccess');
-      if (onSuccess) onSuccess();
+      // Open PDF in a new window with print dialog
+      console.log('🖨️ [Certificate] Opening print dialog...');
+      
+      // Create a new window with the PDF
+      const printWindow = window.open('', '_blank', 'width=800,height=600');
+      
+      if (!printWindow) {
+        throw new Error('Pop-up blocked. Please allow pop-ups for this site.');
+      }
+
+      // Write the HTML with embedded PDF
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>KACCIMA Membership Certificate</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body {
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                background: #f5f5f5;
+                font-family: Arial, sans-serif;
+              }
+              .print-container {
+                width: 100%;
+                height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                background: white;
+              }
+              object {
+                width: 100%;
+                height: 100%;
+                border: none;
+              }
+              .controls {
+                position: fixed;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%);
+                display: flex;
+                gap: 15px;
+                z-index: 1000;
+                background: white;
+                padding: 15px 25px;
+                border-radius: 12px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+              }
+              .controls button {
+                padding: 12px 28px;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 15px;
+                font-weight: 600;
+                transition: all 0.3s ease;
+              }
+              .btn-print {
+                background: #15e420;
+                color: white;
+              }
+              .btn-print:hover {
+                background: #0fb815;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(21, 228, 32, 0.4);
+              }
+              .btn-close {
+                background: #ff4444;
+                color: white;
+              }
+              .btn-close:hover {
+                background: #cc0000;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4);
+              }
+              .loading {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                text-align: center;
+                z-index: 999;
+              }
+              .loading-spinner {
+                border: 4px solid #f3f3f3;
+                border-top: 4px solid #15e420;
+                border-radius: 50%;
+                width: 50px;
+                height: 50px;
+                animation: spin 1s linear infinite;
+                margin: 0 auto 20px;
+              }
+              @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+              }
+              @media print {
+                body { background: white; }
+                .controls { display: none !important; }
+                .loading { display: none !important; }
+                object { height: 100vh !important; width: 100% !important; }
+              }
+              @media (max-width: 768px) {
+                .controls {
+                  flex-direction: column;
+                  width: 90%;
+                  bottom: 20px;
+                  padding: 12px 20px;
+                }
+                .controls button {
+                  width: 100%;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="loading" id="loadingIndicator">
+              <div class="loading-spinner"></div>
+              <p>Loading certificate...</p>
+            </div>
+
+            <div class="print-container">
+              <object 
+                data="${url}" 
+                type="application/pdf" 
+                width="100%" 
+                height="100%"
+                id="pdfViewer"
+              >
+                <div style="text-align: center; padding: 50px;">
+                  <h3>Unable to display PDF</h3>
+                  <p>Your browser may not support PDF viewing.</p>
+                  <button onclick="window.print()" style="margin-top: 20px; padding: 10px 20px; background: #15e420; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    Print Certificate
+                  </button>
+                </div>
+              </object>
+            </div>
+
+            <div class="controls no-print">
+              <button class="btn-print" onclick="handlePrint()">
+                🖨️ Print Certificate
+              </button>
+              <button class="btn-close" onclick="handleClose()">
+                ✕ Close
+              </button>
+            </div>
+
+            <script>
+              let printAttempted = false;
+              
+              function handlePrint() {
+                if (!printAttempted) {
+                  printAttempted = true;
+                  window.print();
+                }
+              }
+
+              function handleClose() {
+                window.close();
+              }
+
+              // Hide loading indicator when PDF loads
+              document.getElementById('pdfViewer').addEventListener('load', function() {
+                document.getElementById('loadingIndicator').style.display = 'none';
+                // Auto-print after a short delay
+                setTimeout(function() {
+                  if (!printAttempted) {
+                    handlePrint();
+                  }
+                }, 1500);
+              });
+
+              // Fallback: hide loading after 5 seconds
+              setTimeout(function() {
+                document.getElementById('loadingIndicator').style.display = 'none';
+                if (!printAttempted) {
+                  handlePrint();
+                }
+              }, 5000);
+
+              // After printing, keep window open
+              window.addEventListener('afterprint', function() {
+                console.log('Print dialog closed');
+              });
+            </script>
+          </body>
+        </html>
+      `);
+
+      printWindow.document.close();
+
+      // Cleanup after print window is closed
+      const checkWindowClosed = setInterval(() => {
+        if (printWindow.closed) {
+          clearInterval(checkWindowClosed);
+          URL.revokeObjectURL(url);
+          isGenerating.current = false;
+          console.log('✅ [Certificate] Print window closed, cleanup complete');
+          if (onSuccess) onSuccess();
+        }
+      }, 1000);
+
+      // Cleanup after 10 minutes if still open
+      setTimeout(() => {
+        clearInterval(checkWindowClosed);
+        if (!printWindow.closed) {
+          URL.revokeObjectURL(url);
+          isGenerating.current = false;
+        }
+      }, 600000);
+
+      console.log('✅ [Certificate] Print dialog opened successfully');
 
     } catch (err) {
       console.error('❌ [Certificate] Generation error:', err);
       isGenerating.current = false;
-      if (onError) onError('Failed to generate certificate');
+      
+      let errorMessage = 'Failed to generate certificate for printing';
+      if (err.message) {
+        if (err.message.includes('pop-up')) {
+          errorMessage = 'Please allow pop-ups for this website to print the certificate.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      if (onError) onError(errorMessage);
     }
   };
 
-  // This component doesn't render anything visible
   return null;
 };
 

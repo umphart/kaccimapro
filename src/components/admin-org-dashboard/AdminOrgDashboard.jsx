@@ -42,7 +42,8 @@ import {
   Download as DownloadIcon,
   Receipt as ReceiptIcon,
   CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon
+  Cancel as CancelIcon,
+  Print as PrintIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import AdminOrgSidebar from './AdminOrgSidebar';
@@ -432,73 +433,71 @@ const AdminOrgDashboard = () => {
     }
   };
 
- // Update the certificate generation functions in AdminOrgDashboard.jsx
+  // ============================================================
+  // CERTIFICATE GENERATION WITH PRINT FUNCTIONALITY
+  // ============================================================
 
-// ============================================================
-// CERTIFICATE GENERATION WITH LOGGING - FIXED
-// ============================================================
+  const handlePrintCertificate = () => {
+    console.log('🖨️ [Certificate] Print initiated');
+    
+    if (!organization) {
+      console.warn('⚠️ [Certificate] No organization data available');
+      showAlert('error', 'Organization data not available');
+      return;
+    }
+    
+    if (membershipStatus !== 'approved') {
+      console.warn(`⚠️ [Certificate] Membership not approved (status: ${membershipStatus})`);
+      showAlert('warning', 'Certificate is only available for active members');
+      return;
+    }
+    
+    console.log(`✅ [Certificate] Organization: ${organization.company_name}`);
+    console.log(`✅ [Certificate] Registration Number: ${organization.registration_number}`);
+    console.log(`✅ [Certificate] Membership Status: ${membershipStatus}`);
+    
+    // Only open dialog if not already generating
+    if (!generatingCertificate) {
+      setCertificateDialogOpen(true);
+    }
+  };
 
-const handleDownloadCertificate = () => {
-  console.log('📄 [Certificate] Download initiated');
-  
-  if (!organization) {
-    console.warn('⚠️ [Certificate] No organization data available');
-    showAlert('error', 'Organization data not available');
-    return;
-  }
-  
-  if (membershipStatus !== 'approved') {
-    console.warn(`⚠️ [Certificate] Membership not approved (status: ${membershipStatus})`);
-    showAlert('warning', 'Certificate is only available for active members');
-    return;
-  }
-  
-  console.log(`✅ [Certificate] Organization: ${organization.company_name}`);
-  console.log(`✅ [Certificate] Registration Number: ${organization.registration_number}`);
-  console.log(`✅ [Certificate] Membership Status: ${membershipStatus}`);
-  
-  // Only open dialog if not already generating
-  if (!generatingCertificate) {
-    setCertificateDialogOpen(true);
-  }
-};
+  const handleGenerateAndPrintCertificate = () => {
+    console.log('🖨️ [Certificate] Generate and print certificate button clicked');
+    
+    // Close dialog and start generating
+    setCertificateDialogOpen(false);
+    setGeneratingCertificate(true);
+    
+    // Increment key to force re-render
+    setCertGeneratorKey(prevKey => prevKey + 1);
+    
+    console.log(`🔄 [Certificate] Generator key updated to: ${certGeneratorKey + 1}`);
+    console.log(`⏳ [Certificate] Waiting 600ms before dispatching event...`);
+    
+    // Use a longer delay to ensure everything is ready
+    setTimeout(() => {
+      console.log('📤 [Certificate] Dispatching printCertificate event');
+      const event = new CustomEvent('printCertificate');
+      document.dispatchEvent(event);
+    }, 600);
+  };
 
-const handleGenerateCertificate = () => {
-  console.log('📄 [Certificate] Generate certificate button clicked');
-  
-  // Close dialog and start generating
-  setCertificateDialogOpen(false);
-  setGeneratingCertificate(true);
-  
-  // Increment key to force re-render - FIXED: use proper function
-  setCertGeneratorKey(prevKey => prevKey + 1);
-  
-  console.log(`🔄 [Certificate] Generator key updated to: ${certGeneratorKey + 1}`);
-  console.log(`⏳ [Certificate] Waiting 600ms before dispatching event...`);
-  
-  // Use a longer delay to ensure everything is ready
-  setTimeout(() => {
-    console.log('📤 [Certificate] Dispatching downloadCertificate event');
-    const event = new CustomEvent('downloadCertificate');
-    document.dispatchEvent(event);
-  }, 600);
-};
+  const handleCertificateSuccess = () => {
+    console.log('✅ [Certificate] Print completed successfully');
+    setGeneratingCertificate(false);
+    setCertificateSuccess(true);
+    showAlert('success', 'Certificate printed successfully!');
+    setTimeout(() => {
+      setCertificateSuccess(false);
+    }, 3000);
+  };
 
-const handleCertificateSuccess = () => {
-  console.log('✅ [Certificate] Download completed successfully');
-  setGeneratingCertificate(false);
-  setCertificateSuccess(true);
-  showAlert('success', 'Certificate downloaded successfully!');
-  setTimeout(() => {
-    setCertificateSuccess(false);
-  }, 3000);
-};
-
-const handleCertificateError = (error) => {
-  console.error('❌ [Certificate] Download failed:', error);
-  setGeneratingCertificate(false);
-  showAlert('error', error || 'Failed to generate certificate');
-};
+  const handleCertificateError = (error) => {
+    console.error('❌ [Certificate] Print failed:', error);
+    setGeneratingCertificate(false);
+    showAlert('error', error || 'Failed to generate certificate for printing');
+  };
 
   const getStatusIcon = (status) => {
     switch(status) {
@@ -833,10 +832,10 @@ const handleCertificateError = (error) => {
                       <QuickActionButton
                         className="primary"
                         fullWidth
-                        startIcon={<DownloadIcon />}
-                        onClick={handleDownloadCertificate}
+                        startIcon={<PrintIcon />}
+                        onClick={handlePrintCertificate}
                       >
-                        Download Certificate
+                        Print Certificate
                       </QuickActionButton>
                     ) : (
                       <QuickActionButton
@@ -940,10 +939,10 @@ const handleCertificateError = (error) => {
                             variant="contained"
                             fullWidth
                             sx={{ mt: 2, bgcolor: '#15e420', '&:hover': { bgcolor: '#12c21e' } }}
-                            startIcon={<DownloadIcon />}
-                            onClick={handleDownloadCertificate}
+                            startIcon={<PrintIcon />}
+                            onClick={handlePrintCertificate}
                           >
-                            Download Certificate
+                            Print Certificate
                           </Button>
                         </>
                       )}
@@ -1044,7 +1043,7 @@ const handleCertificateError = (error) => {
         </Box>
       </Box>
 
-      {/* Certificate Generation Dialog - FIXED */}
+      {/* Certificate Print Dialog */}
       <Dialog
         open={certificateDialogOpen}
         onClose={() => setCertificateDialogOpen(false)}
@@ -1065,13 +1064,13 @@ const handleCertificateError = (error) => {
           gap: 2
         }}>
           <Avatar sx={{ bgcolor: '#15e420', width: 40, height: 40 }}>
-            <VerifiedIcon />
+            <PrintIcon />
           </Avatar>
-          Download Membership Certificate
+          Print Membership Certificate
         </DialogTitle>
         <DialogContent>
           <Typography sx={{ fontFamily: '"Inter", sans-serif', color: '#666', mb: 2 }}>
-            You are about to download your official KACCIMA Membership Certificate for:
+            You are about to print your official KACCIMA Membership Certificate for:
           </Typography>
           
           <Box sx={{ mt: 2, p: 2, bgcolor: '#f8f9fa', borderRadius: '8px' }}>
@@ -1098,7 +1097,14 @@ const handleCertificateError = (error) => {
 
           <Alert severity="info" sx={{ mt: 2, borderRadius: '8px' }}>
             <Typography variant="body2">
-              Your certificate will be generated as a PDF document. Please ensure you have a PDF viewer installed.
+              Your certificate will be generated and the print dialog will open automatically. 
+              Please ensure you have a printer configured
+            </Typography>
+          </Alert>
+          
+          <Alert severity="warning" sx={{ mt: 1, borderRadius: '8px' }}>
+            <Typography variant="body2">
+              <strong>Note:</strong> The certificate will open in a new window. Please allow pop-ups for this site.
             </Typography>
           </Alert>
         </DialogContent>
@@ -1115,9 +1121,9 @@ const handleCertificateError = (error) => {
           </Button>
           <Button
             variant="contained"
-            onClick={handleGenerateCertificate}
+            onClick={handleGenerateAndPrintCertificate}
             disabled={generatingCertificate}
-            startIcon={generatingCertificate ? <CircularProgress size={20} color="inherit" /> : <DownloadIcon />}
+            startIcon={generatingCertificate ? <CircularProgress size={20} color="inherit" /> : <PrintIcon />}
             sx={{
               backgroundColor: '#15e420',
               color: '#fff',
@@ -1130,7 +1136,7 @@ const handleCertificateError = (error) => {
               }
             }}
           >
-            {generatingCertificate ? 'Generating...' : 'Download Certificate'}
+            {generatingCertificate ? 'Generating...' : 'Print Certificate'}
           </Button>
         </DialogActions>
       </Dialog>
