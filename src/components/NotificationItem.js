@@ -1,3 +1,4 @@
+// src/components/NotificationItem.js
 import React from 'react';
 import {
   ListItem,
@@ -46,14 +47,12 @@ const formatTimeAgo = (timestamp) => {
 };
 
 const getNotificationIcon = (type, title, category) => {
-  // Check for document rejection first
   if (type === 'document_rejected' || 
       title?.toLowerCase().includes('reject') && category === 'document' ||
       title?.toLowerCase().includes('document rejected')) {
     return <ErrorIcon sx={{ color: '#dc3545' }} />;
   }
   
-  // Check for document approval
   if (type === 'document_approved' || 
       title?.toLowerCase().includes('approv') && category === 'document') {
     return <CheckCircleIcon sx={{ color: '#28a745' }} />;
@@ -119,13 +118,12 @@ const NotificationItem = ({
 
   const handleReupload = (e) => {
     e.stopPropagation();
-    console.log('Reupload clicked for notification:', notification); // Debug log
+    console.log('Reupload clicked for notification:', notification);
     if (onReupload) {
       onReupload(notification);
     }
   };
 
-  // Check if this is a rejected document notification
   const isRejectedDocument = 
     notification.type === 'document_rejected' || 
     (notification.title?.toLowerCase().includes('reject') && 
@@ -134,26 +132,11 @@ const NotificationItem = ({
      notification.category === 'document') ||
     (notification.title?.toLowerCase().includes('document rejected'));
 
-  // Check if this is a pending document notification
-  const isPendingDocument = notification.type === 'pending' && 
-    notification.category === 'document';
-
-  // Check if document has been re-uploaded (for showing different button maybe)
   const isReuploadedDocument = 
     notification.title?.toLowerCase().includes('re-upload') ||
     notification.message?.toLowerCase().includes('re-uploaded');
 
   const timeAgo = formatTimeAgo(notification.timestamp);
-
-  // Debug log
-  console.log('NotificationItem render:', {
-    id: notification.id,
-    title: notification.title,
-    type: notification.type,
-    category: notification.category,
-    isRejectedDocument,
-    showReuploadButton
-  });
 
   return (
     <ListItem
@@ -244,7 +227,10 @@ const NotificationItem = ({
               sx={{
                 color: notification.read ? '#666' : '#333',
                 mb: 0.5,
-                display: 'block'
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden'
               }}
             >
               {notification.message}
@@ -257,28 +243,26 @@ const NotificationItem = ({
       />
 
       <Box sx={{ position: 'absolute', right: 8, top: 8, display: 'flex', gap: 0.5 }}>
-        {/* Show re-upload button for rejected documents */}
-{showReuploadButton && isRejectedDocument && (
-  <Tooltip title="Re-upload Document" arrow>
-    <IconButton
-      size="small"
-      onClick={handleReupload}
-      sx={{
-        color: '#15e420',
-        bgcolor: 'rgba(21, 228, 32, 0.1)',
-        '&:hover': {
-          bgcolor: '#15e420',
-          color: 'white',
-          transform: 'scale(1.1)'
-        }
-      }}
-    >
-      <RefreshIcon fontSize="small" />
-    </IconButton>
-  </Tooltip>
-)}
+        {showReuploadButton && isRejectedDocument && (
+          <Tooltip title="Re-upload Document" arrow>
+            <IconButton
+              size="small"
+              onClick={handleReupload}
+              sx={{
+                color: '#15e420',
+                bgcolor: 'rgba(21, 228, 32, 0.1)',
+                '&:hover': {
+                  bgcolor: '#15e420',
+                  color: 'white',
+                  transform: 'scale(1.1)'
+                }
+              }}
+            >
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        )}
         
-        {/* Show delete button for other notifications */}
         {!isRejectedDocument && (
           <Tooltip title="Delete" arrow>
             <IconButton

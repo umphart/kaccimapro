@@ -1,3 +1,4 @@
+// src/utils/emailService.js
 import emailjs from '@emailjs/browser';
 
 // Your EmailJS credentials
@@ -12,6 +13,161 @@ const EMAILJS_CONFIG = {
 
 // Initialize EmailJS
 emailjs.init(EMAILJS_CONFIG.publicKey);
+
+// ============================================
+// SEND RAW EMAIL (No template, just raw content)
+// ============================================
+
+export const sendRawEmail = async ({
+  toEmail,
+  companyName,
+  subject,
+  message,
+  actionUrl = null,
+  actionText = null
+}) => {
+  try {
+    if (!toEmail) {
+      throw new Error('Recipient email is required');
+    }
+
+    // Build the full email with just the raw content
+    let fullMessage = `
+KACCIMA
+Kano Chamber of Commerce, Industry, Mines & Agriculture
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Dear ${companyName || 'Member'},
+
+${message}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`;
+
+    if (actionUrl && actionText) {
+      fullMessage += `
+${actionText}: ${actionUrl}
+
+`;
+    }
+
+    fullMessage += `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Need help? Contact us:
+📧 info@kaccima.ng
+📞 +2347063174462
+
+Best regards,
+The KACCIMA Team
+    `;
+
+    const templateParams = {
+      to_email: toEmail,
+      company_name: companyName || 'Member',
+      message: fullMessage,
+      action_url: actionUrl || window.location.origin,
+      action_text: actionText || 'Visit Dashboard',
+      reply_to: 'info@kaccima.ng'
+    };
+
+    // Use the org template as a carrier for the raw message
+    const response = await emailjs.send(
+      EMAILJS_CONFIG.serviceId,
+      EMAILJS_CONFIG.templates.org,
+      templateParams
+    );
+
+    return { success: true, data: response };
+  } catch (error) {
+    console.error('Failed to send email:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// ============================================
+// SEND REFEREE CONFIRMATION EMAIL (Using Raw Email)
+// ============================================
+
+export const sendRefereeConfirmationEmail = async ({ 
+  refereeEmail, 
+  refereeName, 
+  applicantName, 
+  applicantRegNumber,
+  applicantPhone,
+  applicantEmail,
+  status = 'pending'
+}) => {
+  try {
+    if (!refereeEmail) {
+      throw new Error('Referee email is required');
+    }
+
+    const confirmUrl = `${window.location.origin}/referee-confirm?referee=${encodeURIComponent(refereeEmail)}&applicant=${encodeURIComponent(applicantName)}`;
+    const rejectUrl = `${window.location.origin}/referee-reject?referee=${encodeURIComponent(refereeEmail)}&applicant=${encodeURIComponent(applicantName)}`;
+
+    const message = `
+We hope this message finds you well.
+
+${applicantName} has submitted a membership application to KACCIMA and has kindly designated you as a referee. As a respected member of our Chamber, your professional endorsement is highly valued in this process.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 APPLICANT INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Company Name:        ${applicantName}
+Registration Number: ${applicantRegNumber || 'N/A'}
+Phone Number:        ${applicantPhone || 'N/A'}
+Email Address:       ${applicantEmail || 'N/A'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+We kindly request your professional assessment of the above-mentioned applicant. As a fellow member of the Chamber, your endorsement would significantly support their membership journey.
+
+Please confirm: Do you know and endorse ${applicantName} for membership with KACCIMA?
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 ACTION REQUIRED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ CONFIRM & ENDORSE:
+${confirmUrl}
+
+❌ DECLINE REQUEST:
+${rejectUrl}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 IMPORTANT NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Your response will be treated with strict confidentiality
+• This endorsement helps maintain the high standards of our Chamber membership
+• If you have any concerns, please contact our membership team
+
+Should you have any questions, please contact us:
+📧 membership@kaccima.ng
+📞 +2347063174462
+
+Thank you for your continued support of KACCIMA.
+
+Best regards,
+The KACCIMA Membership Team
+    `;
+
+    // Use the raw email function
+    const result = await sendRawEmail({
+      toEmail: refereeEmail,
+      companyName: refereeName || 'Valued Member',
+      subject: `Referee Request: ${applicantName}`,
+      message: message,
+      actionUrl: confirmUrl,
+      actionText: '✅ Confirm & Endorse'
+    });
+
+    return result;
+
+  } catch (error) {
+    console.error('Failed to send referee confirmation email:', error);
+    return { success: false, error: error.message };
+  }
+};
 
 // ============================================
 // SEND ORGANIZATION CREDENTIALS EMAIL
@@ -74,102 +230,13 @@ The KACCIMA Team
 
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,
-      EMAILJS_CONFIG.templates.admin,
-      templateParams
-    );
-
-    return { success: true, data: response };
-  } catch (error) {
-    console.error('Failed to send credentials email:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-// ============================================
-// SEND REFEREE CONFIRMATION EMAIL
-// ============================================
-
-export const sendRefereeConfirmationEmail = async ({ 
-  refereeEmail, 
-  refereeName, 
-  applicantName, 
-  applicantRegNumber,
-  applicantPhone,
-  applicantEmail,
-  status = 'pending'
-}) => {
-  try {
-    if (!refereeEmail) {
-      throw new Error('Referee email is required');
-    }
-
-    const confirmUrl = `${window.location.origin}/referee-confirm?referee=${encodeURIComponent(refereeEmail)}&applicant=${encodeURIComponent(applicantName)}`;
-    const rejectUrl = `${window.location.origin}/referee-reject?referee=${encodeURIComponent(refereeEmail)}&applicant=${encodeURIComponent(applicantName)}`;
-
-    const fullMessage = `
-Dear ${refereeName || 'Valued Member'},
-
-We hope this message finds you well.
-
-${applicantName} has submitted a membership application to KACCIMA and has kindly designated you as a referee. As a respected member of our Chamber, your professional endorsement is highly valued in this process.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 APPLICANT INFORMATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Company Name:        ${applicantName}
-Registration Number: ${applicantRegNumber || 'N/A'}
-Phone Number:        ${applicantPhone || 'N/A'}
-Email Address:       ${applicantEmail || 'N/A'}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-We kindly request your professional assessment of the above-mentioned applicant. As a fellow member of the Chamber, your endorsement would significantly support their membership journey.
-
-Please confirm: Do you know and endorse ${applicantName} for membership with KACCIMA?
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📌 ACTION REQUIRED
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ CONFIRM & ENDORSE:
-${confirmUrl}
-
-❌ DECLINE REQUEST:
-${rejectUrl}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📌 IMPORTANT NOTES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Your response will be treated with strict confidentiality
-• This endorsement helps maintain the high standards of our Chamber membership
-• If you have any concerns, please contact our membership team
-
-Should you have any questions, please contact us:
-📧 membership@kaccima.ng
-📞 +2347063174462
-
-Thank you for your continued support of KACCIMA.
-
-Best regards,
-The KACCIMA Membership Team
-    `;
-
-    const templateParams = {
-      to_email: refereeEmail,
-      company_name: refereeName || 'Valued Member',
-      message: fullMessage,
-      action_url: confirmUrl,
-      action_text: '✅ Confirm & Endorse',
-      reply_to: 'membership@kaccima.ng'
-    };
-
-    const response = await emailjs.send(
-      EMAILJS_CONFIG.serviceId,
       EMAILJS_CONFIG.templates.org,
       templateParams
     );
 
     return { success: true, data: response };
   } catch (error) {
-    console.error('Failed to send referee confirmation email:', error);
+    console.error('Failed to send credentials email:', error);
     return { success: false, error: error.message };
   }
 };
@@ -183,17 +250,18 @@ export const sendAdminRegistrationNotification = async (orgData) => {
     const fullMessage = `
 🏢 NEW ORGANIZATION REGISTRATION
 
-A new organization has registered on the platform.
+A new organization has registered on the platform and requires review.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 REGISTRATION DETAILS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Company:        ${orgData.company_name}
 Email:          ${orgData.email}
-Phone:          ${orgData.phone_number || 'N/A'}
+Phone:          ${orgData.phone_number1 || 'N/A'}
 CAC Number:     ${orgData.cac_number || 'N/A'}
 Business Nature: ${orgData.business_nature || 'N/A'}
 Registration Date: ${new Date().toLocaleString()}
+Status:         ${orgData.status || 'Pending'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Click the button below to review and approve this registration.`;
@@ -238,7 +306,7 @@ Organization:    ${organization.company_name}
 Amount:          ₦${paymentData.amount?.toLocaleString()}
 Payment Type:    ${paymentData.payment_type === 'first' ? 'First Payment' : 'Renewal'}
 Payment Method:  ${paymentData.payment_method || 'Bank Transfer'}
-Payment Reference: ${paymentData.reference || 'N/A'}
+Payment Reference: ${paymentData.payment_reference || 'N/A'}
 Payment Year:    ${paymentData.payment_year || new Date().getFullYear()}
 Submission Date: ${new Date(paymentData.created_at).toLocaleString()}
 Status:          ${paymentData.status || 'pending'}

@@ -6,6 +6,7 @@ import NotificationItem from './NotificationItem';
 import ReuploadDialog from './ReuploadDialog';
 import NotificationHeader from './NotificationHeader';
 import NotificationTabs, { TabPanel } from './NotificationTabs';
+import NotificationModal from './NotificationModal';
 import {
   Box,
   Container,
@@ -15,8 +16,6 @@ import {
   CircularProgress,
   Alert,
   Snackbar,
-  ListItemAvatar,
-  Avatar
 } from '@mui/material';
 import {
   Business as BusinessIcon,
@@ -26,7 +25,7 @@ import {
   NotificationsActive as NotificationsActiveIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { documentFields, formatTimeAgo, isRejectedDocument } from '../utils/notificationUtils';
+import { documentFields, formatTimeAgo } from '../utils/notificationUtils';
 
 const StyledPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(3),
@@ -48,6 +47,8 @@ const Notifications = () => {
     open: false,
     notification: null
   });
+  const [selectedNotification, setSelectedNotification] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     checkUser();
@@ -186,7 +187,7 @@ const Notifications = () => {
             id: 'org-pending',
             type: 'pending',
             title: 'Registration Pending Review',
-            message: 'Your organization registration is currently under review by our team.',
+            message: 'Your organization registration is currently under review by our team. Please wait for approval.',
             timestamp: orgData.updated_at || orgData.created_at,
             read: false,
             category: 'registration',
@@ -302,7 +303,6 @@ const Notifications = () => {
             const hasRejectionReason = orgData[rejectionField];
 
             // Only show rejection notification if the document has been rejected AND the rejection reason exists
-            // This prevents showing rejection notification for documents that have been re-uploaded
             if (hasRejectionReason) {
               notificationsList.push({
                 id: `doc-rejected-${field.key}-${Date.now()}`,
@@ -486,7 +486,23 @@ const Notifications = () => {
   };
 
   const handleNotificationClick = (notification) => {
-    markAsRead(notification.id);
+    // Mark as read
+    if (!notification.read) {
+      markAsRead(notification.id);
+    }
+    
+    // Open modal with full message
+    setSelectedNotification(notification);
+    setModalOpen(true);
+  };
+
+  const handleModalClose = () => {
+    setModalOpen(false);
+    setSelectedNotification(null);
+  };
+
+  const handleActionClick = (notification) => {
+    setModalOpen(false);
     if (notification.actionUrl) {
       navigate(notification.actionUrl);
     }
@@ -573,6 +589,13 @@ const Notifications = () => {
         notification={reuploadDialog.notification}
         organization={organization}
         onSuccess={handleReuploadSuccess}
+      />
+
+      <NotificationModal
+        open={modalOpen}
+        notification={selectedNotification}
+        onClose={handleModalClose}
+        onActionClick={handleActionClick}
       />
 
       <Container maxWidth="lg" sx={{ py: 4 }}>

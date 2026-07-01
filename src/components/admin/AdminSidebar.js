@@ -29,7 +29,7 @@ import {
   AdminPanelSettings as AdminIcon,
   Assessment as AssessmentIcon,
   Description as DescriptionIcon,
-  AddCircle as AddCircleIcon  // <-- ADD THIS
+  AddCircle as AddCircleIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { supabase } from '../../supabaseClient';
@@ -82,6 +82,31 @@ const StyledListItem = styled(ListItem)(({ active }) => ({
   }
 }));
 
+const NotificationBadge = styled(Badge)(({ theme }) => ({
+  '& .MuiBadge-badge': {
+    backgroundColor: '#ff1744',
+    color: 'white',
+    fontSize: '10px',
+    height: '18px',
+    minWidth: '18px',
+    padding: '0 4px',
+    fontWeight: 700,
+    boxShadow: '0 2px 4px rgba(255, 23, 68, 0.4)',
+    animation: 'pulse 2s infinite',
+    '@keyframes pulse': {
+      '0%': {
+        transform: 'scale(1)',
+      },
+      '50%': {
+        transform: 'scale(1.1)',
+      },
+      '100%': {
+        transform: 'scale(1)',
+      }
+    }
+  }
+}));
+
 const MenuButton = styled(IconButton)(({ theme }) => ({
   position: 'fixed',
   top: 16,
@@ -115,6 +140,7 @@ const AdminSidebar = ({ onLogout }) => {
   useEffect(() => {
     fetchAdminData();
     fetchPendingCounts();
+    setupRealtimeSubscriptions();
   }, []);
 
   const fetchAdminData = async () => {
@@ -135,81 +161,163 @@ const AdminSidebar = ({ onLogout }) => {
 
   const fetchPendingCounts = async () => {
     try {
-      // Count pending organizations
-      const { count: orgCount } = await supabase
-        .from('organizations')
+      console.log('=== FETCHING PENDING COUNTS ===');
+      
+      // Count UNREGISTERED organizations (status = 'pending' OR status = 'pending_review')
+      const { count: orgCount, error: orgError } = await supabase
+        .from('organizations_registry')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending');
+        .in('status', ['pending', 'pending_review']);
 
-      // Count pending payments
-      const { count: paymentCount } = await supabase
+      if (orgError) {
+        console.error('Error fetching pending organizations:', orgError);
+      } else {
+        console.log('Pending organizations (unapproved):', orgCount || 0);
+      }
+
+      // Count UNPAID payments from payments table (status = 'pending' OR status = 'unpaid')
+      const { count: paymentCount1, error: paymentError1 } = await supabase
         .from('payments')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending');
+        .in('status', ['pending', 'unpaid', 'processing']);
+
+      if (paymentError1) {
+        console.error('Error fetching pending payments from payments:', paymentError1);
+      } else {
+        console.log('Pending payments from payments table:', paymentCount1 || 0);
+      }
+
+      // Count UNPAID payments from admin_organization_payments table (status = 'pending' OR 'unpaid')
+      const { count: paymentCount2, error: paymentError2 } = await supabase
+        .from('admin_organization_payments')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['pending', 'unpaid']);
+
+      if (paymentError2) {
+        console.error('Error fetching pending payments from admin_organization_payments:', paymentError2);
+      } else {
+        console.log('Pending payments from admin_organization_payments table:', paymentCount2 || 0);
+      }
+
+      const totalPendingPayments = (paymentCount1 || 0) + (paymentCount2 || 0);
+      
+      console.log('=== SUMMARY ===');
+      console.log('Total pending organizations (unapproved):', orgCount || 0);
+      console.log('Total pending payments (unpaid):', totalPendingPayments);
+      console.log('Total pending items:', (orgCount || 0) + totalPendingPayments);
 
       setPendingCounts({
         organizations: orgCount || 0,
-        payments: paymentCount || 0
+        payments: totalPendingPayments
       });
+
     } catch (error) {
-      console.error('Error fetching counts:', error);
+      console.error('Error fetching pending counts:', error);
     }
+  };
+
+  const setupRealtimeSubscriptions = () => {
+    // Subscribe to organization changes
+    const orgSubscription = supabase
+      .channel('admin-org-pending-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'organizations_registry'
+        },
+        () => {
+          console.log('Organization change detected, refreshing counts...');
+          fetchPendingCounts();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to payments changes
+    const paymentSubscription1 = supabase
+      .channel('admin-payment-pending-channel-1')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payments'
+        },
+        () => {
+          console.log('Payment change detected (payments), refreshing counts...');
+          fetchPendingCounts();
+        }
+      )
+      .subscribe();
+
+    const paymentSubscription2 = supabase
+      .channel('admin-payment-pending-channel-2')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'admin_organization_payments'
+        },
+        () => {
+          console.log('Payment change detected (admin_organization_payments), refreshing counts...');
+          fetchPendingCounts();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      orgSubscription.unsubscribe();
+      paymentSubscription1.unsubscribe();
+      paymentSubscription2.unsubscribe();
+    };
   };
 
   // Check if a route is active
   const isActive = (path) => {
     const currentPath = location.pathname;
     
-    // Exact match for dashboard
     if (path === '/admin/dashboard') {
       return currentPath === '/admin/dashboard';
     }
     
-    // For organizations - match any organizations path
     if (path === '/admin/organizations') {
       return currentPath === '/admin/organizations' || 
              currentPath.startsWith('/admin/organizations/filter/') ||
              currentPath.startsWith('/admin/organizations/');
     }
     
-    // For pending organizations
     if (path === '/admin/organizations/filter/pending') {
       return currentPath === '/admin/organizations/filter/pending';
     }
     
-    // For payments
     if (path === '/admin/payments') {
       return currentPath === '/admin/payments' || 
              currentPath.startsWith('/admin/payments/');
     }
     
-    // For documents
     if (path === '/admin/documents') {
       return currentPath === '/admin/documents' || 
              currentPath.startsWith('/admin/documents/');
     }
     
-    // For manage organizations
     if (path === '/admin/manage-organizations') {
       return currentPath === '/admin/manage-organizations';
     }
     
-    // For notifications
     if (path === '/admin/notifications') {
       return currentPath === '/admin/notifications';
     }
     
-    // For reports
     if (path === '/admin/reports') {
       return currentPath === '/admin/reports';
     }
     
-    // For settings
     if (path === '/admin/settings') {
       return currentPath === '/admin/settings';
     }
     
-    // Default exact match
     return currentPath === path;
   };
 
@@ -236,6 +344,8 @@ const AdminSidebar = ({ onLogout }) => {
       console.error('Error logging out:', error);
     }
   };
+
+  const totalPending = pendingCounts.organizations + pendingCounts.payments;
 
   const sidebarContent = (
     <>
@@ -301,7 +411,7 @@ const AdminSidebar = ({ onLogout }) => {
           />
         </StyledListItem>
 
-        {/* Pending Review */}
+        {/* Pending Review - Only shows unapproved organizations */}
         <StyledListItem
           active={isActive('/admin/organizations/filter/pending') ? 1 : 0}
           onClick={() => handleNavigation(() => navigate('/admin/organizations/filter/pending'))}
@@ -362,7 +472,7 @@ const AdminSidebar = ({ onLogout }) => {
           </StyledListItem>
         )}
 
-        {/* Payments */}
+        {/* Payments - Only shows unpaid payments */}
         <StyledListItem
           active={isActive('/admin/payments') ? 1 : 0}
           onClick={() => handleNavigation(() => navigate('/admin/payments'))}
@@ -435,13 +545,21 @@ const AdminSidebar = ({ onLogout }) => {
           />
         </StyledListItem>
 
-        {/* Notifications */}
+        {/* Notifications - Only shows when there are pending items */}
         <StyledListItem
           active={isActive('/admin/notifications') ? 1 : 0}
-          onClick={() => handleNavigation(() => navigate('/admin/notifications'))}
+          onClick={() => {
+            handleNavigation(() => navigate('/admin/notifications'));
+          }}
         >
           <ListItemIcon>
-            <NotificationsIcon />
+            <NotificationBadge 
+              badgeContent={totalPending > 0 ? totalPending : null}
+              color="error"
+              invisible={totalPending === 0}
+            >
+              <NotificationsIcon />
+            </NotificationBadge>
           </ListItemIcon>
           <ListItemText 
             primary="Notifications"
@@ -449,6 +567,20 @@ const AdminSidebar = ({ onLogout }) => {
               fontFamily: '"Inter", sans-serif'
             }}
           />
+          {totalPending > 0 && (
+            <Chip
+              label={totalPending}
+              size="small"
+              color="error"
+              sx={{ 
+                height: '20px', 
+                fontSize: '10px',
+                fontWeight: 700,
+                '& .MuiChip-label': { px: 1 },
+                animation: 'pulse 2s infinite'
+              }}
+            />
+          )}
         </StyledListItem>
 
         {/* Settings */}
